@@ -1,0 +1,39 @@
+DECLARE PLUGIN "mirrorsolve"
+
+{
+
+open Ltac_plugin
+open Stdarg
+
+}
+
+VERNAC COMMAND EXTEND DebugFuns CLASSIFIED AS QUERY
+| [ "ShowLibRefs" ] -> { 
+    let msg = Main.debug_lib_refs () in 
+    Feedback.msg_notice msg
+  }
+| [ "ShowCompTables" ] -> { 
+    let msg = Main.debug_tbls () in 
+    Feedback.msg_notice msg
+  }
+END
+
+VERNAC COMMAND EXTEND RegisterInd CLASSIFIED AS QUERY
+| [ "RegisterInd" constr(e) ] -> { 
+    Main.reg_coq_ind_constr e
+  }
+| [ "RegisterConstrSize" constr(e) int(n) ] -> { 
+    Main.reg_coq_sort_size e n
+  }
+END
+
+TACTIC EXTEND Pretty
+| [ "pretty" constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let out = Main.pretty env sigma e in
+
+    Main.debug out 
+  }
+END
+

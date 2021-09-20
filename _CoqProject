@@ -1,0 +1,2 @@
+-I _build/default/src
+-Q _build/default/theories/ MirrorSolve

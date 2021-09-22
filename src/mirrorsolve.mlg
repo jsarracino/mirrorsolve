@@ -25,6 +25,9 @@ VERNAC COMMAND EXTEND RegisterInd CLASSIFIED AS QUERY
 | [ "RegisterConstrSize" constr(e) int(n) ] -> { 
     Main.reg_coq_sort_size e n
   }
+| [ "RegisterPrim" constr(e) string(s) ] -> { 
+    Main.reg_prim_name e s
+  }
 END
 
 TACTIC EXTEND Pretty

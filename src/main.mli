@@ -33,3 +33,4 @@ val debug_tbls : unit -> Pp.t
 
 val reg_coq_sort_size : Constrexpr.constr_expr -> int -> unit
 val reg_coq_ind_constr : Constrexpr.constr_expr -> unit
+val reg_prim_name : Constrexpr.constr_expr -> string -> unit

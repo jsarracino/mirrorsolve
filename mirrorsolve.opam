@@ -12,7 +12,7 @@ doc:          "https://github.com/jsarracino/mirrorsolve/doc"
 
 depends: [
   "ocaml"         { >= "4.07.1"            }
-  "coq"           { >= "8.11.0" }
+  "coq"           { >= "8.13.0" }
   "dune"          { >= "2.4.0"             }
 ]
 

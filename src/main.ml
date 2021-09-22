@@ -41,6 +41,12 @@ let c_tsnil_name = "p4a.core.tsnil"
 let c_conflit_name = "p4a.funs.conf_lit"
 let c_statelit_name = "p4a.funs.state_lit"
 
+let c_inl_name = "p4a.core.inl"
+let c_inr_name = "p4a.core.inr"
+
+let c_true = get_coq "core.bool.true"
+let c_false = get_coq "core.bool.false"
+
 
 let find_add i tbl builder = 
   begin match Hashtbl.find_opt tbl i with 
@@ -158,7 +164,34 @@ let ceq = C.equal
     | [] -> raise bedef
     | x :: xs' -> x :: take (n - 1) xs'
     end *)
-
+let c_e_to_ind (e: C.t) : string = 
+  begin match C.kind e with 
+  | C.App(f, es) -> 
+    begin match C.kind f with 
+    | C.Construct(e', _) -> 
+      begin match Hashtbl.find_opt prim_tbl e' with
+      | Some op_name -> 
+          if op_name = c_inl_name then 
+            begin match C.kind es.(2) with 
+            | C.Construct(c, _) -> 
+              begin match Hashtbl.find_opt constr_sym_tbl c with 
+              | Some x -> x 
+              | None -> raise @@ BadExpr ("missing state constructor: " ^ (Pp.string_of_ppcmds (C.debug_print es.(2))))
+              end
+            | _ -> raise @@ BadExpr ("bad inl argument: " ^ (Pp.string_of_ppcmds (C.debug_print es.(2))))
+            end else
+          if op_name = c_inr_name then 
+            if C.equal c_true es.(2) then "state_accept" else 
+            if C.equal c_false es.(2) then "state_reject" else
+              raise @@ BadExpr ("bad inr argument: " ^ (Pp.string_of_ppcmds (C.debug_print es.(2))))
+            else
+          raise @@ BadExpr ("expected inl/inr and got: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
+      | None -> raise @@ BadExpr ("missing inl/inr constructor: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
+      end
+    | _ -> raise @@ BadExpr ("expected ctor and got: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
+    end
+  | _ -> raise @@ BadExpr ("expected app and got: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
+  end
 let rec extract_ts_list (e: C.t) : C.t list = 
   begin match C.kind e with
   | C.App(f, [| _; _; |]) ->
@@ -205,12 +238,12 @@ let rec pretty_expr (e: C.t) : string =
           | [| a1; a2 |] -> Format.sprintf "(= %s %s)" a1 a2
           | _ -> raise @@ BadExpr "bad args to eq"
           end else 
-      if op_name' = c_impl_name then 
-        let args' = Array.map Lazy.force (Array.sub args 2 2) in 
-        begin match args' with 
-        | [| a1; a2 |] -> Format.sprintf "(=> %s %s)" a1 a2
-        | _ -> raise @@ BadExpr "bad args to impl"
-        end else 
+        if op_name' = c_impl_name then 
+          let args' = Array.map Lazy.force (Array.sub args 2 2) in 
+          begin match args' with 
+          | [| a1; a2 |] -> Format.sprintf "(=> %s %s)" a1 a2
+          | _ -> raise @@ BadExpr "bad args to impl"
+          end else 
 
         if op_name' = c_fun_name then 
           let fname = Lazy.force args.(4) in 
@@ -219,15 +252,14 @@ let rec pretty_expr (e: C.t) : string =
             let arg = List.hd fargs in Format.sprintf "(state1 %s)" (pretty_expr arg) else
           if fname = c_state2_name then 
             let arg = List.hd fargs in Format.sprintf "(state2 %s)" (pretty_expr arg) else
-          if fname = c_conflit_name then 
-            Format.sprintf "(mk_conf %s)" "dummy_conf" else
-          if fname = c_statelit_name then 
-            Format.sprintf "(mk_state %s)" "dummy_state" else
-              raise @@ BadExpr "bad args to fun" else
+          (* conf_lit and state_lit *)
+            fname else 
         if op_name' = c_state1_name then c_state1_name else
         if op_name' = c_state2_name then c_state2_name else
         if op_name' = c_conflit_name then c_conflit_name else
-        if op_name' = c_statelit_name then c_statelit_name else
+        if op_name' = c_statelit_name then 
+          let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "length of args: %n" (Array.length es)) in
+          Format.sprintf "(mk_state %s)" (c_e_to_ind es.(6)) else
         if op_name' = c_tt_name then "true" else
         if op_name' = c_ff_name then "false" else
             raise @@ BadExpr ("unhandled op_name: " ^ op_name')
@@ -242,6 +274,7 @@ let rec pretty_expr (e: C.t) : string =
     begin match Hashtbl.find_opt constr_sym_tbl x, Hashtbl.find_opt prim_tbl x with
     | Some _, Some _ -> raise @@ BadExpr ("double ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
     | Some r, _ -> r
+      
     | _, Some r -> r
     | None, None -> raise @@ BadExpr ("missing ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
     end

@@ -34,3 +34,7 @@ val debug_tbls : unit -> Pp.t
 val reg_coq_sort_size : Constrexpr.constr_expr -> int -> unit
 val reg_coq_ind_constr : Constrexpr.constr_expr -> unit
 val reg_prim_name : Constrexpr.constr_expr -> string -> unit
+
+val build_query : string list -> Constr.t -> bool -> string
+val dump_query : string list -> EConstr.t -> unit
+val check_interp : Constr.t -> string

@@ -40,3 +40,29 @@ TACTIC EXTEND Pretty
   }
 END
 
+
+VERNAC COMMAND EXTEND ViewSMTQuery CLASSIFIED AS QUERY
+| [ "PrintSMT" constr(e) string_list(vs) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let (sigma', e') = Constrintern.interp_constr_evars env sigma e in
+      Feedback.msg_info (Pp.str "SMT QUERY:\n") ;
+      Main.dump_query vs e'
+  }
+END
+
+TACTIC EXTEND ViewSMTTactic 
+| [ "print_smt" constr(e) string_list(vs) ] -> { 
+    Feedback.msg_info (Pp.str "SMT QUERY:\n") ;
+    Main.dump_query vs e ;
+    Proofview.tclUNIT ()
+  }
+| [ "check_interp" constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let query = Main.check_interp (EConstr.to_constr sigma e) in
+    Feedback.msg_info (Pp.str "SMT QUERY:\n") ;
+    Feedback.msg_info (Pp.str query) ;
+    Proofview.tclUNIT ()
+  }
+END

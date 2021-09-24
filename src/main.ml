@@ -46,6 +46,7 @@ let c_inr_name = "p4a.core.inr"
 
 let c_true = get_coq "core.bool.true"
 let c_false = get_coq "core.bool.false"
+let c_pair = get_coq "core.prod.intro"
 
 
 let find_add i tbl builder = 
@@ -158,40 +159,66 @@ type bexpr =
 
 let ceq = C.equal
 
+let a_last a = a.(Array.length a - 1)
+
+let c_e_to_conf (e: C.t) : string =
+  begin match C.kind e with 
+  | C.App(f, es) -> 
+    if C.equal f c_pair then 
+      let el, er = es.(2), es.(3) in
+      begin match C.kind el, C.kind er with 
+      | C.App(_, els), C.App(_, ers) -> 
+        let el', er' = els.(Array.length els - 2), ers.(Array.length ers - 2) in
+        begin match C.kind el', C.kind er' with
+        | C.Var x, C.Var y -> 
+          Format.sprintf "%s %s" (Names.Id.to_string x) (Names.Id.to_string y)
+        | C.Rel x, C.Rel y -> 
+          Format.sprintf "pvar_%n pvar_%n" x y
+        | _, _ -> 
+          Feedback.msg_warning (Pp.(++) (Pp.str "els_last: ") (C.debug_print el')) ;
+          Feedback.msg_warning (Pp.(++) (Pp.str "ers_last: ") (C.debug_print er')) ;
+          raise @@ BadExpr "unexpected variable (see warning)"
+        end
+      | _, _ ->
+        Feedback.msg_warning (Pp.(++) (Pp.str "el: ") (C.debug_print el)) ;
+        Feedback.msg_warning (Pp.(++) (Pp.str "er: ") (C.debug_print er)) ;
+        raise @@ BadExpr "unexpected variable (see warning)"
+      end
+    else
+      raise @@ BadExpr ("missing pair constructor: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
+  | _ -> 
+    raise @@ BadExpr ("missing state constructor: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
+  end
+
 (* let rec take n xs = 
   if n = 0 then [] else 
     begin match xs with 
     | [] -> raise bedef
     | x :: xs' -> x :: take (n - 1) xs'
     end *)
+
 let c_e_to_ind (e: C.t) : string = 
-  begin match C.kind e with 
-  | C.App(f, es) -> 
-    begin match C.kind f with 
-    | C.Construct(e', _) -> 
-      begin match Hashtbl.find_opt prim_tbl e' with
-      | Some op_name -> 
-          if op_name = c_inl_name then 
-            begin match C.kind es.(2) with 
-            | C.Construct(c, _) -> 
-              begin match Hashtbl.find_opt constr_sym_tbl c with 
-              | Some x -> x 
-              | None -> raise @@ BadExpr ("missing state constructor: " ^ (Pp.string_of_ppcmds (C.debug_print es.(2))))
-              end
-            | _ -> raise @@ BadExpr ("bad inl argument: " ^ (Pp.string_of_ppcmds (C.debug_print es.(2))))
-            end else
-          if op_name = c_inr_name then 
-            if C.equal c_true es.(2) then "state_accept" else 
-            if C.equal c_false es.(2) then "state_reject" else
-              raise @@ BadExpr ("bad inr argument: " ^ (Pp.string_of_ppcmds (C.debug_print es.(2))))
-            else
-          raise @@ BadExpr ("expected inl/inr and got: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
-      | None -> raise @@ BadExpr ("missing inl/inr constructor: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
-      end
-    | _ -> raise @@ BadExpr ("expected ctor and got: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
-    end
-  | _ -> raise @@ BadExpr ("expected app and got: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
-  end
+  let (f, es) = C.destApp e in 
+  let (e', _) = C.destConstruct f in
+    
+  let op_name = Hashtbl.find prim_tbl e' in
+  if op_name = c_inl_name then 
+    
+    let (f', es') = C.destApp es.(2) in
+    let (e'', _) = C.destConstruct f in
+    let op_name' = Hashtbl.find prim_tbl e'' in
+    if op_name' = c_inl_name || op_name' = c_inr_name then 
+      Hashtbl.find constr_sym_tbl (fst (C.destConstruct es'.(2))) 
+    else
+      raise @@ BadExpr ("missing state constructor: " ^ (Pp.string_of_ppcmds (C.debug_print es'.(2)))) 
+  else if op_name = c_inr_name then 
+    if C.equal c_true es.(2) then "(inr true)" 
+    else if C.equal c_false es.(2) then "(inr false)" 
+    else
+      raise @@ BadExpr ("bad inr argument: " ^ (Pp.string_of_ppcmds (C.debug_print es.(2)))) 
+  else 
+    raise @@ BadExpr ("expected inl/inr and got : " ^ (Pp.string_of_ppcmds (C.debug_print f)))
+
 let rec extract_ts_list (e: C.t) : C.t list = 
   begin match C.kind e with
   | C.App(f, [| _; _; |]) ->
@@ -256,10 +283,11 @@ let rec pretty_expr (e: C.t) : string =
             fname else 
         if op_name' = c_state1_name then c_state1_name else
         if op_name' = c_state2_name then c_state2_name else
-        if op_name' = c_conflit_name then c_conflit_name else
+        if op_name' = c_conflit_name then 
+          Format.sprintf "(mk_conf_lit %s)" (c_e_to_conf (a_last es)) else
         if op_name' = c_statelit_name then 
-          let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "length of args: %n" (Array.length es)) in
-          Format.sprintf "(mk_state %s)" (c_e_to_ind es.(6)) else
+          (* let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "length of args: %n" (Array.length es)) in *)
+          c_e_to_ind es.(6) else
         if op_name' = c_tt_name then "true" else
         if op_name' = c_ff_name then "false" else
             raise @@ BadExpr ("unhandled op_name: " ^ op_name')
@@ -288,3 +316,48 @@ let pretty env sigma e =
 let debug_lib_refs _ = 
   let lib_ref_names = List.map fst (Coqlib.get_lib_refs ()) in
     Pp.pr_sequence Pp.str lib_ref_names
+
+let build_query (vars: string list) (e: C.t) (refute_query: bool) : string = 
+  let q_str = if refute_query then 
+    Format.sprintf "(assert (not %s))" (pretty_expr e) else
+    Format.sprintf "(assert %s)" @@ Smt.gen_binders (List.length vars) (pretty_expr e) in 
+
+  let ctors = List.of_seq @@ Hashtbl.to_seq_values constr_sym_tbl  in 
+  Smt.gen_query ctors vars q_str refute_query
+
+let dump_query (vars: string list) (e: EConstr.t) : unit = 
+  let env = Global.env () in
+  let sigma = Evd.from_env env in
+  let query = build_query vars (EConstr.to_constr sigma e) true in
+    Feedback.msg_info (Pp.str query)
+
+let rec extract_foralls (e: C.t) : string list * C.t = 
+  begin match C.kind e with
+  | C.Prod(nme, _, bod) -> 
+    let (nms, bod') = extract_foralls bod in 
+    Pp.string_of_ppcmds (Names.Name.print (Context.binder_name nme)) :: nms, bod'
+  | _ -> ([], e)
+  end
+
+let check_interp (e: C.t) : string = 
+  begin match C.kind e with 
+  | C.Prod _ -> 
+    let (names, bod) = extract_foralls e in
+    begin match C.kind bod with 
+    | C.App(f, es) -> 
+      begin match C.kind f with 
+      | C.Const(n, _) -> 
+        let name = Names.Constant.to_string n in 
+        if name = "Poulet4.P4automata.FirstOrder.interp_fm" then
+          let bod' = a_last es in
+            build_query names bod' false else
+
+          raise bedef
+      | _ -> raise bedef
+      end
+    | _ -> raise bedef
+    end
+  | _ -> raise bedef
+  end
+
+  (*  *)

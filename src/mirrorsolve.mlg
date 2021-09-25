@@ -57,12 +57,36 @@ TACTIC EXTEND ViewSMTTactic
     Main.dump_query vs e ;
     Proofview.tclUNIT ()
   }
-| [ "check_interp" constr(e) ] -> { 
+| [ "check_interp_pos" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
-    let query = Main.check_interp (EConstr.to_constr sigma e) in
+    let fail s = Tacticals.New.tclFAIL 0 (Pp.str s) in
+    let query = Main.check_interp (EConstr.to_constr sigma e) false in
     Feedback.msg_info (Pp.str "SMT QUERY:\n") ;
     Feedback.msg_info (Pp.str query) ;
-    Proofview.tclUNIT ()
+    Feedback.msg_info (Pp.str "RESULT:\n") ;
+
+    begin match Smt.run_smt query with 
+    | SAT -> Feedback.msg_info (Pp.str "SAT") ;
+      Proofview.tclUNIT ()
+    | UNSAT -> fail "UNSAT smt query"
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
+  }
+| [ "check_interp_neg" constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let fail s = Tacticals.New.tclFAIL 0 (Pp.str s) in
+    let query = Main.check_interp (EConstr.to_constr sigma e) true in
+    Feedback.msg_info (Pp.str "SMT QUERY:\n") ;
+    Feedback.msg_info (Pp.str query) ;
+    Feedback.msg_info (Pp.str "RESULT:\n") ;
+
+    begin match Smt.run_smt query with 
+    | SAT -> Feedback.msg_info (Pp.str "SAT") ;
+      Proofview.tclUNIT ()
+    | UNSAT -> fail "UNSAT smt query"
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
   }
 END

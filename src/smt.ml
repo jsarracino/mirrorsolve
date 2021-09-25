@@ -78,3 +78,38 @@ let gen_binders len query =
     Format.sprintf "(forall (%s) %s)" bind_bod query else
 
     query
+
+type smt_result = SAT | UNSAT | Other of string
+
+
+let run_smt query = 
+  let open Unix in
+
+  let query_file = Filename.temp_file "vc" ".smt2" in
+  let smt_ch = open_out query_file in
+  Stdlib.output_string smt_ch query ;
+  Stdlib.close_out smt_ch;
+
+  Feedback.msg_debug @@ Pp.str (Format.sprintf "put smt query in %s" query_file) ;
+
+  let in_in, in_out = pipe ~cloexec:true () in
+  let out_in, out_out = pipe ~cloexec:true () in 
+  let err_in, err_out = pipe ~cloexec:true () in 
+
+  (* close unused pipes *)
+  close in_out; close err_in;
+
+  let args = [| "z3"; query_file |] in
+  let smt_pid = Unix.create_process "z3" args in_in out_out err_out in
+
+  (* Get an output channel to read from solver's stdout *)
+  (* let lexbuf = Lexing.from_channel (in_channel_of_descr out_in) in *)
+  
+  let _ = waitpid [] smt_pid in 
+  (* let _ = close_process (out_c, in_c) in *)
+  (* Lexing.read *)
+  let ln = Stdlib.input_line (in_channel_of_descr out_in) in 
+  close out_in;
+  if ln = "sat" then SAT
+  else if ln = "unsat" then UNSAT
+  else Other ln

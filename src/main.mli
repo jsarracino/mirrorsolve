@@ -35,6 +35,14 @@ val reg_coq_sort_size : Constrexpr.constr_expr -> int -> unit
 val reg_coq_ind_constr : Constrexpr.constr_expr -> unit
 val reg_prim_name : Constrexpr.constr_expr -> string -> unit
 
-val build_query : string list -> Constr.t -> bool -> string
+type query_opts = 
+  { refute_query : bool ;
+    negate_toplevel : bool ;
+  }
+
+
+val build_query : string list -> Constr.t -> query_opts -> string
 val dump_query : string list -> EConstr.t -> unit
-val check_interp : Constr.t -> string
+val check_interp : Constr.t -> bool -> string
+val extract_ctx : Constr.t -> Constr.t list
+val pretty_sort : Constr.t -> string

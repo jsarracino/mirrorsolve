@@ -11,17 +11,17 @@ exception MissingGlobConst of string
 
 let warn msg : unit Proofview.tactic =
   Proofview.tclLIFT (Proofview.NonLogical.make (fun () ->
-      Feedback.msg_warning (Pp.str msg)))
+  Feedback.msg_warning (Pp.str msg)))
 
 let debug msg : unit Proofview.tactic =
   Proofview.tclLIFT (Proofview.NonLogical.make (fun () ->
-      Feedback.msg_debug (Pp.str msg)))
+  Feedback.msg_debug (Pp.str msg)))
 
 let get_coq ref = 
   try (UnivGen.constr_of_monomorphic_global (Coqlib.lib_ref ref)) with
     e -> 
       let lib_refs = Coqlib.get_lib_refs () in 
-      let needle = List.find_opt (fun (name, _) -> name == ref) lib_refs in
+      let needle = List.find_opt (fun (name, _) -> name = ref) lib_refs in
         begin match needle with 
         | Some (_, x) -> raise @@ MissingGlobConst ("polymorphic global: " ^ ref)
         | None -> raise @@ MissingGlobConst ("unregistered global: " ^ ref)
@@ -47,6 +47,18 @@ let c_inr_name = "p4a.core.inr"
 let c_true = get_coq "core.bool.true"
 let c_false = get_coq "core.bool.false"
 let c_pair = get_coq "core.prod.intro"
+
+let c_forall_name = "p4a.core.forall"
+
+let c_cnil_name = "p4a.core.cnil"
+let c_snoc_name = "p4a.core.csnoc"
+
+let c_bits_name = "p4a.sorts.bits"
+
+let c_zero = get_coq "num.nat.O"
+let c_succ = get_coq "num.nat.S"
+
+let c_prop_not = get_coq "core.not.type"
 
 
 let find_add i tbl builder = 
@@ -208,7 +220,7 @@ let c_e_to_ind (e: C.t) : string =
     let (e'', _) = C.destConstruct f in
     let op_name' = Hashtbl.find prim_tbl e'' in
     if op_name' = c_inl_name || op_name' = c_inr_name then 
-      Hashtbl.find constr_sym_tbl (fst (C.destConstruct es'.(2))) 
+      Format.sprintf "(inl %s)" (Hashtbl.find constr_sym_tbl (fst (C.destConstruct es'.(2))))
     else
       raise @@ BadExpr ("missing state constructor: " ^ (Pp.string_of_ppcmds (C.debug_print es'.(2)))) 
   else if op_name = c_inr_name then 
@@ -226,7 +238,8 @@ let rec extract_ts_list (e: C.t) : C.t list =
     | C.Construct(x, _) -> 
       begin match Hashtbl.find_opt prim_tbl x with 
       | Some name ->
-        if name = c_tsnil_name then [] else
+        if name = c_tsnil_name then [] 
+        else
           raise @@ BadExpr ("unexpected symbol in ts list: " ^ name)
       | None -> 
         raise @@ BadExpr ("unexpected constructor in ts list: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
@@ -238,7 +251,8 @@ let rec extract_ts_list (e: C.t) : C.t list =
     | C.Construct(x, _) -> 
       begin match Hashtbl.find_opt prim_tbl x with 
       | Some name ->
-        if name = c_tscons_name then h :: extract_ts_list t else
+        if name = c_tscons_name then h :: extract_ts_list t 
+        else
           raise @@ BadExpr ("unexpected symbol in ts list: " ^ name)
       | None -> 
         raise @@ BadExpr ("unexpected constructor in ts list: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
@@ -248,6 +262,50 @@ let rec extract_ts_list (e: C.t) : C.t list =
   | C.App(_, args) -> raise @@ BadExpr (Format.sprintf "there are %n args " (Array.length args))
   | _ -> raise @@ BadExpr ("unexpected expression in ts list: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
   end
+
+let rec extract_ctx (e: C.t) : C.t list = 
+  let (f, es) = C.destApp e in 
+  let (ctor, _) = C.destConstruct f in 
+  let cname = Hashtbl.find prim_tbl ctor in
+  if cname = c_cnil_name then []
+  else if cname = c_snoc_name then 
+    a_last es :: extract_ctx es.(2)
+  else
+    let _ = Feedback.msg_debug (Pp.str (Format.sprintf "Expected snoc and got %s:" cname)) in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected csnoc inside ctx list"
+
+let rec c_nat_to_int (e: C.t) : int =
+  if C.equal e c_zero then 0 
+  else if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    if C.equal f c_succ then
+      1 + c_nat_to_int (a_last es)
+    else
+      let _ = Feedback.msg_debug (Pp.str "S:") in
+      let _ = Feedback.msg_debug (Constr.debug_print c_zero) in
+      let _ = Feedback.msg_debug (Pp.str "Expected S and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise @@ BadExpr "expected S in nat_to_int"
+  else
+    let _ = Feedback.msg_debug (Pp.str "S:") in
+    let _ = Feedback.msg_debug (Constr.debug_print c_zero) in
+    let _ = Feedback.msg_debug (Pp.str "Z:") in
+    let _ = Feedback.msg_debug (Constr.debug_print c_succ) in
+    let _ = Feedback.msg_debug (Pp.str "Expected S/Z and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected S or 0 in nat_to_int"
+    
+let pretty_sort (e: C.t) : string = 
+  let (f, es) = C.destApp e in 
+  let (nme, _) = C.destConstruct f in 
+  if Hashtbl.find prim_tbl nme = c_bits_name then 
+    let (_, es) = C.destApp e in 
+    Format.sprintf "(_ BitVec %n)" (c_nat_to_int (a_last es))
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "unexpected constructor for sorts (see debug)"
 
 let rec pretty_expr (e: C.t) : string =
   begin match C.kind e with 
@@ -264,32 +322,39 @@ let rec pretty_expr (e: C.t) : string =
           begin match args' with 
           | [| a1; a2 |] -> Format.sprintf "(= %s %s)" a1 a2
           | _ -> raise @@ BadExpr "bad args to eq"
-          end else 
-        if op_name' = c_impl_name then 
+          end 
+        else if op_name' = c_impl_name then 
           let args' = Array.map Lazy.force (Array.sub args 2 2) in 
           begin match args' with 
           | [| a1; a2 |] -> Format.sprintf "(=> %s %s)" a1 a2
           | _ -> raise @@ BadExpr "bad args to impl"
-          end else 
-
-        if op_name' = c_fun_name then 
+          end 
+        else if op_name' = c_fun_name then 
           let fname = Lazy.force args.(4) in 
           let fargs = extract_ts_list es.(5) in
           if fname = c_state1_name then 
-            let arg = List.hd fargs in Format.sprintf "(state1 %s)" (pretty_expr arg) else
-          if fname = c_state2_name then 
-            let arg = List.hd fargs in Format.sprintf "(state2 %s)" (pretty_expr arg) else
+            let arg = List.hd fargs in Format.sprintf "(state1 %s)" (pretty_expr arg) 
+          else if fname = c_state2_name then 
+            let arg = List.hd fargs in Format.sprintf "(state2 %s)" (pretty_expr arg) 
+          else
           (* conf_lit and state_lit *)
-            fname else 
-        if op_name' = c_state1_name then c_state1_name else
-        if op_name' = c_state2_name then c_state2_name else
-        if op_name' = c_conflit_name then 
-          Format.sprintf "(mk_conf_lit %s)" (c_e_to_conf (a_last es)) else
-        if op_name' = c_statelit_name then 
+            fname 
+        else if op_name' = c_state1_name then c_state1_name 
+        else if op_name' = c_state2_name then c_state2_name
+        else if op_name' = c_conflit_name then 
+          Format.sprintf "(mk_conf_lit %s)" (c_e_to_conf (a_last es)) 
+        else if op_name' = c_statelit_name then 
           (* let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "length of args: %n" (Array.length es)) in *)
-          c_e_to_ind es.(6) else
-        if op_name' = c_tt_name then "true" else
-        if op_name' = c_ff_name then "false" else
+          (c_e_to_ind es.(6))
+        else if op_name' = c_tt_name then "true" 
+        else if op_name' = c_ff_name then "false" 
+        else if op_name' = c_forall_name then
+          let v_sort = pretty_sort es.(2) in
+          let v_suff = List.length (extract_ctx es.(1)) in
+          let v_name = Format.sprintf "fvar_%n" v_suff in
+          let bod = pretty_expr (a_last es) in
+            Format.sprintf "(forall ((%s %s)) %s)" v_name v_sort bod
+        else
             raise @@ BadExpr ("unhandled op_name: " ^ op_name')
 
       | None -> raise @@ BadExpr ("missing constructor "^Pp.string_of_ppcmds @@ C.debug_print f)
@@ -317,18 +382,29 @@ let debug_lib_refs _ =
   let lib_ref_names = List.map fst (Coqlib.get_lib_refs ()) in
     Pp.pr_sequence Pp.str lib_ref_names
 
-let build_query (vars: string list) (e: C.t) (refute_query: bool) : string = 
-  let q_str = if refute_query then 
-    Format.sprintf "(assert (not %s))" (pretty_expr e) else
-    Format.sprintf "(assert %s)" @@ Smt.gen_binders (List.length vars) (pretty_expr e) in 
+
+type query_opts = 
+  { refute_query : bool ;
+    negate_toplevel : bool ;
+  }
+
+let build_query (vars: string list) (e: C.t) (opts: query_opts) : string = 
+  let q_str = if opts.refute_query then 
+    Format.sprintf "(assert (not %s))" (pretty_expr e) 
+  else
+    if opts.negate_toplevel then
+      Format.sprintf "(assert (not %s))" @@ Smt.gen_binders (List.length vars) (pretty_expr e)
+    else 
+      Format.sprintf "(assert %s)" @@ Smt.gen_binders (List.length vars) (pretty_expr e) in
 
   let ctors = List.of_seq @@ Hashtbl.to_seq_values constr_sym_tbl  in 
-  Smt.gen_query ctors vars q_str refute_query
+  Smt.gen_query ctors vars q_str opts.refute_query
 
 let dump_query (vars: string list) (e: EConstr.t) : unit = 
   let env = Global.env () in
   let sigma = Evd.from_env env in
-  let query = build_query vars (EConstr.to_constr sigma e) true in
+  let opts = { refute_query = true; negate_toplevel = false; } in
+  let query = build_query vars (EConstr.to_constr sigma e) opts in
     Feedback.msg_info (Pp.str query)
 
 let rec extract_foralls (e: C.t) : string list * C.t = 
@@ -339,25 +415,24 @@ let rec extract_foralls (e: C.t) : string list * C.t =
   | _ -> ([], e)
   end
 
-let check_interp (e: C.t) : string = 
-  begin match C.kind e with 
-  | C.Prod _ -> 
+let rec check_interp (e: C.t) (negate_toplevel: bool) : string = 
+  if C.isApp e then 
+    let (f, es) = C.destApp e in
+    if C.equal f c_prop_not then 
+      check_interp (a_last es) (not negate_toplevel)
+    else  
+      raise @@ BadExpr "Expected negate at interp toplevel"
+  else
+    if not @@ C.isProd e then raise bedef else
     let (names, bod) = extract_foralls e in
-    begin match C.kind bod with 
-    | C.App(f, es) -> 
-      begin match C.kind f with 
-      | C.Const(n, _) -> 
-        let name = Names.Constant.to_string n in 
-        if name = "Poulet4.P4automata.FirstOrder.interp_fm" then
-          let bod' = a_last es in
-            build_query names bod' false else
+    let (f, es) = C.destApp bod in 
+    let (n, _) = C.destConst f in 
+    let name = Names.Constant.to_string n in 
+    if name = "Poulet4.P4automata.FirstOrder.interp_fm" then
+      let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
+      let bod' = a_last es in
+        build_query names bod' opts 
+    else
+      raise bedef
 
-          raise bedef
-      | _ -> raise bedef
-      end
-    | _ -> raise bedef
-    end
-  | _ -> raise bedef
-  end
 
-  (*  *)

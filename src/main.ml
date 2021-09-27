@@ -146,7 +146,7 @@ let reg_prim_name e nme =
   s = c_eq_name *)
 
 (* let args s = 2 *)
-
+type sort = Bits of int
 
 type bop = Impl | And | Or
 type uop = Neg
@@ -269,11 +269,11 @@ let rec extract_ctx (e: C.t) : C.t list =
   let cname = Hashtbl.find prim_tbl ctor in
   if cname = c_cnil_name then []
   else if cname = c_snoc_name then 
-    a_last es :: extract_ctx es.(2)
+    a_last es :: extract_ctx es.(1)
   else
-    let _ = Feedback.msg_debug (Pp.str (Format.sprintf "Expected snoc and got %s:" cname)) in
+    let _ = Feedback.msg_debug (Pp.str (Format.sprintf "Expected snoc/nil and got %s:" cname)) in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
-    raise @@ BadExpr "expected csnoc inside ctx list"
+    raise @@ BadExpr "expected csnoc/cnil inside ctx list"
 
 let rec c_nat_to_int (e: C.t) : int =
   if C.equal e c_zero then 0 
@@ -295,17 +295,32 @@ let rec c_nat_to_int (e: C.t) : int =
     let _ = Feedback.msg_debug (Pp.str "Expected S/Z and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected S or 0 in nat_to_int"
-    
-let pretty_sort (e: C.t) : string = 
-  let (f, es) = C.destApp e in 
-  let (nme, _) = C.destConstruct f in 
-  if Hashtbl.find prim_tbl nme = c_bits_name then 
-    let (_, es) = C.destApp e in 
-    Format.sprintf "(_ BitVec %n)" (c_nat_to_int (a_last es))
-  else
-    let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
+   
+let extract_sort (e: C.t) : sort = 
+  if not @@ C.isApp e then 
+    let _ = Feedback.msg_debug (Pp.str "Expected app for sort and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
-    raise @@ BadExpr "unexpected constructor for sorts (see debug)"
+    raise @@ BadExpr "expected app for sort" 
+  else
+    let (f, es) = C.destApp e in 
+    let (nme, _) = C.destConstruct f in 
+    if Hashtbl.find prim_tbl nme = c_bits_name then 
+      let (_, es) = C.destApp e in 
+      Bits (c_nat_to_int (a_last es))
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise @@ BadExpr "unexpected constructor for sorts (see debug)"      
+
+let valid_sort (s: sort) : bool = 
+  begin match s with 
+  | Bits n -> n > 0
+  end
+let pretty_sort (s: sort) : string = 
+  begin match s with 
+  | Bits n -> Format.sprintf "(_ BitVec %n)" n
+  end
+  
 
 let rec pretty_expr (e: C.t) : string =
   begin match C.kind e with 
@@ -349,11 +364,13 @@ let rec pretty_expr (e: C.t) : string =
         else if op_name' = c_tt_name then "true" 
         else if op_name' = c_ff_name then "false" 
         else if op_name' = c_forall_name then
-          let v_sort = pretty_sort es.(2) in
-          let v_suff = List.length (extract_ctx es.(1)) in
-          let v_name = Format.sprintf "fvar_%n" v_suff in
-          let bod = pretty_expr (a_last es) in
-            Format.sprintf "(forall ((%s %s)) %s)" v_name v_sort bod
+          let v_sort = extract_sort es.(2) in
+          if not (valid_sort v_sort) then pretty_expr (a_last es) 
+          else 
+            let v_suff = List.length (extract_ctx es.(1)) in
+            let v_name = Format.sprintf "fvar_%n" v_suff in
+            let bod = pretty_expr (a_last es) in
+              Format.sprintf "(forall ((%s %s)) %s)" v_name (pretty_sort v_sort) bod
         else
             raise @@ BadExpr ("unhandled op_name: " ^ op_name')
 
@@ -396,9 +413,7 @@ let build_query (vars: string list) (e: C.t) (opts: query_opts) : string =
       Format.sprintf "(assert (not %s))" @@ Smt.gen_binders (List.length vars) (pretty_expr e)
     else 
       Format.sprintf "(assert %s)" @@ Smt.gen_binders (List.length vars) (pretty_expr e) in
-
-  let ctors = List.of_seq @@ Hashtbl.to_seq_values constr_sym_tbl  in 
-  Smt.gen_query ctors vars q_str opts.refute_query
+  Smt.gen_bv_query q_str 
 
 let dump_query (vars: string list) (e: EConstr.t) : unit = 
   let env = Global.env () in
@@ -420,8 +435,15 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
     let (f, es) = C.destApp e in
     if C.equal f c_prop_not then 
       check_interp (a_last es) (not negate_toplevel)
-    else  
-      raise @@ BadExpr "Expected negate at interp toplevel"
+    else 
+      let (n, _) = C.destConst f in 
+      let name = Names.Constant.to_string n in 
+      if name = "Poulet4.P4automata.FirstOrder.interp_fm" then
+        let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
+        let bod' = a_last es in
+          build_query [] bod' opts
+      else
+        raise @@ BadExpr "Expected negate or interp at interp toplevel"
   else
     if not @@ C.isProd e then raise bedef else
     let (names, bod) = extract_foralls e in

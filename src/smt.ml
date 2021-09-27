@@ -1,7 +1,5 @@
-
+let lang = {| (set-logic ALL) |}
 let preamble = {|
-
-(set-logic ALL)
 
 (declare-datatypes ((sum 2)) 
    ((par (S U) 
@@ -60,6 +58,7 @@ let trailer = {|
 
 let gen_query adt_names vars query include_vars = 
   String.concat "\n" [
+    lang;
     preamble; 
     gen_adt_decl adt_names; 
     conf_definitions; 
@@ -78,6 +77,13 @@ let gen_binders len query =
     Format.sprintf "(forall (%s) %s)" bind_bod query else
 
     query
+
+let gen_bv_query query = 
+  String.concat "\n" [
+    lang; 
+    query; 
+    trailer;
+  ]
 
 type smt_result = SAT | UNSAT | Other of string
 

@@ -17,6 +17,8 @@ val c_and : Constr.t
 val c_or : Constr.t
 val c_neg : Constr.t *)
 
+type sort = Bits of int
+
 type bop = Impl | And | Or
 type uop = Neg
 
@@ -45,4 +47,4 @@ val build_query : string list -> Constr.t -> query_opts -> string
 val dump_query : string list -> EConstr.t -> unit
 val check_interp : Constr.t -> bool -> string
 val extract_ctx : Constr.t -> Constr.t list
-val pretty_sort : Constr.t -> string
+val pretty_sort : sort -> string

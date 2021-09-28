@@ -30,6 +30,10 @@ let get_coq ref =
 
 let c_eq_name = "p4a.core.eq"
 let c_impl_name = "p4a.core.impl"
+let c_and_name = "p4a.core.and"
+let c_or_name = "p4a.core.or"
+let c_not_name = "p4a.core.neg"
+
 let c_tt_name = "p4a.core.tt"
 let c_ff_name = "p4a.core.ff"
 let c_fun_name = "p4a.core.fun"
@@ -53,7 +57,6 @@ let c_cnil_name = "p4a.core.cnil"
 let c_snoc_name = "p4a.core.csnoc"
 
 let c_bits_name = "p4a.sorts.bits"
-
 let c_zero = get_coq "num.nat.O"
 let c_succ = get_coq "num.nat.S"
 
@@ -250,7 +253,12 @@ let rec extract_ts_list (e: C.t) : C.t list =
       end
     | _ -> raise @@ BadExpr ("unexpected constructor in ts list app: " ^ (Pp.string_of_ppcmds (C.debug_print f)))
     end
-  | C.App(_, args) -> raise @@ BadExpr (Format.sprintf "there are %n args " (Array.length args))
+  | C.App(_, args) -> 
+
+    let _ = Feedback.msg_debug (Pp.str "Expected TSCons or TSNil in extract TS list, with 2/4 args, and got:") in
+    let _ = Feedback.msg_debug (C.debug_print e) in
+    
+      raise @@ BadExpr (Format.sprintf "there are %n args" (Array.length args))
   | _ -> raise @@ BadExpr ("unexpected expression in ts list: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
   end
 
@@ -339,6 +347,10 @@ let pretty_sort (s: sort) : string =
   | Bits n -> Format.sprintf "(_ BitVec %n)" n
   end
   
+let str_starts_with pref s = 
+  if String.length pref > String.length s then false
+  else
+    String.sub s 0 (String.length pref) = pref
 
 let rec pretty_expr (e: C.t) : string =
   begin match C.kind e with 
@@ -362,6 +374,19 @@ let rec pretty_expr (e: C.t) : string =
           | [| a1; a2 |] -> Format.sprintf "(=> %s %s)" a1 a2
           | _ -> raise @@ BadExpr "bad args to impl"
           end 
+        else if op_name' = c_and_name then 
+          (* bunch of junk, l, r *)
+          let l = pretty_expr es.(Array.length es - 2) in 
+          let r = pretty_expr (a_last es) in 
+          Format.sprintf "(and %s %s)" l r
+        else if op_name' = c_or_name then 
+          (* bunch of junk, l, r *)
+          let l = pretty_expr es.(Array.length es - 2) in 
+          let r = pretty_expr (a_last es) in 
+          Format.sprintf "(or %s %s)" l r
+        else if op_name' = c_not_name then 
+          (* bunch of junk, inner *)
+          Format.sprintf "(not %s)" (pretty_expr (a_last es))
         else if op_name' = c_fun_name then 
           let fname = Lazy.force args.(4) in 
           let fargs = extract_ts_list es.(5) in
@@ -371,6 +396,15 @@ let rec pretty_expr (e: C.t) : string =
             let arg = List.hd fargs in Format.sprintf "(state2 %s)" (pretty_expr arg) 
           else if fname = c_bits_lit_name then 
             Pp.string_of_ppcmds @@ print_bools @@ c_n_tuple_to_bools @@ (a_last es)
+          else if str_starts_with "(_ extract" fname then
+            let arg = List.hd @@ extract_ts_list (a_last es) in 
+            Format.sprintf "(%s %s)" fname (pretty_expr arg)
+          else if fname = c_concat_name then
+            begin match fargs with 
+            | l :: r :: _ -> 
+              Format.sprintf "(concat %s %s)" (pretty_expr l) (pretty_expr r)
+            | _ -> raise bedef
+            end
           else
           (* conf_lit and state_lit *)
             fname 
@@ -378,19 +412,14 @@ let rec pretty_expr (e: C.t) : string =
         else if op_name' = c_state2_name then c_state2_name
         (* (_ extract m n) *)
         else if op_name' = c_slice_name then 
-          (* n hi lo args *)
-          let arg = List.hd (extract_ts_list (a_last es)) in 
+          (* n hi lo *)
           let hi = c_nat_to_int es.(1) in 
           let lo = c_nat_to_int es.(2) in 
-          Format.sprintf "((_ extract %n %n) %s)" hi lo (pretty_expr arg)
+          Format.sprintf "(_ extract %n %n)" hi lo
         else if op_name' = c_concat_name then 
-          (* n m args *)
-          let args = extract_ts_list (a_last es) in 
-          begin match args with 
-          | l :: r :: _ -> 
-            Format.sprintf "(concat %s %s)" (pretty_expr l) (pretty_expr r)
-          | _ -> raise bedef
-          end
+          (* n m *)
+          c_concat_name
+          
         else if op_name' = c_conflit_name then 
           Format.sprintf "(mk_conf_lit %s)" (c_e_to_conf (a_last es)) 
         else if op_name' = c_statelit_name then 

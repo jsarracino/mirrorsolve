@@ -39,9 +39,9 @@ let c_ff_name = "p4a.core.ff"
 let c_fun_name = "p4a.core.fun"
 let c_state1_name = "p4a.funs.state1"
 let c_state2_name = "p4a.funs.state2"
-let c_tscons_name = "p4a.core.tscons"
+let c_hcons_name = "p4a.core.hcons"
 
-let c_tsnil_name = "p4a.core.tsnil"
+let c_hnil_name = "p4a.core.hnil"
 let c_conflit_name = "p4a.funs.conf_lit"
 let c_statelit_name = "p4a.funs.state_lit"
 
@@ -52,6 +52,7 @@ let c_true = get_coq "core.bool.true"
 let c_false = get_coq "core.bool.false"
 let c_pair = get_coq "core.prod.intro"
 let c_forall_name = "p4a.core.forall"
+let c_var_name = "p4a.core.var"
 
 let c_cnil_name = "p4a.core.cnil"
 let c_snoc_name = "p4a.core.csnoc"
@@ -225,42 +226,23 @@ let c_e_to_ind (e: C.t) : string =
   else 
     raise @@ BadExpr ("expected inl/inr and got : " ^ (Pp.string_of_ppcmds (C.debug_print f)))
 
-let rec extract_ts_list (e: C.t) : C.t list = 
-  begin match C.kind e with
-  | C.App(f, [| _; _; |]) ->
-    begin match C.kind f with
-    | C.Construct(x, _) -> 
-      begin match Hashtbl.find_opt prim_tbl x with 
-      | Some name ->
-        if name = c_tsnil_name then [] 
-        else
-          raise @@ BadExpr ("unexpected symbol in ts list: " ^ name)
-      | None -> 
-        raise @@ BadExpr ("unexpected constructor in ts list: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
-      end
-    | _ -> raise @@ BadExpr ("unexpected constructor in ts list app: " ^ (Pp.string_of_ppcmds (C.debug_print f)))
+let rec extract_h_list (e: C.t) : C.t list = 
+  let (f, args) = C.destApp e in 
+  if C.isConstruct f then
+    let (x, _) = C.destConstruct f in 
+    begin match Hashtbl.find_opt prim_tbl x with 
+    | Some name ->
+      if name = c_hnil_name then [] 
+      else if name = c_hcons_name then 
+        (* A B a as h t *)
+        args.(5) :: extract_h_list (a_last args) 
+      else
+        raise @@ BadExpr ("unexpected symbol in hlist: " ^ name)
+    | None -> 
+      raise @@ BadExpr ("unexpected constructor in hlist: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
     end
-  | C.App(f, [| _; _; _; _; h; t |]) ->
-    begin match C.kind f with
-    | C.Construct(x, _) -> 
-      begin match Hashtbl.find_opt prim_tbl x with 
-      | Some name ->
-        if name = c_tscons_name then h :: extract_ts_list t 
-        else
-          raise @@ BadExpr ("unexpected symbol in ts list: " ^ name)
-      | None -> 
-        raise @@ BadExpr ("unexpected constructor in ts list: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
-      end
-    | _ -> raise @@ BadExpr ("unexpected constructor in ts list app: " ^ (Pp.string_of_ppcmds (C.debug_print f)))
-    end
-  | C.App(_, args) -> 
-
-    let _ = Feedback.msg_debug (Pp.str "Expected TSCons or TSNil in extract TS list, with 2/4 args, and got:") in
-    let _ = Feedback.msg_debug (C.debug_print e) in
-    
-      raise @@ BadExpr (Format.sprintf "there are %n args" (Array.length args))
-  | _ -> raise @@ BadExpr ("unexpected expression in ts list: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
-  end
+  else
+  raise bedef
 
 let rec extract_ctx (e: C.t) : C.t list = 
   let (f, es) = C.destApp e in 
@@ -389,7 +371,7 @@ let rec pretty_expr (e: C.t) : string =
           Format.sprintf "(not %s)" (pretty_expr (a_last es))
         else if op_name' = c_fun_name then 
           let fname = Lazy.force args.(4) in 
-          let fargs = extract_ts_list es.(5) in
+          let fargs = extract_h_list es.(5) in
           if fname = c_state1_name then 
             let arg = List.hd fargs in Format.sprintf "(state1 %s)" (pretty_expr arg) 
           else if fname = c_state2_name then 
@@ -397,7 +379,7 @@ let rec pretty_expr (e: C.t) : string =
           else if fname = c_bits_lit_name then 
             Pp.string_of_ppcmds @@ print_bools @@ c_n_tuple_to_bools @@ (a_last es)
           else if str_starts_with "(_ extract" fname then
-            let arg = List.hd @@ extract_ts_list (a_last es) in 
+            let arg = List.hd @@ extract_h_list (a_last es) in 
             Format.sprintf "(%s %s)" fname (pretty_expr arg)
           else if fname = c_concat_name then
             begin match fargs with 
@@ -428,6 +410,9 @@ let rec pretty_expr (e: C.t) : string =
         else if op_name' = c_tt_name then "true" 
         else if op_name' = c_ff_name then "false" 
         else if op_name' = c_bits_lit_name then c_bits_lit_name
+        else if op_name' = c_var_name then 
+          let suff = c_nat_to_int (a_last es) in
+            Format.sprintf "fvar_%n" suff
         else if op_name' = c_forall_name then
           let v_sort = extract_sort es.(2) in
           if not (valid_sort v_sort) then pretty_expr (a_last es) 

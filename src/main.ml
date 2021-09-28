@@ -60,6 +60,8 @@ let c_succ = get_coq "num.nat.S"
 let c_prop_not = get_coq "core.not.type"
 
 let c_bits_lit_name = "p4a.funs.bitslit"
+let c_concat_name = "p4a.funs.concat"
+let c_slice_name = "p4a.funs.slice"
 
 let c_unit = get_coq "core.unit.tt"
 
@@ -374,6 +376,21 @@ let rec pretty_expr (e: C.t) : string =
             fname 
         else if op_name' = c_state1_name then c_state1_name 
         else if op_name' = c_state2_name then c_state2_name
+        (* (_ extract m n) *)
+        else if op_name' = c_slice_name then 
+          (* n hi lo args *)
+          let arg = List.hd (extract_ts_list (a_last es)) in 
+          let hi = c_nat_to_int es.(1) in 
+          let lo = c_nat_to_int es.(2) in 
+          Format.sprintf "((_ extract %n %n) %s)" hi lo (pretty_expr arg)
+        else if op_name' = c_concat_name then 
+          (* n m args *)
+          let args = extract_ts_list (a_last es) in 
+          begin match args with 
+          | l :: r :: _ -> 
+            Format.sprintf "(concat %s %s)" (pretty_expr l) (pretty_expr r)
+          | _ -> raise bedef
+          end
         else if op_name' = c_conflit_name then 
           Format.sprintf "(mk_conf_lit %s)" (c_e_to_conf (a_last es)) 
         else if op_name' = c_statelit_name then 

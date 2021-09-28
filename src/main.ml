@@ -47,7 +47,6 @@ let c_inr_name = "p4a.core.inr"
 let c_true = get_coq "core.bool.true"
 let c_false = get_coq "core.bool.false"
 let c_pair = get_coq "core.prod.intro"
-
 let c_forall_name = "p4a.core.forall"
 
 let c_cnil_name = "p4a.core.cnil"
@@ -59,6 +58,10 @@ let c_zero = get_coq "num.nat.O"
 let c_succ = get_coq "num.nat.S"
 
 let c_prop_not = get_coq "core.not.type"
+
+let c_bits_lit_name = "p4a.funs.bitslit"
+
+let c_unit = get_coq "core.unit.tt"
 
 
 let find_add i tbl builder = 
@@ -142,11 +145,9 @@ let reg_prim_name e nme =
     | _ -> raise @@ BadExpr ("expected inductive ctor and got: " ^ (Pp.string_of_ppcmds (C.debug_print e'')))
     end
 
-(* let is_binop s = 
-  s = c_eq_name *)
-
-(* let args s = 2 *)
 type sort = Bits of int
+
+(* type valu = BitsLit of bool list *)
 
 type bop = Impl | And | Or
 type uop = Neg
@@ -156,18 +157,6 @@ type bexpr =
   | Bop of bop * bexpr * bexpr
   | Uop of uop * bexpr
 
-(* destruct a coq expression to a binop and produces the immediate children as a pair of coq expressions *)
-(* let destruct_bop e = 
-  (* TODO: factor out this logic into a hashtable *)
-  let op = 
-    if C.equal e c_impl then Some Impl else
-    if C.equal e c_and then Some And else
-    if C.equal e c_or then Some Or else 
-      None in
-  begin match op, e with 
-  | Some _, C.App (_, _) -> None
-  | _, _ -> None
-  end *)
 
 let ceq = C.equal
 
@@ -275,6 +264,33 @@ let rec extract_ctx (e: C.t) : C.t list =
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected csnoc/cnil inside ctx list"
 
+let rec c_n_tuple_to_bools (e: C.t) : bool list =
+  if e = c_unit then []
+  
+  else if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    if f = c_pair then
+      let snoc_e = a_last es in 
+      let snoc_v = 
+        if snoc_e = c_true then true
+        else if snoc_e = c_false then false
+        else raise bedef in
+      c_n_tuple_to_bools es.(Array.length es - 2) @ [snoc_v]
+    else
+      let _ = Feedback.msg_debug (Pp.str "pair:") in
+      let _ = Feedback.msg_debug (Constr.debug_print c_pair) in
+      let _ = Feedback.msg_debug (Pp.str "Expected pair and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print f) in
+      raise @@ BadExpr "expected pair in tuple2bool"
+  else
+    let _ = Feedback.msg_debug (Pp.str "pair:") in
+    let _ = Feedback.msg_debug (Constr.debug_print c_pair) in
+    let _ = Feedback.msg_debug (Pp.str "Expected pair and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected app/pair in tuple2bool"
+
+let print_bools (bs: bool list) : Pp.t = 
+  Pp.(++) (Pp.str "#b") (Pp.prlist (fun b -> Pp.str (if b then "1" else "0")) bs)
 let rec c_nat_to_int (e: C.t) : int =
   if C.equal e c_zero then 0 
   else if C.isApp e then 
@@ -283,15 +299,15 @@ let rec c_nat_to_int (e: C.t) : int =
       1 + c_nat_to_int (a_last es)
     else
       let _ = Feedback.msg_debug (Pp.str "S:") in
-      let _ = Feedback.msg_debug (Constr.debug_print c_zero) in
+      let _ = Feedback.msg_debug (Constr.debug_print c_succ) in
       let _ = Feedback.msg_debug (Pp.str "Expected S and got:") in
       let _ = Feedback.msg_debug (Constr.debug_print e) in
       raise @@ BadExpr "expected S in nat_to_int"
   else
     let _ = Feedback.msg_debug (Pp.str "S:") in
-    let _ = Feedback.msg_debug (Constr.debug_print c_zero) in
-    let _ = Feedback.msg_debug (Pp.str "Z:") in
     let _ = Feedback.msg_debug (Constr.debug_print c_succ) in
+    let _ = Feedback.msg_debug (Pp.str "Z:") in
+    let _ = Feedback.msg_debug (Constr.debug_print c_zero) in
     let _ = Feedback.msg_debug (Pp.str "Expected S/Z and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected S or 0 in nat_to_int"
@@ -351,6 +367,8 @@ let rec pretty_expr (e: C.t) : string =
             let arg = List.hd fargs in Format.sprintf "(state1 %s)" (pretty_expr arg) 
           else if fname = c_state2_name then 
             let arg = List.hd fargs in Format.sprintf "(state2 %s)" (pretty_expr arg) 
+          else if fname = c_bits_lit_name then 
+            Pp.string_of_ppcmds @@ print_bools @@ c_n_tuple_to_bools @@ (a_last es)
           else
           (* conf_lit and state_lit *)
             fname 
@@ -363,6 +381,7 @@ let rec pretty_expr (e: C.t) : string =
           (c_e_to_ind es.(6))
         else if op_name' = c_tt_name then "true" 
         else if op_name' = c_ff_name then "false" 
+        else if op_name' = c_bits_lit_name then c_bits_lit_name
         else if op_name' = c_forall_name then
           let v_sort = extract_sort es.(2) in
           if not (valid_sort v_sort) then pretty_expr (a_last es) 

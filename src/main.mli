@@ -48,3 +48,6 @@ val dump_query : string list -> EConstr.t -> unit
 val check_interp : Constr.t -> bool -> string
 val extract_ctx : Constr.t -> Constr.t list
 val pretty_sort : sort -> string
+
+val print_bools : bool list -> Pp.t
+val c_n_tuple_to_bools : Constr.t -> bool list

@@ -51,6 +51,17 @@ VERNAC COMMAND EXTEND ViewSMTQuery CLASSIFIED AS QUERY
   }
 END
 
+TACTIC EXTEND DebugTactic 
+| [ "print_tuple" constr(e) ] -> {
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let e' = EConstr.to_constr sigma e in
+    let bs = Main.c_n_tuple_to_bools e' in
+    Feedback.msg_info (Main.print_bools bs); 
+    Proofview.tclUNIT ()
+  }
+END
+
 TACTIC EXTEND ViewSMTTactic 
 | [ "print_smt" constr(e) string_list(vs) ] -> { 
     Feedback.msg_info (Pp.str "SMT QUERY:\n") ;

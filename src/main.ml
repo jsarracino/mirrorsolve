@@ -46,8 +46,8 @@ let c_hnil_name = "p4a.core.hnil"
 let c_conflit_name = "p4a.funs.conf_lit"
 let c_statelit_name = "p4a.funs.state_lit"
 
-let c_inl_name = "p4a.core.inl"
-let c_inr_name = "p4a.core.inr"
+let c_inl_name = "coq.core.inl"
+let c_inr_name = "coq.core.inr"
 
 let c_true = get_coq "core.bool.true"
 let c_false = get_coq "core.bool.false"
@@ -234,6 +234,17 @@ let c_e_to_ind (e: C.t) : string =
   else 
     raise @@ BadExpr ("expected inl/inr and got : " ^ (Pp.string_of_ppcmds (C.debug_print f)))
 
+  let c_sum_to_key (e: C.t) : C.t = 
+    let (f, es) = C.destApp e in 
+    let (e', _) = C.destConstruct f in
+      
+    let op_name = Hashtbl.find prim_tbl e' in
+    if op_name = c_inl_name || op_name = c_inr_name then 
+      a_last es
+    else 
+      let _ = Feedback.msg_debug (Pp.str (Format.sprintf "expected inl/inr in sum2key and got %s:" op_name)) in
+      let _ = Feedback.msg_debug (C.debug_print e) in
+      raise bedef
 let rec extract_h_list (e: C.t) : C.t list = 
   let (f, args) = C.destApp e in 
   if C.isConstruct f then
@@ -366,7 +377,7 @@ let pretty_sort (s: sort) : string =
 
 let pretty_key (e: C.t) : string = 
   let _ = Feedback.msg_debug @@ Pp.str "Key expression:" in
-  let _ = Feedback.msg_debug @@ C.debug_print e in
+  let _ = Feedback.msg_debug @@ C.debug_print (c_sum_to_key e) in
   "TODO_KEY"
   
 let str_starts_with pref s = 

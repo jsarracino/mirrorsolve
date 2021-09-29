@@ -4,6 +4,7 @@ module C = Constr
 module GR = Names.GlobRef
 
 exception BadExpr of string
+exception UnboundPrimitive
 
 let bedef = BadExpr "bad expression"
 
@@ -58,6 +59,7 @@ let c_cnil_name = "p4a.core.cnil"
 let c_snoc_name = "p4a.core.csnoc"
 
 let c_bits_name = "p4a.sorts.bits"
+let c_store_name = "p4a.sorts.store"
 let c_zero = get_coq "num.nat.O"
 let c_succ = get_coq "num.nat.S"
 
@@ -66,8 +68,12 @@ let c_prop_not = get_coq "core.not.type"
 let c_bits_lit_name = "p4a.funs.bitslit"
 let c_concat_name = "p4a.funs.concat"
 let c_slice_name = "p4a.funs.slice"
+let c_lookup_name = "p4a.funs.lookup"
 
 let c_unit = get_coq "core.unit.tt"
+
+let c_vhere_name = "p4a.core.vhere"
+let c_vthere_name = "p4a.core.vthere"
 
 
 let find_add i tbl builder = 
@@ -151,7 +157,9 @@ let reg_prim_name e nme =
     | _ -> raise @@ BadExpr ("expected inductive ctor and got: " ^ (Pp.string_of_ppcmds (C.debug_print e'')))
     end
 
-type sort = Bits of int
+type sort = 
+  Bits of int | 
+  Store
 
 (* type valu = BitsLit of bool list *)
 
@@ -235,7 +243,7 @@ let rec extract_h_list (e: C.t) : C.t list =
       if name = c_hnil_name then [] 
       else if name = c_hcons_name then 
         (* A B a as h t *)
-        args.(5) :: extract_h_list (a_last args) 
+        args.(Array.length args - 2) :: extract_h_list (a_last args) 
       else
         raise @@ BadExpr ("unexpected symbol in hlist: " ^ name)
     | None -> 
@@ -283,6 +291,20 @@ let rec c_n_tuple_to_bools (e: C.t) : bool list =
 
 let print_bools (bs: bool list) : Pp.t = 
   Pp.(++) (Pp.str "#b") (Pp.prlist (fun b -> Pp.str (if b then "1" else "0")) bs)
+
+let rec debruijn_idx (e: C.t) : int = 
+  let (f, es) = C.destApp e in 
+  let (x, _) = C.destConstruct f in
+  let nme = Hashtbl.find prim_tbl x in
+  if nme = c_vhere_name then 
+    let ctx = extract_ctx es.(Array.length es - 2) in 
+      List.length ctx
+  else if nme = c_vthere_name then 
+    debruijn_idx (a_last es)
+  else 
+    let _ = Feedback.msg_debug (Pp.str "Unexpected constructor in debruijn variable:") in
+    let _ = Feedback.msg_debug (C.debug_print e) in
+      raise bedef
 let rec c_nat_to_int (e: C.t) : int =
   if C.equal e c_zero then 0 
   else if C.isApp e then 
@@ -304,8 +326,19 @@ let rec c_nat_to_int (e: C.t) : int =
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected S or 0 in nat_to_int"
    
+let format_args (es: C.t array) : Pp.t = 
+  let eis = Array.mapi (fun i e -> (i, e)) es in
+  let builder (i, e) = Pp.(++) (Pp.str (Format.sprintf "%n => " i)) (C.debug_print e) in
+  Pp.pr_vertical_list builder (Array.to_list eis)
 let extract_sort (e: C.t) : sort = 
-  if not @@ C.isApp e then 
+  if C.isConstruct e then
+    let (nme, _ ) = C.destConstruct e in
+    if Hashtbl.find prim_tbl nme = c_store_name then Store
+    else 
+      let _ = Feedback.msg_debug (Pp.str "Expected store construct and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise @@ BadExpr "unexpected constructor for sorts (see debug)"  
+  else if not @@ C.isApp e then 
     let _ = Feedback.msg_debug (Pp.str "Expected app for sort and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected app for sort" 
@@ -323,124 +356,184 @@ let extract_sort (e: C.t) : sort =
 let valid_sort (s: sort) : bool = 
   begin match s with 
   | Bits n -> n > 0
+  | Store -> true
   end
 let pretty_sort (s: sort) : string = 
   begin match s with 
   | Bits n -> Format.sprintf "(_ BitVec %n)" n
+  | Store -> "Env"
   end
+
+let pretty_key (e: C.t) : string = 
+  let _ = Feedback.msg_debug @@ Pp.str "Key expression:" in
+  let _ = Feedback.msg_debug @@ C.debug_print e in
+  "TODO_KEY"
   
 let str_starts_with pref s = 
   if String.length pref > String.length s then false
   else
     String.sub s 0 (String.length pref) = pref
+let debug_flag = false
+
+(* let debug_print (f: unit -> unit) : unit = 
+  if debug_flag then f () else () *)
+
+let debug_pp (msg: Pp.t) : unit = 
+  if debug_flag then Feedback.msg_debug msg else ()
 
 let rec pretty_expr (e: C.t) : string =
-  begin match C.kind e with 
-  | C.App(f, es) -> 
-    let args = Array.map (fun e -> lazy (pretty_expr e)) es in
+  try
+    begin match C.kind e with 
+    | C.App(f, es) -> 
 
-    begin match C.kind f with 
-      
-    | C.Construct (e', _) ->
-      begin match Hashtbl.find_opt prim_tbl e' with 
-      | Some op_name' ->
-        if op_name' = c_eq_name then 
-          let args' = Array.map Lazy.force (Array.sub args 3 2) in 
-          begin match args' with 
-          | [| a1; a2 |] -> Format.sprintf "(= %s %s)" a1 a2
-          | _ -> raise @@ BadExpr "bad args to eq"
-          end 
-        else if op_name' = c_impl_name then 
-          let args' = Array.map Lazy.force (Array.sub args 2 2) in 
-          begin match args' with 
-          | [| a1; a2 |] -> Format.sprintf "(=> %s %s)" a1 a2
-          | _ -> raise @@ BadExpr "bad args to impl"
-          end 
-        else if op_name' = c_and_name then 
-          (* bunch of junk, l, r *)
-          let l = pretty_expr es.(Array.length es - 2) in 
-          let r = pretty_expr (a_last es) in 
-          Format.sprintf "(and %s %s)" l r
-        else if op_name' = c_or_name then 
-          (* bunch of junk, l, r *)
-          let l = pretty_expr es.(Array.length es - 2) in 
-          let r = pretty_expr (a_last es) in 
-          Format.sprintf "(or %s %s)" l r
-        else if op_name' = c_not_name then 
-          (* bunch of junk, inner *)
-          Format.sprintf "(not %s)" (pretty_expr (a_last es))
-        else if op_name' = c_fun_name then 
-          let fname = Lazy.force args.(4) in 
-          let fargs = extract_h_list es.(5) in
-          if fname = c_state1_name then 
-            let arg = List.hd fargs in Format.sprintf "(state1 %s)" (pretty_expr arg) 
-          else if fname = c_state2_name then 
-            let arg = List.hd fargs in Format.sprintf "(state2 %s)" (pretty_expr arg) 
-          else if fname = c_bits_lit_name then 
-            Pp.string_of_ppcmds @@ print_bools @@ c_n_tuple_to_bools @@ (a_last es)
-          else if str_starts_with "(_ extract" fname then
-            let arg = List.hd @@ extract_h_list (a_last es) in 
-            Format.sprintf "(%s %s)" fname (pretty_expr arg)
-          else if fname = c_concat_name then
-            begin match fargs with 
-            | l :: r :: _ -> 
-              Format.sprintf "(concat %s %s)" (pretty_expr l) (pretty_expr r)
-            | _ -> raise bedef
-            end
-          else
-          (* conf_lit and state_lit *)
-            fname 
-        else if op_name' = c_state1_name then c_state1_name 
-        else if op_name' = c_state2_name then c_state2_name
-        (* (_ extract m n) *)
-        else if op_name' = c_slice_name then 
-          (* n hi lo *)
-          let hi = c_nat_to_int es.(1) in 
-          let lo = c_nat_to_int es.(2) in 
-          Format.sprintf "(_ extract %n %n)" hi lo
-        else if op_name' = c_concat_name then 
-          (* n m *)
-          c_concat_name
-          
-        else if op_name' = c_conflit_name then 
-          Format.sprintf "(mk_conf_lit %s)" (c_e_to_conf (a_last es)) 
-        else if op_name' = c_statelit_name then 
-          (* let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "length of args: %n" (Array.length es)) in *)
-          (c_e_to_ind es.(6))
-        else if op_name' = c_tt_name then "true" 
-        else if op_name' = c_ff_name then "false" 
-        else if op_name' = c_bits_lit_name then c_bits_lit_name
-        else if op_name' = c_var_name then 
-          let suff = c_nat_to_int (a_last es) in
-            Format.sprintf "fvar_%n" suff
-        else if op_name' = c_forall_name then
-          let v_sort = extract_sort es.(2) in
-          if not (valid_sort v_sort) then pretty_expr (a_last es) 
-          else 
-            let v_suff = List.length (extract_ctx es.(1)) in
-            let v_name = Format.sprintf "fvar_%n" v_suff in
-            let bod = pretty_expr (a_last es) in
-              Format.sprintf "(forall ((%s %s)) %s)" v_name (pretty_sort v_sort) bod
-        else
-            raise @@ BadExpr ("unhandled op_name: " ^ op_name')
-
-      | None -> raise @@ BadExpr ("missing constructor "^Pp.string_of_ppcmds @@ C.debug_print f)
-      end
+      begin match C.kind f with 
         
-    | _ -> raise @@ BadExpr ("app: " ^ Pp.string_of_ppcmds @@ C.debug_print f)
-    end
+      | C.Construct (e', _) ->
+        begin match Hashtbl.find_opt prim_tbl e' with 
+        | Some op_name' ->
+          if op_name' = c_eq_name then 
+            let _ = debug_pp @@ Pp.str "extracting eq" in
+            let a1, a2 = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in
+            Format.sprintf "(= %s %s)" a1 a2
+          else if op_name' = c_impl_name then 
+            let _ = debug_pp @@ Pp.str "extracting impl" in
+            let a1, a2 = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in
+            Format.sprintf "(=> %s %s)" a1 a2
+          else if op_name' = c_and_name then 
+            (* bunch of junk, l, r *)
+            let _ = debug_pp @@ Pp.str "extracting and" in
+            let l, r = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in 
+            Format.sprintf "(and %s %s)" l r
+          else if op_name' = c_or_name then 
+            (* bunch of junk, l, r *)
+            let _ = debug_pp @@ Pp.str "extracting or" in
+            let l = pretty_expr es.(Array.length es - 2) in 
+            let r = pretty_expr (a_last es) in 
+            Format.sprintf "(or %s %s)" l r
+          else if op_name' = c_not_name then 
+            (* bunch of junk, inner *)
+            let _ = debug_pp @@ Pp.str "extracting not" in
+            Format.sprintf "(not %s)" (pretty_expr (a_last es))
+          else if op_name' = c_fun_name then 
+            let _ = debug_pp @@ Pp.str "extracting fun with args:" in
+            let _ = debug_pp @@ format_args es in
+            let fname = pretty_expr es.(Array.length es - 2) in 
+            let fargs = extract_h_list (a_last es) in
+            let _ = debug_pp @@ Pp.str "found args:" in
+            let _ = debug_pp @@ format_args (Array.of_list fargs) in
+            if fname = c_state1_name then 
+              let _ = debug_pp @@ Pp.str "extracting state1 fun" in
+              let arg = List.hd fargs in Format.sprintf "(state1 %s)" (pretty_expr arg) 
+            else if fname = c_state2_name then 
+              let _ = debug_pp @@ Pp.str "extracting state2 fun" in
+              let arg = List.hd fargs in Format.sprintf "(state2 %s)" (pretty_expr arg) 
+            else if str_starts_with "#b" fname then 
+              (* bits literal *)
+              let _ = debug_pp @@ Pp.str "extracting bitslit fun" in
+              fname
+            else if str_starts_with "(_ extract" fname then
+              let _ = debug_pp @@ Pp.str "extracting extract fun" in
+              let arg = List.hd fargs in 
+              Format.sprintf "(%s %s)" fname (pretty_expr arg)
+            else if fname = c_concat_name then
+              let _ = debug_pp @@ Pp.str "extracting concat fun" in
+              begin match fargs with 
+              | l :: r :: _ -> 
+                Format.sprintf "(concat %s %s)" (pretty_expr l) (pretty_expr r)
+              | _ -> raise bedef
+              end
+            else if str_starts_with "lookup_" fname then
+              let _ = debug_pp @@ Pp.str "extracting lookup fun" in
+              let split_str = String.split_on_char '_' fname in 
+              begin match split_str with 
+              | _ :: key :: rem -> 
+                let arg = List.hd fargs in 
+                  Format.sprintf "(%s %s)" (String.concat "_" (key :: rem)) (pretty_expr arg)
+              | _ -> 
+                let _ = Feedback.msg_debug (Pp.str "unexpected lookup format: ") in
+                let _ = Feedback.msg_debug (Pp.str fname) in
+                  raise bedef
+              end
+            else
+            (* conf_lit and state_lit *)
+              let _ = debug_pp @@ Pp.str (Format.sprintf "extracting wildcard %s" fname) in
+              fname 
+          else if op_name' = c_state1_name then 
+            let _ = debug_pp @@ Pp.str "extracting state1" in
+            c_state1_name 
+          else if op_name' = c_state2_name then 
+            let _ = debug_pp @@ Pp.str "extracting state2" in
+            c_state2_name
+          (* (_ extract m n) *)
+          else if op_name' = c_slice_name then 
+            let _ = debug_pp @@ Pp.str "extracting slice" in
+            (* n hi lo *)
+            let hi = c_nat_to_int es.(1) in 
+            let lo = c_nat_to_int es.(2) in 
+            Format.sprintf "(_ extract %n %n)" hi lo
+          else if op_name' = c_concat_name then 
+            let _ = debug_pp @@ Pp.str "extracting concat" in
+            (* n m *)
+            c_concat_name
+            
+          else if op_name' = c_conflit_name then 
+            let _ = debug_pp @@ Pp.str "extracting mk_conf_lit" in
+            Format.sprintf "(mk_conf_lit %s)" (c_e_to_conf (a_last es)) 
+          else if op_name' = c_statelit_name then 
+            let _ = debug_pp @@ Pp.str "extracting statelit" in
+            (* let _ = debug_pp (Pp.str @@ Format.sprintf "length of args: %n" (Array.length es)) in *)
+            (c_e_to_ind es.(6))
+          else if op_name' = c_tt_name then 
+            let _ = debug_pp @@ Pp.str "extracting true" in
+            "true" 
+          else if op_name' = c_ff_name then 
+            let _ = debug_pp @@ Pp.str "extracting false" in
+            "false" 
+          else if op_name' = c_lookup_name then 
+            let _ = debug_pp @@ Pp.str "extracting lookup" in
+              Format.sprintf "lookup_%s" @@ pretty_key (a_last es)
+          else if op_name' = c_bits_lit_name then 
+            let _ = debug_pp @@ Pp.str "extracting bitslit" in
+            Pp.string_of_ppcmds @@ print_bools @@ c_n_tuple_to_bools @@ (a_last es)
+          else if op_name' = c_var_name then 
+            let _ = debug_pp @@ Pp.str "extracting var" in
+            let suff = debruijn_idx (a_last es) in
+              Format.sprintf "fvar_%n" suff
+          else if op_name' = c_forall_name then
+            let _ = debug_pp @@ Pp.str "extracting forall" in
+            let v_sort = extract_sort es.(2) in
+            if not (valid_sort v_sort) then pretty_expr (a_last es) 
+            else 
+              let v_suff = List.length (extract_ctx es.(1)) in
+              let v_name = Format.sprintf "fvar_%n" v_suff in
+              let bod = pretty_expr (a_last es) in
+                Format.sprintf "(forall ((%s %s)) %s)" v_name (pretty_sort v_sort) bod
+          else
+              raise @@ BadExpr ("unhandled op_name: " ^ op_name')
 
-  | C.Construct (x, _) -> 
-    begin match Hashtbl.find_opt constr_sym_tbl x, Hashtbl.find_opt prim_tbl x with
-    | Some _, Some _ -> raise @@ BadExpr ("double ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
-    | Some r, _ -> r
-      
-    | _, Some r -> r
-    | None, None -> raise @@ BadExpr ("missing ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
-    end
+        | None -> raise @@ BadExpr ("missing constructor "^Pp.string_of_ppcmds @@ C.debug_print f)
+        end
+          
+      | _ -> raise @@ BadExpr ("app: " ^ Pp.string_of_ppcmds @@ C.debug_print f)
+      end
 
-  | _ -> raise @@ BadExpr ("outer: " ^Pp.string_of_ppcmds @@ C.debug_print e)
-  end
+    | C.Construct (x, _) -> 
+      let _ = debug_pp @@ Pp.str "extracting constant" in
+      begin match Hashtbl.find_opt constr_sym_tbl x, Hashtbl.find_opt prim_tbl x with
+      | Some _, Some _ -> raise @@ BadExpr ("double ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
+      | Some r, _ -> r
+        
+      | _, Some r -> r
+      | None, None -> raise @@ BadExpr ("missing ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
+      end
+
+    | _ -> raise @@ BadExpr ("outer: " ^Pp.string_of_ppcmds @@ C.debug_print e)
+    end
+  with 
+    Not_found -> 
+      let _ = Feedback.msg_debug (Pp.str "Unbound table lookup in:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise UnboundPrimitive
 
 let pretty env sigma e = 
   pretty_expr @@ EConstr.to_constr sigma e 

@@ -1,4 +1,5 @@
 exception BadExpr of string
+exception UnboundPrimitive
 
 val bedef : exn
 
@@ -17,7 +18,9 @@ val c_and : Constr.t
 val c_or : Constr.t
 val c_neg : Constr.t *)
 
-type sort = Bits of int
+type sort = 
+  Bits of int | 
+  Store
 
 type bop = Impl | And | Or
 type uop = Neg
@@ -51,3 +54,4 @@ val pretty_sort : sort -> string
 
 val print_bools : bool list -> Pp.t
 val c_n_tuple_to_bools : Constr.t -> bool list
+val format_args : Constr.t array -> Pp.t

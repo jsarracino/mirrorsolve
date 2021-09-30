@@ -34,7 +34,7 @@ let conf_definitions = {|
 
 |}
 
-let gen_adt_decl names = 
+let gen_enum_decl names = 
   let joined_names = String.concat "\n" (List.map (fun s -> Format.sprintf "(%s)" s) names) in
   Format.sprintf {| 
 
@@ -44,6 +44,17 @@ let gen_adt_decl names =
    ))
 )
 |} joined_names
+
+let gen_record_decl ty decls = 
+  let joined_decls = String.concat "\n" (List.map (fun (n, srt) -> Format.sprintf "(%s %s)" n srt) (List.of_seq decls)) in
+  Format.sprintf {| 
+
+(declare-datatypes ((%s 0)) 
+   (((mk_%s
+      %s
+   )))
+)
+|} ty ty joined_decls
 
 let gen_var_decls vars = 
   let decls = List.map (fun vn -> Format.sprintf "(declare-fun %s () (sum auto_state Bool))" vn) vars in
@@ -56,11 +67,11 @@ let trailer = {|
 
 |}
 
-let gen_query adt_names vars query include_vars = 
+let gen_query names vars query include_vars = 
   String.concat "\n" [
     lang;
     preamble; 
-    gen_adt_decl adt_names; 
+    gen_enum_decl names; 
     conf_definitions; 
     if include_vars then gen_var_decls vars else ""; 
     query; 
@@ -81,6 +92,14 @@ let gen_binders len query =
 let gen_bv_query query = 
   String.concat "\n" [
     lang; 
+    query; 
+    trailer;
+  ]
+
+let gen_env_query query bindings = 
+  String.concat "\n" [
+    lang;
+    gen_record_decl "Env" bindings; 
     query; 
     trailer;
   ]

@@ -28,6 +28,17 @@ VERNAC COMMAND EXTEND RegisterInd CLASSIFIED AS QUERY
 | [ "RegisterPrim" constr(e) string(s) ] -> { 
     Main.reg_prim_name e s
   }
+| [ "RegisterEnvCtors" constr_list(es) ] -> { 
+    let worker e = 
+      let env = Global.env () in
+      let sigma = Evd.from_env env in
+      let (sigma', e') = Constrintern.interp_constr_evars env sigma e in
+        EConstr.to_constr sigma' e'
+      in
+
+    let es' = List.map worker es in 
+    Main.reg_c_env_ctors es'
+  }
 END
 
 TACTIC EXTEND Pretty

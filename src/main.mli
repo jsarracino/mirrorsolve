@@ -8,8 +8,6 @@ val debug: string -> unit Proofview.tactic
 
 val get_coq : string -> Constr.t
 
-val ceq : Constr.t -> Constr.t -> bool
-
 (* val c_tru : Names.GlobRef.t *)
 (* val c_tru : Constr.t
 val c_fls : Constr.t *)
@@ -46,7 +44,8 @@ type query_opts =
   }
 
 
-val build_query : string list -> Constr.t -> query_opts -> string
+val build_bv_query : string list -> Constr.t -> query_opts -> string
+val build_env_query : Constr.t -> query_opts -> string
 val dump_query : string list -> EConstr.t -> unit
 val check_interp : Constr.t -> bool -> string
 val extract_ctx : Constr.t -> Constr.t list
@@ -55,3 +54,4 @@ val pretty_sort : sort -> string
 val print_bools : bool list -> Pp.t
 val c_n_tuple_to_bools : Constr.t -> bool list
 val format_args : Constr.t array -> Pp.t
+val reg_c_env_ctors : Constr.t list -> unit

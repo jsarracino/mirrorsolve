@@ -22,16 +22,20 @@ let debug msg : unit Proofview.tactic =
   Proofview.tclLIFT (Proofview.NonLogical.make (fun () ->
   Feedback.msg_debug (Pp.str msg)))
 
-let get_coq ref = 
-  try (UnivGen.constr_of_monomorphic_global (Coqlib.lib_ref ref)) with
-    e -> 
-      let lib_refs = Coqlib.get_lib_refs () in 
-      let needle = List.find_opt (fun (name, _) -> name = ref) lib_refs in
-        begin match needle with 
-        | Some (_, x) -> raise @@ MissingGlobConst ("polymorphic global: " ^ ref)
-        | None -> raise @@ MissingGlobConst ("unregistered global: " ^ ref)
-        end
-
+let get_coq ref : C.t = 
+  try 
+    let gref = Coqlib.lib_ref ref in
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let sigma', evd = EConstr.fresh_global env sigma gref in 
+      EConstr.to_constr sigma' evd
+  with e ->
+    let lib_refs = Coqlib.get_lib_refs () in 
+    let needle = List.find_opt (fun (name, _) -> name = ref) lib_refs in
+      begin match needle with 
+      | Some (_, x) -> raise @@ MissingGlobConst ("polymorphic global: " ^ ref)
+      | None -> raise @@ MissingGlobConst ("unregistered global: " ^ ref)
+      end
 
 let c_eq_name = "p4a.core.eq"
 let c_impl_name = "p4a.core.impl"

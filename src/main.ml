@@ -176,6 +176,9 @@ let reg_c_env_ctors (es: C.t list) : unit =
     in
   List.iter worker es
 
+let clear_env_ctors _ = 
+  Hashtbl.clear env_ctor_tbl
+
 let print_ind (x: Names.inductive) : Pp.t = 
   let (ctor, _) = x in 
     Names.MutInd.print ctor

@@ -33,6 +33,9 @@ VERNAC COMMAND EXTEND RegisterInd CLASSIFIED AS QUERY
     let es' = List.map worker es in 
     Main.reg_c_env_ctors es'
   }
+| [ "ClearEnvCtors" ] -> { 
+    Main.clear_env_ctors ()
+  }
 END
 
 TACTIC EXTEND Pretty
@@ -40,8 +43,7 @@ TACTIC EXTEND Pretty
     let env = Global.env () in
     let sigma = Evd.from_env env in
     let out = Main.pretty env sigma e in
-
-    Main.debug out 
+      Main.debug out 
   }
 END
 

@@ -36,47 +36,46 @@ let get_coq ref : C.t =
       | Some (_, x) -> raise @@ MissingGlobConst ("polymorphic global: " ^ ref)
       | None -> raise @@ MissingGlobConst ("unregistered global: " ^ ref)
       end
+let c_eq = get_coq "p4a.core.eq"
+let c_impl = get_coq "p4a.core.impl"
+let c_and = get_coq "p4a.core.and"
+let c_or = get_coq "p4a.core.or"
+let c_not = get_coq "p4a.core.neg"
 
-let c_eq_name = "p4a.core.eq"
-let c_impl_name = "p4a.core.impl"
-let c_and_name = "p4a.core.and"
-let c_or_name = "p4a.core.or"
-let c_not_name = "p4a.core.neg"
+let c_tt = get_coq "p4a.core.tt"
+let c_ff = get_coq "p4a.core.ff"
+let c_fun = get_coq "p4a.core.fun"
 
-let c_tt_name = "p4a.core.tt"
-let c_ff_name = "p4a.core.ff"
-let c_fun_name = "p4a.core.fun"
-let c_hcons_name = "p4a.core.hcons"
-
-let c_hnil_name = "p4a.core.hnil"
-let c_inl_name = "coq.core.inl"
-let c_inr_name = "coq.core.inr"
+let c_hnil = get_coq "p4a.core.hnil"
+let c_hcons = get_coq "p4a.core.hcons"
+let c_inl = get_coq "core.sum.inl"
+let c_inr = get_coq "core.sum.inr"
 
 let c_true = get_coq "core.bool.true"
 let c_false = get_coq "core.bool.false"
 let c_pair = get_coq "core.prod.intro"
-let c_forall_name = "p4a.core.forall"
-let c_var_name = "p4a.core.var"
+let c_forall = get_coq "p4a.core.forall"
+let c_var = get_coq "p4a.core.var"
 
-let c_cnil_name = "p4a.core.cnil"
-let c_snoc_name = "p4a.core.csnoc"
+let c_cnil = get_coq "p4a.core.cnil"
+let c_snoc = get_coq "p4a.core.csnoc"
 
-let c_bits_name = "p4a.sorts.bits"
-let c_store_name = "p4a.sorts.store"
+let c_bits = get_coq "p4a.sorts.bits"
+let c_store = get_coq "p4a.sorts.store"
 let c_zero = get_coq "num.nat.O"
 let c_succ = get_coq "num.nat.S"
 
 let c_prop_not = get_coq "core.not.type"
 
-let c_bits_lit_name = "p4a.funs.bitslit"
-let c_concat_name = "p4a.funs.concat"
-let c_slice_name = "p4a.funs.slice"
-let c_lookup_name = "p4a.funs.lookup"
+let c_bits_lit = get_coq "p4a.funs.bitslit"
+let c_concat = get_coq "p4a.funs.concat"
+let c_slice = get_coq "p4a.funs.slice"
+let c_lookup = get_coq "p4a.funs.lookup"
 
 let c_unit = get_coq "core.unit.tt"
 
-let c_vhere_name = "p4a.core.vhere"
-let c_vthere_name = "p4a.core.vthere"
+let c_vhere = get_coq "p4a.core.vhere"
+let c_vthere = get_coq "p4a.core.vthere"
 
 
 let find_add i tbl builder = 
@@ -122,27 +121,25 @@ type sort =
   Store
 
 let extract_sort (e: C.t) : sort = 
-  if C.isConstruct e then
-    let (nme, _ ) = C.destConstruct e in
-    if Hashtbl.find prim_tbl nme = c_store_name then Store
-    else 
-      let _ = Feedback.msg_debug (Pp.str "Expected store construct and got:") in
-      let _ = Feedback.msg_debug (Constr.debug_print e) in
-      raise @@ BadExpr "unexpected constructor for sorts (see debug)"  
+  if e = c_store then Store 
   else if not @@ C.isApp e then 
     let _ = Feedback.msg_debug (Pp.str "Expected app for sort and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected app for sort" 
   else
     let (f, es) = C.destApp e in 
-    let (nme, _) = C.destConstruct f in 
-    if Hashtbl.find prim_tbl nme = c_bits_name then 
-      let (_, es) = C.destApp e in 
-      Bits (c_nat_to_int (a_last es))
-    else
-      let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
-      let _ = Feedback.msg_debug (Constr.debug_print e) in
-      raise @@ BadExpr "unexpected constructor for sorts (see debug)"      
+      if f = c_bits then 
+        let (_, es) = C.destApp e in 
+        Bits (c_nat_to_int (a_last es))
+      else
+        let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
+        let _ = Feedback.msg_debug (Constr.debug_print e) in
+        raise @@ BadExpr "unexpected constructor for sorts (see debug)"      
+
+let equal_ctor (l: C.t) (r: C.t) : bool = 
+  let (l', _) = C.destConstruct l in 
+  let (r', _) = C.destConstruct r in 
+    l' = r'
 
 let valid_sort (s: sort) : bool = 
   begin match s with 
@@ -167,7 +164,7 @@ let extract_ctor_decl e =
     raise bedef
   else
     let (f, es) = C.destApp e in 
-    if f = c_pair then 
+    if equal_ctor f c_pair then 
       let l, r = es.(Array.length es - 2), a_last es in 
       let (x, _) = C.destConstruct l in 
       (x, extract_sort r)
@@ -195,8 +192,6 @@ let debug_tbls () =
     Hashtbl.fold (fun ctor sym acc -> acc @ [Pp.(++) (print_ctor ctor) (Pp.(++) (Pp.str " => ") (Pp.str sym))]) prim_tbl [] @
     [Pp.str "ENV CTORS:"] @ 
     Hashtbl.fold (fun ctor (sym, srt) acc -> acc @ [Pp.(++) (print_ctor ctor) (Pp.(++) (Pp.str " => ") (Pp.(++) (Pp.str sym) (Pp.str @@ Format.sprintf " : %s" (pretty_sort srt))))]) env_ctor_tbl [] 
-
-
 
 let reg_prim_name e nme = 
   let env = Global.env () in
@@ -257,42 +252,30 @@ let rec pretty_bexpr (e: bexpr) : Pp.t =
   end
 let c_sum_to_key (e: C.t) : C.t = 
   let (f, es) = C.destApp e in 
-  let (e', _) = C.destConstruct f in
-    
-  let op_name = Hashtbl.find prim_tbl e' in
-  if op_name = c_inl_name || op_name = c_inr_name then 
+  if f = c_inl || f = c_inr then 
     a_last es
   else 
-    let _ = Feedback.msg_debug (Pp.str (Format.sprintf "expected inl/inr in sum2key and got %s:" op_name)) in
+    let _ = Feedback.msg_debug (Pp.str (Format.sprintf "expected inl/inr in sum2key and got:")) in
     let _ = Feedback.msg_debug (C.debug_print e) in
-    raise bedef
+      raise bedef
 let rec extract_h_list (e: C.t) : C.t list = 
   let (f, args) = C.destApp e in 
-  if C.isConstruct f then
-    let (x, _) = C.destConstruct f in 
-    begin match Hashtbl.find_opt prim_tbl x with 
-    | Some name ->
-      if name = c_hnil_name then [] 
-      else if name = c_hcons_name then 
-        (* A B a as h t *)
-        args.(Array.length args - 2) :: extract_h_list (a_last args) 
-      else
-        raise @@ BadExpr ("unexpected symbol in hlist: " ^ name)
-    | None -> 
-      raise @@ BadExpr ("unexpected constructor in hlist: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
-    end
+  if equal_ctor f c_hnil then [] 
+  else if equal_ctor f c_hcons then 
+    (* A B a as h t *)
+    args.(Array.length args - 2) :: extract_h_list (a_last args) 
   else
-  raise bedef
+    let _ = Feedback.msg_debug (Pp.str (Format.sprintf "unexpected symbol in hlist:")) in
+    let _ = Feedback.msg_debug (C.debug_print e) in
+      raise @@ BadExpr "unexpected symbol in hlist"
 
 let rec extract_ctx (e: C.t) : C.t list = 
   let (f, es) = C.destApp e in 
-  let (ctor, _) = C.destConstruct f in 
-  let cname = Hashtbl.find prim_tbl ctor in
-  if cname = c_cnil_name then []
-  else if cname = c_snoc_name then 
+  if equal_ctor f c_cnil then []
+  else if equal_ctor f c_snoc then 
     a_last es :: extract_ctx es.(1)
   else
-    let _ = Feedback.msg_debug (Pp.str (Format.sprintf "Expected snoc/nil and got %s:" cname)) in
+    let _ = Feedback.msg_debug (Pp.str (Format.sprintf "Expected snoc/nil and got:")) in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected csnoc/cnil inside ctx list"
 
@@ -301,7 +284,7 @@ let rec c_n_tuple_to_bools (e: C.t) : bool list =
   
   else if C.isApp e then 
     let (f, es) = C.destApp e in 
-    if f = c_pair then
+    if equal_ctor f c_pair then
       let snoc_e = a_last es in 
       let snoc_v = 
         if snoc_e = c_true then true
@@ -326,12 +309,9 @@ let print_bools (bs: bool list) : Pp.t =
 
 let rec debruijn_idx (e: C.t) : int = 
   let (f, es) = C.destApp e in 
-  let (x, _) = C.destConstruct f in
-  let nme = Hashtbl.find prim_tbl x in
-  if nme = c_vhere_name then 
-    let ctx = extract_ctx es.(Array.length es - 2) in 
-      List.length ctx
-  else if nme = c_vthere_name then 
+  if equal_ctor f c_vhere then 
+    List.length @@ extract_ctx es.(Array.length es - 2) 
+  else if equal_ctor f c_vthere then 
     debruijn_idx (a_last es)
   else 
     let _ = Feedback.msg_debug (Pp.str "Unexpected constructor in debruijn variable:") in
@@ -341,7 +321,7 @@ let rec debruijn_idx (e: C.t) : int =
 let format_args (es: C.t array) : Pp.t = 
   let eis = Array.mapi (fun i e -> (i, e)) es in
   let builder (i, e) = Pp.(++) (Pp.str (Format.sprintf "%n => " i)) (C.debug_print e) in
-  Pp.pr_vertical_list builder (Array.to_list eis)
+    Pp.pr_vertical_list builder (Array.to_list eis)
 
 let pretty_key (e: C.t) : string = 
   (* let _ = debug_pp @@ Pp.str "Key expression:" in
@@ -349,11 +329,7 @@ let pretty_key (e: C.t) : string =
   let inner = c_sum_to_key e in
   let (x, _) = C.destConstruct inner in 
     fst @@ Hashtbl.find env_ctor_tbl x 
-  
-let str_starts_with pref s = 
-  if String.length pref > String.length s then false
-  else
-    String.sub s 0 (String.length pref) = pref
+
 let debug_flag = false
 
 (* let debug_print (f: unit -> unit) : unit = 
@@ -363,27 +339,22 @@ let debug_pp (msg: Pp.t) : unit =
   if debug_flag then Feedback.msg_debug msg else ()
 
 let rec extract_expr (e: C.t) : bexpr = 
-  begin match Hashtbl.find_opt prim_tbl' e with 
-  | Some nme -> 
-    begin match nme with
-    | x when x = c_eq_name ->  
-      let (e1, e2) = rec_bop e in 
-        Bop (Eq, e1, e2)
-    | x when x = c_impl_name ->  
-      let (e1, e2) = rec_bop e in 
-        Bop (Impl, e1, e2)
-    | x when x = c_and_name ->  
-      let (e1, e2) = rec_bop e in 
-        Bop (And, e1, e2)
-    | x when x = c_or_name ->  
-      let (e1, e2) = rec_bop e in 
-        Bop (Or, e1, e2)
-    | x when x = c_not_name ->  
-      Uop (Neg, rec_unop e)
-    | _ -> assert false
-    end
-  | _ -> assert false
-  end
+  if equal_ctor e c_eq then
+    let (e1, e2) = rec_bop e in 
+      Bop (Eq, e1, e2)
+  else if equal_ctor e c_impl then
+    let (e1, e2) = rec_bop e in 
+      Bop (Impl, e1, e2)
+  else if equal_ctor e c_and then  
+    let (e1, e2) = rec_bop e in 
+      Bop (And, e1, e2)
+  else if equal_ctor e c_or then  
+    let (e1, e2) = rec_bop e in 
+      Bop (Or, e1, e2)
+  else if equal_ctor e c_not then  
+    Uop (Neg, rec_unop e)
+  else
+    assert false
 and
   rec_bop (e: C.t) : bexpr * bexpr = 
     let (_, es) = C.destApp e in 
@@ -393,129 +364,94 @@ and
     let (_, es) = C.destApp e in 
       extract_expr (a_last es)
 
-
-
 let rec pretty_expr (e: C.t) : string =
   try
     begin match C.kind e with 
     | C.App(f, es) -> 
+      if equal_ctor f c_eq then 
+        let _ = debug_pp @@ Pp.str "extracting eq" in
+        let a1, a2 = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in
+          Format.sprintf "(= %s %s)" a1 a2
+      else if equal_ctor f c_impl then 
+        let _ = debug_pp @@ Pp.str "extracting impl" in
+        let a1, a2 = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in
+          Format.sprintf "(=> %s %s)" a1 a2
+      else if equal_ctor f c_and then 
+        (* bunch of junk, l, r *)
+        let _ = debug_pp @@ Pp.str "extracting and" in
+        let l, r = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in 
+          Format.sprintf "(and %s %s)" l r
+      else if equal_ctor f c_or then 
+        (* bunch of junk, l, r *)
+        let _ = debug_pp @@ Pp.str "extracting or" in
+        let l = pretty_expr es.(Array.length es - 2) in 
+        let r = pretty_expr (a_last es) in 
+          Format.sprintf "(or %s %s)" l r
+      else if equal_ctor f c_not then 
+        (* bunch of junk, inner *)
+        let _ = debug_pp @@ Pp.str "extracting not" in
+          Format.sprintf "(not %s)" (pretty_expr (a_last es))
+      else if equal_ctor f c_fun then 
+        let _ = debug_pp @@ Pp.str "extracting fun with args:" in
+        let _ = debug_pp @@ format_args es in
+        let fargs = extract_h_list (a_last es) in
+        let fe = es.(Array.length es - 2) in 
+          if C.isApp fe then
+            let (f', es') = C.destApp fe in 
+              if equal_ctor f' c_concat then
+                let _ = debug_pp @@ Pp.str "extracting concat fun" in
+                begin match fargs with 
+                | l :: r :: _ -> 
+                  Format.sprintf "(concat %s %s)" (pretty_expr l) (pretty_expr r)
+                | _ -> raise bedef
+                end
+              else if equal_ctor f' c_slice then 
+                let _ = debug_pp @@ Pp.str "extracting slice" in
+                (* n hi lo *)
+                let hi = c_nat_to_int es'.(Array.length es' - 2) in 
+                let lo = c_nat_to_int (a_last es') in 
+                Format.sprintf "((_ extract %n %n) %s)" hi lo (pretty_expr @@ List.hd fargs)
+              else if equal_ctor f' c_lookup then 
+                let _ = debug_pp @@ Pp.str "extracting lookup fun" in
+                Format.sprintf "(%s %s)" (pretty_key (a_last es')) (pretty_expr @@ List.hd fargs)
+              else if equal_ctor f' c_bits_lit then 
+                let _ = debug_pp @@ Pp.str "extracting bitslit" in
+                Pp.string_of_ppcmds @@ print_bools @@ c_n_tuple_to_bools @@ (a_last es')
+              else 
+                let _ = debug_pp @@ Pp.str "unexpected function symbol:" in
+                let _ = debug_pp @@ C.debug_print f' in
+                raise bedef
+          else 
+            let _ = debug_pp @@ Pp.str "unexpected function interior:" in
+            let _ = debug_pp @@ C.debug_print f in
+            raise bedef
 
-      begin match C.kind f with 
-        
-      | C.Construct (e', _) ->
-        begin match Hashtbl.find_opt prim_tbl e' with 
-        | Some op_name' ->
-          if op_name' = c_eq_name then 
-            let _ = debug_pp @@ Pp.str "extracting eq" in
-            let a1, a2 = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in
-            Format.sprintf "(= %s %s)" a1 a2
-          else if op_name' = c_impl_name then 
-            let _ = debug_pp @@ Pp.str "extracting impl" in
-            let a1, a2 = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in
-            Format.sprintf "(=> %s %s)" a1 a2
-          else if op_name' = c_and_name then 
-            (* bunch of junk, l, r *)
-            let _ = debug_pp @@ Pp.str "extracting and" in
-            let l, r = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in 
-            Format.sprintf "(and %s %s)" l r
-          else if op_name' = c_or_name then 
-            (* bunch of junk, l, r *)
-            let _ = debug_pp @@ Pp.str "extracting or" in
-            let l = pretty_expr es.(Array.length es - 2) in 
-            let r = pretty_expr (a_last es) in 
-            Format.sprintf "(or %s %s)" l r
-          else if op_name' = c_not_name then 
-            (* bunch of junk, inner *)
-            let _ = debug_pp @@ Pp.str "extracting not" in
-            Format.sprintf "(not %s)" (pretty_expr (a_last es))
-          else if op_name' = c_fun_name then 
-            let _ = debug_pp @@ Pp.str "extracting fun with args:" in
-            let _ = debug_pp @@ format_args es in
-            let fname = pretty_expr es.(Array.length es - 2) in 
-            let fargs = extract_h_list (a_last es) in
-            let _ = debug_pp @@ Pp.str "found args:" in
-            let _ = debug_pp @@ format_args (Array.of_list fargs) in
-            if str_starts_with "#b" fname then 
-              (* bits literal *)
-              let _ = debug_pp @@ Pp.str "extracting bitslit fun" in
-              fname
-            else if str_starts_with "(_ extract" fname then
-              let _ = debug_pp @@ Pp.str "extracting extract fun" in
-              let arg = List.hd fargs in 
-              Format.sprintf "(%s %s)" fname (pretty_expr arg)
-            else if fname = c_concat_name then
-              let _ = debug_pp @@ Pp.str "extracting concat fun" in
-              begin match fargs with 
-              | l :: r :: _ -> 
-                Format.sprintf "(concat %s %s)" (pretty_expr l) (pretty_expr r)
-              | _ -> raise bedef
-              end
-            else if str_starts_with "lookup_" fname then
-              let _ = debug_pp @@ Pp.str "extracting lookup fun" in
-              let split_str = String.split_on_char '_' fname in 
-              begin match split_str with 
-              | _ :: key :: rem -> 
-                let arg = List.hd fargs in 
-                  Format.sprintf "(%s %s)" (String.concat "_" (key :: rem)) (pretty_expr arg)
-              | _ -> 
-                let _ = Feedback.msg_debug (Pp.str "unexpected lookup format: ") in
-                let _ = Feedback.msg_debug (Pp.str fname) in
-                  raise bedef
-              end
-            else
-            (* conf_lit and state_lit *)
-              let _ = debug_pp @@ Pp.str (Format.sprintf "extracting wildcard %s" fname) in
-              fname 
-          else if op_name' = c_slice_name then 
-            let _ = debug_pp @@ Pp.str "extracting slice" in
-            (* n hi lo *)
-            let hi = c_nat_to_int es.(Array.length es - 2) in 
-            let lo = c_nat_to_int (a_last es) in 
-            Format.sprintf "(_ extract %n %n)" hi lo
-          else if op_name' = c_concat_name then 
-            let _ = debug_pp @@ Pp.str "extracting concat" in
-            (* n m *)
-            c_concat_name
-          else if op_name' = c_tt_name then 
-            let _ = debug_pp @@ Pp.str "extracting true" in
-            "true" 
-          else if op_name' = c_ff_name then 
-            let _ = debug_pp @@ Pp.str "extracting false" in
-            "false" 
-          else if op_name' = c_lookup_name then 
-            let _ = debug_pp @@ Pp.str "extracting lookup" in
-              Format.sprintf "lookup_%s" @@ pretty_key (a_last es)
-          else if op_name' = c_bits_lit_name then 
-            let _ = debug_pp @@ Pp.str "extracting bitslit" in
-            Pp.string_of_ppcmds @@ print_bools @@ c_n_tuple_to_bools @@ (a_last es)
-          else if op_name' = c_var_name then 
-            let _ = debug_pp @@ Pp.str "extracting var" in
-            let suff = debruijn_idx (a_last es) in
-              Format.sprintf "fvar_%n" suff
-          else if op_name' = c_forall_name then
-            let _ = debug_pp @@ Pp.str "extracting forall" in
-            let v_sort = extract_sort es.(2) in
-            if not (valid_sort v_sort) then pretty_expr (a_last es) 
-            else 
-              let v_suff = List.length (extract_ctx es.(1)) in
-              let v_name = Format.sprintf "fvar_%n" v_suff in
-              let bod = pretty_expr (a_last es) in
-                Format.sprintf "(forall ((%s %s)) %s)" v_name (pretty_sort v_sort) bod
-          else
-              raise @@ BadExpr ("unhandled op_name: " ^ op_name')
-
-        | None -> raise @@ BadExpr ("missing constructor "^Pp.string_of_ppcmds @@ C.debug_print f)
-        end
+      else if equal_ctor f c_tt then 
+        let _ = debug_pp @@ Pp.str "extracting true" in
+        "true" 
+      else if equal_ctor f c_ff then 
+        let _ = debug_pp @@ Pp.str "extracting false" in
+        "false" 
+      else if equal_ctor f c_var then 
+        let _ = debug_pp @@ Pp.str "extracting var" in
+        let suff = debruijn_idx (a_last es) in
+          Format.sprintf "fvar_%n" suff
+      else if equal_ctor f c_forall then
+        let _ = debug_pp @@ Pp.str "extracting forall" in
+        let v_sort = extract_sort es.(2) in
+        if not (valid_sort v_sort) then pretty_expr (a_last es) 
+        else 
+          let v_suff = List.length (extract_ctx es.(1)) in
+          let v_name = Format.sprintf "fvar_%n" v_suff in
+          let bod = pretty_expr (a_last es) in
+            Format.sprintf "(forall ((%s %s)) %s)" v_name (pretty_sort v_sort) bod
           
-      | _ -> raise @@ BadExpr ("app: " ^ Pp.string_of_ppcmds @@ C.debug_print f)
-      end
-
-    | C.Construct (x, _) -> 
-      let _ = debug_pp @@ Pp.str "extracting constant" in
-      begin match Hashtbl.find_opt prim_tbl x with
-      | Some r -> r
-      | None -> raise @@ BadExpr ("missing ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
-      end
+      else 
+        let _ = Feedback.msg_debug (Pp.str "unrecognized ctor: ") in 
+        let _ = Feedback.msg_debug @@ C.debug_print f in 
+        let _ = Feedback.msg_debug (Pp.str "concat: ") in 
+        let _ = Feedback.msg_debug @@ C.debug_print c_concat in 
+          raise @@ BadExpr ("missing ctor binding")
 
     | _ -> raise @@ BadExpr ("outer: " ^Pp.string_of_ppcmds @@ C.debug_print e)
     end

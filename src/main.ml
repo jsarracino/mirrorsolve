@@ -10,6 +10,7 @@ let bedef = BadExpr "bad expression"
 
 exception MissingGlobConst of string
 
+type ('a, 'b) sum = Inl of 'a | Inr of 'b
 
 let a_last a = a.(Array.length a - 1)
 
@@ -41,14 +42,9 @@ let c_not_name = "p4a.core.neg"
 let c_tt_name = "p4a.core.tt"
 let c_ff_name = "p4a.core.ff"
 let c_fun_name = "p4a.core.fun"
-let c_state1_name = "p4a.funs.state1"
-let c_state2_name = "p4a.funs.state2"
 let c_hcons_name = "p4a.core.hcons"
 
 let c_hnil_name = "p4a.core.hnil"
-let c_conflit_name = "p4a.funs.conf_lit"
-let c_statelit_name = "p4a.funs.state_lit"
-
 let c_inl_name = "coq.core.inl"
 let c_inr_name = "coq.core.inr"
 
@@ -88,36 +84,11 @@ let find_add i tbl builder =
     nxt
   end
 
-module GSSorts = GenSym.Make(struct let v = "Sorts" end)
-
-
-(* map from coq sorts to local smt sort symbols *)
-let sort_sym_tbl : (Names.inductive, string) Hashtbl.t  = Hashtbl.create 10
-let sort_sizes : (string, int) Hashtbl.t = Hashtbl.create 10
-(* let get_sort_size sym = Hashtbl.find sym sort_sizes *)
-let reg_coq_sort_size e sz = 
-  let env = Global.env () in
-  let sigma = Evd.from_env env in
-  let (sigma', e') = Constrintern.interp_constr_evars env sigma e in
-  begin match C.kind (EConstr.to_constr sigma' e') with
-  | C.Ind (x, _) -> 
-    let sym = Hashtbl.find sort_sym_tbl x in 
-    Hashtbl.add sort_sizes sym sz
-  | _ -> raise bedef
-  end 
-let reg_sort (i: Names.inductive) = find_add i sort_sym_tbl GSSorts.gen_sym
-
-module GSConstrs = GenSym.Make(struct let v = "Constrs" end)
-
-(* map from coq inductive constructors to local smt constructor symbols *)
-let constr_sym_tbl : (Names.constructor, string) Hashtbl.t  = Hashtbl.create 100
-
-let reg_constr (i: Names.constructor) = find_add i constr_sym_tbl GSConstrs.gen_sym
-
 let prim_tbl : (Names.constructor, string) Hashtbl.t = Hashtbl.create 20
 let reg_prim i t = find_add i prim_tbl (fun _ -> t)
 
-
+let prim_tbl' : (C.t, string) Hashtbl.t = Hashtbl.create 20
+let reg_prim' i t = find_add i prim_tbl' (fun _ -> t)
 
 
 let rec c_nat_to_int (e: C.t) : int =
@@ -213,29 +184,12 @@ let print_ctor (x: Names.constructor) : Pp.t =
     Pp.(++) (print_ind ind) (Pp.(++) (Pp.str "@") (Pp.int idx))
 let debug_tbls () = 
   Pp.pr_vertical_list (fun x -> x) @@ 
-    [Pp.str "SORTS:"] @
-    Hashtbl.fold (fun srt sym acc -> acc @ [Pp.(++) (print_ind srt) (Pp.(++) (Pp.str " => ") (Pp.str sym))]) sort_sym_tbl [] @ 
-    [Pp.str "SORT SIZES:"] @
-    Hashtbl.fold (fun sym sz acc -> acc @ [Pp.(++) (Pp.str sym) (Pp.(++) (Pp.str " => ") (Pp.int sz))]) sort_sizes [] @ 
-    [Pp.str "INDS:"] @ 
-    Hashtbl.fold (fun ctor sym acc -> acc @ [Pp.(++) (print_ctor ctor) (Pp.(++) (Pp.str " => ") (Pp.str sym))]) constr_sym_tbl [] @
     [Pp.str "PRIMS:"] @ 
     Hashtbl.fold (fun ctor sym acc -> acc @ [Pp.(++) (print_ctor ctor) (Pp.(++) (Pp.str " => ") (Pp.str sym))]) prim_tbl [] @
     [Pp.str "ENV CTORS:"] @ 
     Hashtbl.fold (fun ctor (sym, srt) acc -> acc @ [Pp.(++) (print_ctor ctor) (Pp.(++) (Pp.str " => ") (Pp.(++) (Pp.str sym) (Pp.str @@ Format.sprintf " : %s" (pretty_sort srt))))]) env_ctor_tbl [] 
 
 
-let reg_coq_ind_constr e = 
-  let env = Global.env () in
-  let sigma = Evd.from_env env in
-  let (sigma', e') = Constrintern.interp_constr_evars env sigma e in
-  begin match C.kind (EConstr.to_constr sigma' e') with
-  | C.Construct (ctor, _) -> 
-    let _ = reg_constr ctor in 
-    let _ = reg_sort (Names.inductive_of_constructor ctor) in
-      ()
-  | _ -> raise bedef
-  end
 
 let reg_prim_name e nme = 
   let env = Global.env () in
@@ -252,75 +206,48 @@ let reg_prim_name e nme =
     | _ -> raise @@ BadExpr ("expected inductive ctor and got: " ^ (Pp.string_of_ppcmds (C.debug_print e'')))
     end
 
+let reg_prim_name' e nme = ignore @@ reg_prim' e nme
 
-
-type bop = Impl | And | Or
+type bop = Impl | And | Or | Eq 
 type uop = Neg
 
 type bexpr = 
   | Tru | Fls
   | Bop of bop * bexpr * bexpr
   | Uop of uop * bexpr
+  | Forall of string * sort * bexpr
+  | App of string * (bexpr list)
+  | TSym of string
 
-
-let c_e_to_conf (e: C.t) : string =
-  begin match C.kind e with 
-  | C.App(f, es) -> 
-    if C.equal f c_pair then 
-      let el, er = es.(2), es.(3) in
-      begin match C.kind el, C.kind er with 
-      | C.App(_, els), C.App(_, ers) -> 
-        let el', er' = els.(Array.length els - 2), ers.(Array.length ers - 2) in
-        begin match C.kind el', C.kind er' with
-        | C.Var x, C.Var y -> 
-          Format.sprintf "%s %s" (Names.Id.to_string x) (Names.Id.to_string y)
-        | C.Rel x, C.Rel y -> 
-          Format.sprintf "pvar_%n pvar_%n" x y
-        | _, _ -> 
-          Feedback.msg_warning (Pp.(++) (Pp.str "els_last: ") (C.debug_print el')) ;
-          Feedback.msg_warning (Pp.(++) (Pp.str "ers_last: ") (C.debug_print er')) ;
-          raise @@ BadExpr "unexpected variable (see warning)"
-        end
-      | _, _ ->
-        Feedback.msg_warning (Pp.(++) (Pp.str "el: ") (C.debug_print el)) ;
-        Feedback.msg_warning (Pp.(++) (Pp.str "er: ") (C.debug_print er)) ;
-        raise @@ BadExpr "unexpected variable (see warning)"
-      end
-    else
-      raise @@ BadExpr ("missing pair constructor: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
-  | _ -> 
-    raise @@ BadExpr ("missing state constructor: " ^ (Pp.string_of_ppcmds (C.debug_print e)))
+let pretty_bop o = Pp.str @@ 
+  begin match o with 
+  | Impl -> "=>"
+  | And -> "and"
+  | Or -> "or"
+  | Eq -> "="
   end
 
-(* let rec take n xs = 
-  if n = 0 then [] else 
-    begin match xs with 
-    | [] -> raise bedef
-    | x :: xs' -> x :: take (n - 1) xs'
-    end *)
+let join = Pp.pr_sequence (fun x -> x)
 
-let c_e_to_ind (e: C.t) : string = 
-  let (f, es) = C.destApp e in 
-  let (e', _) = C.destConstruct f in
-    
-  let op_name = Hashtbl.find prim_tbl e' in
-  if op_name = c_inl_name then 
-    
-    let (f', es') = C.destApp es.(2) in
-    let (e'', _) = C.destConstruct f in
-    let op_name' = Hashtbl.find prim_tbl e'' in
-    if op_name' = c_inl_name || op_name' = c_inr_name then 
-      Format.sprintf "(inl %s)" (Hashtbl.find constr_sym_tbl (fst (C.destConstruct es'.(2))))
-    else
-      raise @@ BadExpr ("missing state constructor: " ^ (Pp.string_of_ppcmds (C.debug_print es'.(2)))) 
-  else if op_name = c_inr_name then 
-    if C.equal c_true es.(2) then "(inr true)" 
-    else if C.equal c_false es.(2) then "(inr false)" 
-    else
-      raise @@ BadExpr ("bad inr argument: " ^ (Pp.string_of_ppcmds (C.debug_print es.(2)))) 
-  else 
-    raise @@ BadExpr ("expected inl/inr and got : " ^ (Pp.string_of_ppcmds (C.debug_print f)))
+let pp_binding name srt = 
+  Pp.surround @@ join [Pp.str name; Pp.str @@ pretty_sort srt]
 
+let rec pretty_bexpr (e: bexpr) : Pp.t = 
+  begin match e with 
+  | Tru -> Pp.str "true" | Fls -> Pp.str "false"
+  | Bop (o,l,r) -> 
+    Pp.surround (Pp.pr_sequence bop_formatter [Inl o; Inr l; Inr r])
+  | Uop (Neg, i) -> Pp.surround (join [Pp.str "not"; pretty_bexpr i])
+  | Forall (v, s, i) -> Pp.surround @@ 
+    join [Pp.str "forall"; Pp.surround (pp_binding v s); pretty_bexpr i]
+  | App (f, es) -> Pp.surround @@ join ([Pp.str f] @ List.map pretty_bexpr es)
+  | TSym s -> Pp.str s
+  end
+  and bop_formatter x = 
+  begin match x with
+  | Inl o -> pretty_bop o
+  | Inr r -> pretty_bexpr r
+  end
 let c_sum_to_key (e: C.t) : C.t = 
   let (f, es) = C.destApp e in 
   let (e', _) = C.destConstruct f in
@@ -428,6 +355,39 @@ let debug_flag = false
 let debug_pp (msg: Pp.t) : unit = 
   if debug_flag then Feedback.msg_debug msg else ()
 
+let rec extract_expr (e: C.t) : bexpr = 
+  begin match Hashtbl.find_opt prim_tbl' e with 
+  | Some nme -> 
+    begin match nme with
+    | x when x = c_eq_name ->  
+      let (e1, e2) = rec_bop e in 
+        Bop (Eq, e1, e2)
+    | x when x = c_impl_name ->  
+      let (e1, e2) = rec_bop e in 
+        Bop (Impl, e1, e2)
+    | x when x = c_and_name ->  
+      let (e1, e2) = rec_bop e in 
+        Bop (And, e1, e2)
+    | x when x = c_or_name ->  
+      let (e1, e2) = rec_bop e in 
+        Bop (Or, e1, e2)
+    | x when x = c_not_name ->  
+      Uop (Neg, rec_unop e)
+    | _ -> assert false
+    end
+  | _ -> assert false
+  end
+and
+  rec_bop (e: C.t) : bexpr * bexpr = 
+    let (_, es) = C.destApp e in 
+      extract_expr es.(Array.length es - 2), extract_expr (a_last es)
+and
+  rec_unop (e: C.t) : bexpr = 
+    let (_, es) = C.destApp e in 
+      extract_expr (a_last es)
+
+
+
 let rec pretty_expr (e: C.t) : string =
   try
     begin match C.kind e with 
@@ -468,13 +428,7 @@ let rec pretty_expr (e: C.t) : string =
             let fargs = extract_h_list (a_last es) in
             let _ = debug_pp @@ Pp.str "found args:" in
             let _ = debug_pp @@ format_args (Array.of_list fargs) in
-            if fname = c_state1_name then 
-              let _ = debug_pp @@ Pp.str "extracting state1 fun" in
-              let arg = List.hd fargs in Format.sprintf "(state1 %s)" (pretty_expr arg) 
-            else if fname = c_state2_name then 
-              let _ = debug_pp @@ Pp.str "extracting state2 fun" in
-              let arg = List.hd fargs in Format.sprintf "(state2 %s)" (pretty_expr arg) 
-            else if str_starts_with "#b" fname then 
+            if str_starts_with "#b" fname then 
               (* bits literal *)
               let _ = debug_pp @@ Pp.str "extracting bitslit fun" in
               fname
@@ -505,13 +459,6 @@ let rec pretty_expr (e: C.t) : string =
             (* conf_lit and state_lit *)
               let _ = debug_pp @@ Pp.str (Format.sprintf "extracting wildcard %s" fname) in
               fname 
-          else if op_name' = c_state1_name then 
-            let _ = debug_pp @@ Pp.str "extracting state1" in
-            c_state1_name 
-          else if op_name' = c_state2_name then 
-            let _ = debug_pp @@ Pp.str "extracting state2" in
-            c_state2_name
-          (* (_ extract m n) *)
           else if op_name' = c_slice_name then 
             let _ = debug_pp @@ Pp.str "extracting slice" in
             (* n hi lo *)
@@ -522,14 +469,6 @@ let rec pretty_expr (e: C.t) : string =
             let _ = debug_pp @@ Pp.str "extracting concat" in
             (* n m *)
             c_concat_name
-            
-          else if op_name' = c_conflit_name then 
-            let _ = debug_pp @@ Pp.str "extracting mk_conf_lit" in
-            Format.sprintf "(mk_conf_lit %s)" (c_e_to_conf (a_last es)) 
-          else if op_name' = c_statelit_name then 
-            let _ = debug_pp @@ Pp.str "extracting statelit" in
-            (* let _ = debug_pp (Pp.str @@ Format.sprintf "length of args: %n" (Array.length es)) in *)
-            (c_e_to_ind es.(6))
           else if op_name' = c_tt_name then 
             let _ = debug_pp @@ Pp.str "extracting true" in
             "true" 
@@ -566,12 +505,9 @@ let rec pretty_expr (e: C.t) : string =
 
     | C.Construct (x, _) -> 
       let _ = debug_pp @@ Pp.str "extracting constant" in
-      begin match Hashtbl.find_opt constr_sym_tbl x, Hashtbl.find_opt prim_tbl x with
-      | Some _, Some _ -> raise @@ BadExpr ("double ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
-      | Some r, _ -> r
-        
-      | _, Some r -> r
-      | None, None -> raise @@ BadExpr ("missing ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
+      begin match Hashtbl.find_opt prim_tbl x with
+      | Some r -> r
+      | None -> raise @@ BadExpr ("missing ctor binding: " ^Pp.string_of_ppcmds @@ C.debug_print e)
       end
 
     | _ -> raise @@ BadExpr ("outer: " ^Pp.string_of_ppcmds @@ C.debug_print e)
@@ -657,5 +593,6 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
         build_env_query bod' opts 
     else
       raise bedef
+
 
 

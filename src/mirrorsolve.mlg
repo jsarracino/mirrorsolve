@@ -19,12 +19,6 @@ VERNAC COMMAND EXTEND DebugFuns CLASSIFIED AS QUERY
 END
 
 VERNAC COMMAND EXTEND RegisterInd CLASSIFIED AS QUERY
-| [ "RegisterInd" constr(e) ] -> { 
-    Main.reg_coq_ind_constr e
-  }
-| [ "RegisterConstrSize" constr(e) int(n) ] -> { 
-    Main.reg_coq_sort_size e n
-  }
 | [ "RegisterPrim" constr(e) string(s) ] -> { 
     Main.reg_prim_name e s
   }

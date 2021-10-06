@@ -20,13 +20,20 @@ type sort =
   Bits of int | 
   Store
 
-type bop = Impl | And | Or
+type bop = Impl | And | Or | Eq 
 type uop = Neg
 
 type bexpr = 
   | Tru | Fls
   | Bop of bop * bexpr * bexpr
   | Uop of uop * bexpr
+  | Forall of string * sort * bexpr
+  | App of string * (bexpr list)
+  | TSym of string
+
+
+val extract_expr : Constr.t -> bexpr
+val pretty_bexpr : bexpr -> Pp.t
 
 val pretty_expr : Constr.t -> string
 val pretty: Environ.env -> Evd.evar_map -> EConstr.constr -> string
@@ -34,9 +41,8 @@ val pretty: Environ.env -> Evd.evar_map -> EConstr.constr -> string
 val debug_lib_refs : unit -> Pp.t
 val debug_tbls : unit -> Pp.t
 
-val reg_coq_sort_size : Constrexpr.constr_expr -> int -> unit
-val reg_coq_ind_constr : Constrexpr.constr_expr -> unit
 val reg_prim_name : Constrexpr.constr_expr -> string -> unit
+val reg_prim_name': Constr.t -> string -> unit
 
 type query_opts = 
   { refute_query : bool ;

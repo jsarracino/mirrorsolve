@@ -87,9 +87,6 @@ let find_add i tbl builder =
     nxt
   end
 
-let prim_tbl : (Names.constructor, string) Hashtbl.t = Hashtbl.create 20
-let reg_prim i t = find_add i prim_tbl (fun _ -> t)
-
 let prim_tbl' : (C.t, string) Hashtbl.t = Hashtbl.create 20
 let reg_prim' i t = find_add i prim_tbl' (fun _ -> t)
 
@@ -188,25 +185,8 @@ let print_ctor (x: Names.constructor) : Pp.t =
     Pp.(++) (print_ind ind) (Pp.(++) (Pp.str "@") (Pp.int idx))
 let debug_tbls () = 
   Pp.pr_vertical_list (fun x -> x) @@ 
-    [Pp.str "PRIMS:"] @ 
-    Hashtbl.fold (fun ctor sym acc -> acc @ [Pp.(++) (print_ctor ctor) (Pp.(++) (Pp.str " => ") (Pp.str sym))]) prim_tbl [] @
     [Pp.str "ENV CTORS:"] @ 
     Hashtbl.fold (fun ctor (sym, srt) acc -> acc @ [Pp.(++) (print_ctor ctor) (Pp.(++) (Pp.str " => ") (Pp.(++) (Pp.str sym) (Pp.str @@ Format.sprintf " : %s" (pretty_sort srt))))]) env_ctor_tbl [] 
-
-let reg_prim_name e nme = 
-  let env = Global.env () in
-  let sigma = Evd.from_env env in
-  let (sigma', e') = Constrintern.interp_constr_evars env sigma e in
-  let e'' = (EConstr.to_constr sigma' e') in
-    begin match C.kind e'' with 
-    | C.App(f, _) -> 
-      begin match C.kind f with 
-      | C.Construct(x, _) -> let _ = reg_prim x nme in ()
-      | _ -> raise @@ BadExpr ("expected inductive ctor and got: " ^ (Pp.string_of_ppcmds (C.debug_print f)))
-      end
-    | C.Construct(x, _) -> let _ = reg_prim x nme in ()
-    | _ -> raise @@ BadExpr ("expected inductive ctor and got: " ^ (Pp.string_of_ppcmds (C.debug_print e'')))
-    end
 
 let reg_prim_name' e nme = ignore @@ reg_prim' e nme
 

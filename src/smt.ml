@@ -134,7 +134,7 @@ let run_smt query =
   (* let _ = close_process (out_c, in_c) in *)
   (* Lexing.read *)
   let ln = Stdlib.input_line (in_channel_of_descr out_in) in 
-  close out_in;
+  close in_in; close out_in; close out_out; close err_out;
   if ln = "sat" then SAT
   else if ln = "unsat" then UNSAT
   else Other ln

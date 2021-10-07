@@ -41,7 +41,6 @@ val pretty: Environ.env -> Evd.evar_map -> EConstr.constr -> string
 val debug_lib_refs : unit -> Pp.t
 val debug_tbls : unit -> Pp.t
 
-val reg_prim_name : Constrexpr.constr_expr -> string -> unit
 val reg_prim_name': Constr.t -> string -> unit
 
 type query_opts = 

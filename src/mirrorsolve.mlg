@@ -19,9 +19,6 @@ VERNAC COMMAND EXTEND DebugFuns CLASSIFIED AS QUERY
 END
 
 VERNAC COMMAND EXTEND RegisterInd CLASSIFIED AS QUERY
-| [ "RegisterPrim" constr(e) string(s) ] -> { 
-    Main.reg_prim_name e s
-  }
 | [ "RegisterEnvCtors" constr_list(es) ] -> { 
     let worker e = 
       let env = Global.env () in

@@ -402,7 +402,8 @@ let rec pretty_expr (e: C.t) : string =
                 let _ = debug_pp @@ Pp.str "extracting concat fun" in
                 begin match fargs with 
                 | l :: r :: _ -> 
-                  Format.sprintf "(concat %s %s)" (pretty_expr l) (pretty_expr r)
+                  (* The concatenation order in smtlib2 is suffix-then-prefix. *)
+                  Format.sprintf "(concat %s %s)" (pretty_expr r) (pretty_expr l)
                 | _ -> raise bedef
                 end
               else if equal_ctor f' c_slice then 

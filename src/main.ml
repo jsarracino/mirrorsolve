@@ -499,11 +499,13 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
     else 
       let (n, _) = C.destConst f in 
       let name = Names.Constant.to_string n in 
-      if name = "Poulet4.P4automata.FirstOrder.interp_fm" then
+      if name = "MirrorSolve.FirstOrder.interp_fm" then
         let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
         let bod' = a_last es in
           build_env_query bod' opts
       else
+        let _ = Feedback.msg_debug (Pp.str "unrecognized name: ") in 
+        let _ = Feedback.msg_debug @@ Pp.str name in 
         raise @@ BadExpr "Expected negate or interp at interp toplevel"
   else
     if not @@ C.isProd e then raise bedef else

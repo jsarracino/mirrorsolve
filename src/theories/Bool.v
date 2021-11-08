@@ -57,20 +57,5 @@ Section BFOL.
     vm_compute; reflexivity.
   Qed.
 
-  (* Declare ML Module "mirrorsolve".
-
-  Goal forall (b : bool), True.
-    pose proof forall_interp.
-    Check sorts.
-    specialize (@H sig fm_model (CEmp _) BoolSort (VEmp _ _) (fun _ => FTrue)).
-    eapply H.
-    intros.
-    rewrite <- H0.
-    match goal with 
-    | |- ?G => check_interp_pos G
-    end.
-    pose proof forall_interp.
-    eapply H.
-    erewrite forall_interp. *)
 End BFOL.
 

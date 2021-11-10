@@ -1,4 +1,4 @@
-let lang = {| (set-logic ALL) |}
+let lang = {| (set-logic BV) |}
 let preamble = {|
 
 (declare-datatypes ((sum 2)) 
@@ -44,6 +44,7 @@ let gen_enum_decl names =
    ))
 )
 |} joined_names
+
 
 let gen_record_decl ty decls = 
   let joined_decls = String.concat "\n" (List.map (fun (n, srt) -> Format.sprintf "(%s %s)" n srt) (List.of_seq decls)) in
@@ -99,7 +100,7 @@ let gen_bv_query query =
 let gen_env_query query bindings = 
   String.concat "\n" [
     lang;
-    gen_record_decl "Env" bindings; 
+    (* gen_record_decl "Env" bindings;  *)
     query; 
     trailer;
   ]
@@ -122,8 +123,8 @@ let run_smt query =
   let out_in, out_out = pipe ~cloexec:true () in 
   let err_in, err_out = pipe ~cloexec:true () in 
 
-  let args = [| "z3"; query_file |] in
-  let smt_pid = create_process "z3" args in_in out_out err_out in
+  let args = [| "cvc4"; query_file |] in
+  let smt_pid = create_process "cvc4" args in_in out_out err_out in
 
   let _ = waitpid [] smt_pid in 
   let ln = Stdlib.input_line (in_channel_of_descr out_in) in 

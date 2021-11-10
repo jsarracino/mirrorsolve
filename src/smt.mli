@@ -1,3 +1,9 @@
+type solver_t = Z3 | CVC4 | Boolector
+val show_solver_t : solver_t -> string
+val solver : solver_t ref
+val set_solver : solver_t -> unit
+val get_solver : unit -> solver_t
+
 val gen_query : string list -> string list -> string -> bool -> string
 val gen_binders : int -> string -> string
 

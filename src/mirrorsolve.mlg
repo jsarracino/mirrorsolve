@@ -99,3 +99,10 @@ TACTIC EXTEND ViewSMTTactic
     end
   }
 END
+
+
+VERNAC COMMAND EXTEND SetBackend CLASSIFIED AS QUERY
+| [ "SetSMTSolver" string(s) ] -> { 
+    Main.set_backend_solver s
+  }
+END

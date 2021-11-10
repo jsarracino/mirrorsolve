@@ -520,3 +520,19 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
 
 
 
+let set_backend_solver name = 
+  let open Smt in 
+  let solver = 
+    begin match name with 
+    | "z3" -> Some Z3
+    | "cvc4" -> Some CVC4
+    | "boolector" -> Some Boolector
+    | _ -> None
+    end
+  in
+  begin match solver with 
+  | Some s -> set_solver s
+  | None -> 
+    let _ = Feedback.msg_warning (Pp.str ("Unrecognized solver name: " ^ name)) in
+      Feedback.msg_warning (Pp.str "Expected z3/cvc4/boolector")
+  end

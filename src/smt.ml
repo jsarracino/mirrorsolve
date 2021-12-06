@@ -9,7 +9,7 @@ let solver = ref Z3
 let set_solver = (:=) solver
 let get_solver _ = !solver
 
-let lang = {| (set-logic BV) |}
+let lang = {|(set-logic BV)|}
 let preamble = {|
 
 (declare-datatypes ((sum 2)) 
@@ -75,7 +75,6 @@ let gen_var_decls vars =
 let trailer = {| 
 
 (check-sat)
-(get-model)
 
 |}
 

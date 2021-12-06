@@ -106,3 +106,13 @@ VERNAC COMMAND EXTEND SetBackend CLASSIFIED AS QUERY
     Main.set_backend_solver s
   }
 END
+
+TACTIC EXTEND DebugMemory
+| ["print_mem"] ->  {
+  let stats = Gc.stat () in
+  let bytes = stats.Gc.top_heap_words * (Sys.word_size/8) in
+  let msg = Pp.app (Pp.str "top_heap byte usage: ") (Pp.app (Pp.int bytes) (Pp.fnl ())) in 
+  Feedback.msg_info msg;
+  Proofview.tclUNIT ()
+}
+END

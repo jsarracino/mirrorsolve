@@ -7,7 +7,6 @@
 (package 
  (name mirrorsolve)
  (depends 
-  (coq-equations (>= coq-equations.1.3))
   (coq (>= 8.13.0))
  )
  (synopsis "SMT integration for Coq using reflection")

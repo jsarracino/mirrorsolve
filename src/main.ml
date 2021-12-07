@@ -499,7 +499,7 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
     else 
       let (n, _) = C.destConst f in 
       let name = Names.Constant.to_string n in 
-      if name = "Poulet4.P4automata.FirstOrder.interp_fm" then
+      if name = "Leapfrog.FirstOrder.interp_fm" then
         let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
         let bod' = a_last es in
           build_env_query bod' opts
@@ -511,7 +511,7 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
     let (f, es) = C.destApp bod in 
     let (n, _) = C.destConst f in 
     let name = Names.Constant.to_string n in 
-    if name = "Poulet4.P4automata.FirstOrder.interp_fm" then
+    if name = "Leapfrog.FirstOrder.interp_fm" then
       let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
       let bod' = a_last es in
         build_env_query bod' opts 

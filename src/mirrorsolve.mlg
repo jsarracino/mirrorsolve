@@ -116,7 +116,10 @@ TACTIC EXTEND DebugMemory
   Proofview.tclUNIT ()
 }
 | ["measure_mem" constr(e)] ->  {
-  let repr = Obj.repr e in
+  let env = Global.env () in
+  let sigma = Evd.from_env env in
+  let e' = EConstr.to_constr sigma e in
+  let repr = Obj.repr e' in
   let bytes = Obj.reachable_words repr * (Sys.word_size/8) in
   let msg = Pp.app (Pp.str "obj byte usage: ") (Pp.app (Pp.int bytes) (Pp.fnl ())) in 
   Feedback.msg_info msg;

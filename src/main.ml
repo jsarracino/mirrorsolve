@@ -513,7 +513,7 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
     let (f, es) = C.destApp bod in 
     let (n, _) = C.destConst f in 
     let name = Names.Constant.to_string n in 
-    if name = "Poulet4.P4automata.FirstOrder.interp_fm" then
+    if name = "Leapfrog.FirstOrder.interp_fm" then
       let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
       let bod' = a_last es in
         build_env_query bod' opts 
@@ -522,3 +522,19 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
 
 
 
+let set_backend_solver name = 
+  let open Smt in 
+  let solver = 
+    begin match name with 
+    | "z3" -> Some Z3
+    | "cvc4" -> Some CVC4
+    | "boolector" -> Some Boolector
+    | _ -> None
+    end
+  in
+  begin match solver with 
+  | Some s -> set_solver s
+  | None -> 
+    let _ = Feedback.msg_warning (Pp.str ("Unrecognized solver name: " ^ name)) in
+      Feedback.msg_warning (Pp.str "Expected z3/cvc4/boolector")
+  end

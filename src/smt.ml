@@ -1,4 +1,15 @@
-let lang = {| (set-logic ALL) |}
+type solver_t = Z3 | CVC4 | Boolector
+let show_solver_t s = 
+  begin match s with 
+  | Z3 -> "z3"
+  | CVC4 -> "cvc4"
+  | Boolector -> "boolector"
+  end
+let solver = ref Z3
+let set_solver = (:=) solver
+let get_solver _ = !solver
+
+let lang = {|(set-logic BV)|}
 let preamble = {|
 
 (declare-datatypes ((sum 2)) 
@@ -45,6 +56,7 @@ let gen_enum_decl names =
 )
 |} joined_names
 
+
 let gen_record_decl ty decls = 
   let joined_decls = String.concat "\n" (List.map (fun (n, srt) -> Format.sprintf "(%s %s)" n srt) (List.of_seq decls)) in
   Format.sprintf {| 
@@ -63,7 +75,6 @@ let gen_var_decls vars =
 let trailer = {| 
 
 (check-sat)
-(get-model)
 
 |}
 
@@ -99,7 +110,7 @@ let gen_bv_query query =
 let gen_env_query query bindings = 
   String.concat "\n" [
     lang;
-    gen_record_decl "Env" bindings; 
+    (* gen_record_decl "Env" bindings;  *)
     query; 
     trailer;
   ]
@@ -122,8 +133,10 @@ let run_smt query =
   let out_in, out_out = pipe ~cloexec:true () in 
   let err_in, err_out = pipe ~cloexec:true () in 
 
-  let args = [| "z3"; query_file |] in
-  let smt_pid = create_process "z3" args in_in out_out err_out in
+  let cmd = show_solver_t (get_solver ()) in
+
+  let args = [| cmd; query_file |] in
+  let smt_pid = create_process cmd args in_in out_out err_out in
 
   let _ = waitpid [] smt_pid in 
   let ln = Stdlib.input_line (in_channel_of_descr out_in) in 

@@ -99,3 +99,30 @@ TACTIC EXTEND ViewSMTTactic
     end
   }
 END
+
+
+VERNAC COMMAND EXTEND SetBackend CLASSIFIED AS QUERY
+| [ "SetSMTSolver" string(s) ] -> { 
+    Main.set_backend_solver s
+  }
+END
+
+TACTIC EXTEND DebugMemory
+| ["print_mem"] ->  {
+  let stats = Gc.stat () in
+  let bytes = stats.Gc.top_heap_words * (Sys.word_size/8) in
+  let msg = Pp.app (Pp.str "top_heap byte usage: ") (Pp.app (Pp.int bytes) (Pp.fnl ())) in 
+  Feedback.msg_info msg;
+  Proofview.tclUNIT ()
+}
+| ["measure_mem" constr(e)] ->  {
+  let env = Global.env () in
+  let sigma = Evd.from_env env in
+  let e' = EConstr.to_constr sigma e in
+  let repr = Obj.repr e' in
+  let bytes = Obj.reachable_words repr * (Sys.word_size/8) in
+  let msg = Pp.app (Pp.str "obj byte usage: ") (Pp.app (Pp.int bytes) (Pp.fnl ())) in 
+  Feedback.msg_info msg;
+  Proofview.tclUNIT ()
+}
+END

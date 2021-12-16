@@ -61,3 +61,5 @@ val c_n_tuple_to_bools : Constr.t -> bool list
 val format_args : Constr.t array -> Pp.t
 val reg_c_env_ctors : Constr.t list -> unit
 val clear_env_ctors : unit -> unit
+
+val set_backend_solver : string -> unit

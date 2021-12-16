@@ -1,48 +1,10 @@
 From Equations Require Import Equations.
 Require Import Coq.Program.Equality.
+Require Import MirrorSolve.HLists.
+
+Import HListNotations.
 
 Set Universe Polymorphism.
-
-(* CPDT style heterogeneous lists. *)
-Module HList.
-  Set Implicit Arguments.
-  Section HList.
-    Variable A: Type.
-    Variable B: A -> Type.
-    Inductive t : list A -> Type :=
-    | HNil: t nil
-    | HCons: forall a rest,
-        B a ->
-        t rest ->
-        t (a :: rest).
-  End HList.
-  Derive NoConfusion Signature for t.
-
-  Fixpoint mapl {A B} (f: forall a: A, B a) (l: list A): HList.t B l :=
-    match l with
-    | nil => HNil _
-    | cons a l => HCons _ (f a) (mapl f l)
-    end.
-
-  Fixpoint map {A B C l} (f: forall a: A, B a -> C a) (hl: t B l): t C l :=
-    match hl with
-    | HNil _ => HNil _
-    | HCons a x hl => HCons _ (f a x) (map f hl)
-    end.
-
-  Definition all {A B} (P: forall a: A, B a -> Prop) : forall l, @t A B l -> Prop :=
-    fix all_rec l hl :=
-      match hl with
-        | HNil _ => True
-        | HCons a x hlt => P a x /\ all_rec _ hlt
-      end.
-
-End HList.
-
-Module HListNotations.
-  Notation "x ::: xs" := (HList.HCons _ x xs) (at level 60, right associativity).
-  Notation "'hnil'" := (HList.HNil _).
-End HListNotations.
 
 Definition arity sorts := list sorts.
 
@@ -196,6 +158,7 @@ Section FOL.
           forall val: m.(mod_sorts) s,
             interp_fm (CSnoc c s) (VSnoc _ _ val v) f }.
 
+    (* A few tactics for converting between normal Prop goals and interp_fm goals  *)
     Lemma eq_interp:
       forall c srt v l r, 
         (interp_tm c srt v l = interp_tm c srt v r)
@@ -207,13 +170,13 @@ Section FOL.
       apply iff_refl.
     Qed.
 
-  Require Import Coq.Logic.JMeq.
-  Lemma forall_interp:
-    forall c srt v (F : mod_sorts m srt -> fm (CSnoc c srt)) t', 
-      (forall t, 
-        F (interp_tm (CSnoc c _) srt (VSnoc _ _ t v) (TVar (CSnoc c _) _ (VHere c _ ))) = t' ->
-        interp_fm _ v (FForall _ _ t')) <-> forall t, interp_fm _ (VSnoc _ _ t v) (F t).
-  Admitted.
+    (* Require Import Coq.Logic.JMeq.
+    Lemma forall_interp:
+      forall c srt v (F : mod_sorts m srt -> fm (CSnoc c srt)) t', 
+        (forall t, 
+          F (interp_tm (CSnoc c _) srt (VSnoc _ _ t v) (TVar (CSnoc c _) _ (VHere c _ ))) = t' ->
+          interp_fm _ v (FForall _ _ t')) <-> forall t, interp_fm _ (VSnoc _ _ t v) (F t).
+    Admitted. *)
   End Interp.
 
 
@@ -424,6 +387,92 @@ Section FOL.
       autorewrite with find; auto.
   Qed.
 
+  Lemma interp_tm_reindex_tm:
+    forall m c s (t: tm c s) (v: valu m c) c' (v': valu m c'),
+      interp_tm m c s v t =
+      interp_tm m (app_ctx c' c) s (app_valu v' v) (reindex_tm t).
+  Proof.
+    dependent induction t using tm_ind'; intros.
+    - autorewrite with reindex_tm.
+      autorewrite with interp_tm.
+      now rewrite find_app_right.
+    - autorewrite with reindex_tm.
+      autorewrite with interp_tm.
+      f_equal.
+      clear srt.
+      induction hl; auto.
+      autorewrite with reindex_tm.
+      autorewrite with interp_tm.
+      f_equal.
+      + apply H.
+      + apply IHhl, H.
+  Qed.
+
+  Lemma interp_tm_weaken_tm:
+    forall m c s (t: tm c s) (v: valu m c) c' (v': valu m c'),
+      interp_tm m c s v t =
+      interp_tm m (app_ctx c c') s (app_valu v v') (weaken_tm s c c' t).
+  Proof.
+    dependent induction t using tm_ind'; intros.
+    - autorewrite with weaken_tm.
+      autorewrite with interp_tm.
+      now rewrite find_app_left.
+    - autorewrite with weaken_tm.
+      autorewrite with interp_tm.
+      f_equal.
+      clear srt.
+      induction hl; auto.
+      autorewrite with weaken_tm.
+      autorewrite with interp_tm.
+      f_equal.
+      + apply H.
+      + apply IHhl, H.
+  Qed.
+
+  Equations tm_cons {c s' s}
+    (t: tm c s)
+    : tm (CSnoc c s') s := {
+    tm_cons (TVar _ _ v) := TVar _ _ (VThere _ _ _ v);
+    tm_cons (TFun _ _ _ fn args) := TFun _ _ _ fn (tms_cons args)
+  } where tms_cons {c s' s}
+    (ts: HList.t (tm c) s)
+    : HList.t (tm (CSnoc c s')) s := {
+    tms_cons hnil := hnil;
+    tms_cons (t ::: ts) := tm_cons t ::: tms_cons ts
+  }.
+
+  Lemma interp_tm_tm_cons:
+    forall m c s (t: tm c s) (v: valu m c) s' val,
+      interp_tm m c s v t =
+      interp_tm m (CSnoc c s') s (VSnoc m s' c val v) (tm_cons t).
+  Proof.
+    dependent induction t using tm_ind'; intros.
+    - autorewrite with tm_cons.
+      autorewrite with interp_tm.
+      reflexivity.
+    - autorewrite with tm_cons.
+      autorewrite with interp_tm.
+      f_equal.
+      clear srt.
+      induction hl; auto.
+      autorewrite with tm_cons.
+      autorewrite with interp_tm.
+      f_equal.
+      + apply H.
+      + apply IHhl, H.
+  Qed.
+
+  Inductive QFFm : forall c, (fm c) -> Prop := 
+  | QFTrue : forall c, QFFm c (FTrue _)
+  | QFFalse : forall c, QFFm c (FFalse _)
+  | QFRel : forall c typs rel args, QFFm c (FRel c typs rel args)
+  | QFEq : forall c s l r,  QFFm c (FEq _ s l r)
+  | QFNeg : forall c i, QFFm c i -> QFFm _ (FNeg _ i)
+  | QFOr : forall c l r, QFFm c l -> QFFm _ r -> QFFm _ (FOr _ l r)
+  | QFFand : forall c l r, QFFm c l -> QFFm _ r -> QFFm _ (FAnd _ l r)
+  | QFImpl : forall c l r, QFFm c l -> QFFm _ r -> QFFm _ (FImpl _ l r).
+
+
 End FOL.
 
 Arguments TVar {_ _ _}.
@@ -476,15 +525,5 @@ Register CSnoc as p4a.core.csnoc.
 
 Register HList.HNil as p4a.core.hnil.
 Register HList.HCons as p4a.core.hcons.
-
-Inductive dummy := Dummy.
-
-Register Dummy as p4a.sorts.bits.
-Register Dummy as p4a.sorts.store.
-
-Register Dummy as p4a.funs.bitslit.
-Register Dummy as p4a.funs.concat.
-Register Dummy as p4a.funs.slice.
-Register Dummy as p4a.funs.lookup.
 
 

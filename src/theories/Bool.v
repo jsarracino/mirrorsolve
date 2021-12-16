@@ -3,9 +3,12 @@ Require Import Coq.Program.Equality.
 Require Import Coq.Lists.List.
 
 Require Import MirrorSolve.FirstOrder.
+Require Import MirrorSolve.HLists.
 
 Import ListNotations.
 Import HListNotations.
+(* 
+From SMTCoq Require Import SMTCoq. *)
 
 Section BFOL.
   Inductive sorts: Set :=

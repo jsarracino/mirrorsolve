@@ -36,46 +36,46 @@ let get_coq ref : C.t =
       | Some (_, x) -> raise @@ MissingGlobConst ("polymorphic global: " ^ ref)
       | None -> raise @@ MissingGlobConst ("unregistered global: " ^ ref)
       end
-let c_eq = get_coq "p4a.core.eq"
-let c_impl = get_coq "p4a.core.impl"
-let c_and = get_coq "p4a.core.and"
-let c_or = get_coq "p4a.core.or"
-let c_not = get_coq "p4a.core.neg"
+let c_eq () = get_coq "p4a.core.eq"
+let c_impl () = get_coq "p4a.core.impl"
+let c_and () = get_coq "p4a.core.and"
+let c_or () = get_coq "p4a.core.or"
+let c_not () = get_coq "p4a.core.neg"
 
-let c_tt = get_coq "p4a.core.tt"
-let c_ff = get_coq "p4a.core.ff"
-let c_fun = get_coq "p4a.core.fun"
+let c_tt () = get_coq "p4a.core.tt"
+let c_ff () = get_coq "p4a.core.ff"
+let c_fun () = get_coq "p4a.core.fun"
 
-let c_hnil = get_coq "p4a.core.hnil"
-let c_hcons = get_coq "p4a.core.hcons"
-let c_inl = get_coq "core.sum.inl"
-let c_inr = get_coq "core.sum.inr"
+let c_hnil () = get_coq "p4a.core.hnil"
+let c_hcons () = get_coq "p4a.core.hcons"
+let c_inl () = get_coq "core.sum.inl"
+let c_inr () = get_coq "core.sum.inr"
 
-let c_true = get_coq "core.bool.true"
-let c_false = get_coq "core.bool.false"
-let c_pair = get_coq "core.prod.intro"
-let c_forall = get_coq "p4a.core.forall"
-let c_var = get_coq "p4a.core.var"
+let c_true () = get_coq "core.bool.true"
+let c_false () = get_coq "core.bool.false"
+let c_pair () = get_coq "core.prod.intro"
+let c_forall () = get_coq "p4a.core.forall"
+let c_var () = get_coq "p4a.core.var"
 
-let c_cnil = get_coq "p4a.core.cnil"
-let c_snoc = get_coq "p4a.core.csnoc"
+let c_cnil () = get_coq "p4a.core.cnil"
+let c_snoc () = get_coq "p4a.core.csnoc"
 
-let c_bits = get_coq "p4a.sorts.bits"
-let c_store = get_coq "p4a.sorts.store"
-let c_zero = get_coq "num.nat.O"
-let c_succ = get_coq "num.nat.S"
+let c_bits () = get_coq "p4a.sorts.bits"
+let c_store () = get_coq "p4a.sorts.store"
+let c_zero () = get_coq "num.nat.O"
+let c_succ () = get_coq "num.nat.S"
 
-let c_prop_not = get_coq "core.not.type"
+let c_prop_not () = get_coq "core.not.type"
 
-let c_bits_lit = get_coq "p4a.funs.bitslit"
-let c_concat = get_coq "p4a.funs.concat"
-let c_slice = get_coq "p4a.funs.slice"
-let c_lookup = get_coq "p4a.funs.lookup"
+let c_bits_lit () = get_coq "p4a.funs.bitslit"
+let c_concat () = get_coq "p4a.funs.concat"
+let c_slice () = get_coq "p4a.funs.slice"
+let c_lookup () = get_coq "p4a.funs.lookup"
 
-let c_unit = get_coq "core.unit.tt"
+let c_unit () = get_coq "core.unit.tt"
 
-let c_vhere = get_coq "p4a.core.vhere"
-let c_vthere = get_coq "p4a.core.vthere"
+let c_vhere () = get_coq "p4a.core.vhere"
+let c_vthere () = get_coq "p4a.core.vthere"
 
 
 let find_add i tbl builder = 
@@ -92,22 +92,22 @@ let reg_prim' i t = find_add i prim_tbl' (fun _ -> t)
 
 
 let rec c_nat_to_int (e: C.t) : int =
-  if e = c_zero then 0 
+  if e = c_zero () then 0 
   else if C.isApp e then 
     let (f, es) = C.destApp e in 
-    if f = c_succ then
+    if f = c_succ () then
       1 + c_nat_to_int (a_last es)
     else
       let _ = Feedback.msg_debug (Pp.str "S:") in
-      let _ = Feedback.msg_debug (Constr.debug_print c_succ) in
+      let _ = Feedback.msg_debug (Constr.debug_print @@ c_succ ()) in
       let _ = Feedback.msg_debug (Pp.str "Expected S and got:") in
       let _ = Feedback.msg_debug (Constr.debug_print e) in
       raise @@ BadExpr "expected S in nat_to_int"
   else
     let _ = Feedback.msg_debug (Pp.str "S:") in
-    let _ = Feedback.msg_debug (Constr.debug_print c_succ) in
+    let _ = Feedback.msg_debug (Constr.debug_print @@ c_succ ()) in
     let _ = Feedback.msg_debug (Pp.str "Z:") in
-    let _ = Feedback.msg_debug (Constr.debug_print c_zero) in
+    let _ = Feedback.msg_debug (Constr.debug_print @@ c_zero ()) in
     let _ = Feedback.msg_debug (Pp.str "Expected S/Z and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected S or 0 in nat_to_int"
@@ -118,14 +118,14 @@ type sort =
   Store
 
 let extract_sort (e: C.t) : sort = 
-  if e = c_store then Store 
+  if e = c_store () then Store 
   else if not @@ C.isApp e then 
     let _ = Feedback.msg_debug (Pp.str "Expected app for sort and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected app for sort" 
   else
     let (f, es) = C.destApp e in 
-      if f = c_bits then 
+      if f = c_bits () then 
         let (_, es) = C.destApp e in 
         Bits (c_nat_to_int (a_last es))
       else
@@ -133,9 +133,9 @@ let extract_sort (e: C.t) : sort =
         let _ = Feedback.msg_debug (Constr.debug_print e) in
         raise @@ BadExpr "unexpected constructor for sorts (see debug)"      
 
-let equal_ctor (l: C.t) (r: C.t) : bool = 
+let equal_ctor (l: C.t) (r: unit -> C.t) : bool = 
   let (l', _) = C.destConstruct l in 
-  let (r', _) = C.destConstruct r in 
+  let (r', _) = C.destConstruct (r ()) in 
     l' = r'
 
 let valid_sort (s: sort) : bool = 
@@ -232,7 +232,7 @@ let rec pretty_bexpr (e: bexpr) : Pp.t =
   end
 let c_sum_to_key (e: C.t) : C.t = 
   let (f, es) = C.destApp e in 
-  if f = c_inl || f = c_inr then 
+  if f = c_inl () || f = c_inr () then 
     a_last es
   else 
     let _ = Feedback.msg_debug (Pp.str (Format.sprintf "expected inl/inr in sum2key and got:")) in
@@ -260,26 +260,26 @@ let rec extract_ctx (e: C.t) : C.t list =
     raise @@ BadExpr "expected csnoc/cnil inside ctx list"
 
 let rec c_n_tuple_to_bools (e: C.t) : bool list =
-  if e = c_unit then []
+  if e = c_unit () then []
   
   else if C.isApp e then 
     let (f, es) = C.destApp e in 
     if equal_ctor f c_pair then
       let snoc_e = a_last es in 
       let snoc_v = 
-        if snoc_e = c_true then true
-        else if snoc_e = c_false then false
+        if snoc_e = c_true () then true
+        else if snoc_e = c_false () then false
         else raise bedef in
       c_n_tuple_to_bools es.(Array.length es - 2) @ [snoc_v]
     else
       let _ = Feedback.msg_debug (Pp.str "pair:") in
-      let _ = Feedback.msg_debug (Constr.debug_print c_pair) in
+      let _ = Feedback.msg_debug (Constr.debug_print @@ c_pair ()) in
       let _ = Feedback.msg_debug (Pp.str "Expected pair and got:") in
       let _ = Feedback.msg_debug (Constr.debug_print f) in
       raise @@ BadExpr "expected pair in tuple2bool"
   else
     let _ = Feedback.msg_debug (Pp.str "pair:") in
-    let _ = Feedback.msg_debug (Constr.debug_print c_pair) in
+    let _ = Feedback.msg_debug (Constr.debug_print @@ c_pair ()) in
     let _ = Feedback.msg_debug (Pp.str "Expected pair and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected app/pair in tuple2bool"
@@ -431,7 +431,7 @@ let rec pretty_expr (e: C.t) : string =
         let _ = Feedback.msg_debug (Pp.str "unrecognized ctor: ") in 
         let _ = Feedback.msg_debug @@ C.debug_print f in 
         let _ = Feedback.msg_debug (Pp.str "concat: ") in 
-        let _ = Feedback.msg_debug @@ C.debug_print c_concat in 
+        let _ = Feedback.msg_debug @@ C.debug_print @@ c_concat () in 
           raise @@ BadExpr ("missing ctor binding")
 
     | _ -> raise @@ BadExpr ("outer: " ^Pp.string_of_ppcmds @@ C.debug_print e)
@@ -494,7 +494,7 @@ let rec extract_foralls (e: C.t) : string list * C.t =
 let rec check_interp (e: C.t) (negate_toplevel: bool) : string = 
   if C.isApp e then 
     let (f, es) = C.destApp e in
-    if C.equal f c_prop_not then 
+    if C.equal f @@ c_prop_not () then 
       check_interp (a_last es) (not negate_toplevel)
     else 
       let (n, _) = C.destConst f in 

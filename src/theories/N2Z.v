@@ -13,11 +13,11 @@ Require Import Coq.ZArith.BinInt.
 Require Import MirrorSolve.N.
 Require Import MirrorSolve.Z.
 
+Require Import MirrorSolve.SMT.
+
 Set Universe Polymorphism. 
 
 Section N2Z.
-
-  
 
   Definition n2z_sort (ns: N.sorts) : Z.sorts := 
     match ns with 
@@ -105,11 +105,11 @@ Section N2Z.
   Program Definition n2z_forall_op {c} {srt: sig_sorts N.sig} (f: FirstOrder.fm sig (fmap_ctx' (CSnoc N.sig c srt))) : FirstOrder.fm sig (fmap_ctx' (CSnoc N.sig c srt)) := 
     match srt with 
     | N.BS => f
-    | N.NS => 
-      FImpl (FEq (s := Z.BS) 
+    | N.NS => f
+      (* FImpl (FEq (s := Z.BS) 
         (TFun _ (@BLit true) hnil) 
         (TFun _ Z.Gte ((TVar (VHere _ _ _)) ::: (TFun _ (@ZLit 0%Z) hnil) ::: hnil))
-      ) f
+      ) f *)
     end.
 
   (* Lemma n2z_tm_inj: 
@@ -157,23 +157,4 @@ Section N2Z.
     exact n2z_wf.
   Qed.
 
-
-  Lemma nat_eq_refl : 
-    interp_fm (sig := N.sig) (VEmp _ N.fm_model) (FForall (sig :=  N.sig) NS (FForall (sig :=  N.sig) NS (FEq 
-      (TFun N.sig N.Plus (
-        ((TVar (VHere _ _ _)) ::: (TVar (VThere _ _ _ _ (VHere _ _ _)) ::: hnil))
-      ))
-      (TFun N.sig N.Plus (
-        ((TVar (VHere _ _ _)) ::: (TVar (VThere _ _ _ _ (VHere _ _ _)) ::: hnil))
-      ))
-    ))).
-  Proof.
-    eapply n2z_corr.
-    match goal with 
-    | |- interp_fm ?v ?f => 
-      set (v' := v);
-      set (f' := f)
-    end.
-    vm_compute in f'.
-  Admitted.
 End N2Z.

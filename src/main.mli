@@ -20,11 +20,13 @@ val c_lookup : unit -> Constr.t
 val c_nat_to_int : Constr.t -> int
 
 val reg_sort : EConstr.constr -> EConstr.constr -> unit
-val reg_fun : EConstr.constr -> string -> int -> unit
+val reg_sym : EConstr.constr -> string -> int -> unit
+val reg_builtin : EConstr.constr -> EConstr.constr -> unit
 
 type sort = 
-  Bits of int | 
-  SMT_Int
+  | Bits of int
+  | Smt_int
+  | Smt_bool 
 
 type bop = Impl | And | Or | Eq 
 type uop = Neg

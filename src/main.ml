@@ -65,6 +65,14 @@ let c_store () = get_coq "p4a.sorts.store"
 let c_zero () = get_coq "num.nat.O"
 let c_succ () = get_coq "num.nat.S"
 
+let c_pos_one () = get_coq "num.pos.xH"
+let c_pos_dzero () = get_coq "num.pos.xO"
+let c_pos_done () = get_coq "num.pos.xI"
+
+let c_int_zero () = get_coq "num.Z.Z0"
+let c_int_pos () = get_coq "num.Z.Zpos"
+let c_int_neg () = get_coq "num.Z.Zneg"
+
 let c_prop_not () = get_coq "core.not.type"
 
 let c_bits_lit () = get_coq "p4a.funs.bitslit"
@@ -77,6 +85,10 @@ let c_unit () = get_coq "core.unit.tt"
 let c_vhere () = get_coq "p4a.core.vhere"
 let c_vthere () = get_coq "p4a.core.vthere"
 let c_int_sort = get_coq "p4a.core.smt_int"
+let c_bool_sort = get_coq "p4a.core.smt_bool"
+
+let c_builtin_bool_lit () = get_coq "p4a.core.bool_lit"
+let c_builtin_int_lit () = get_coq "p4a.core.int_lit"
 
 
 let find_add i tbl builder = 
@@ -91,6 +103,18 @@ let find_add i tbl builder =
 let prim_tbl' : (C.t, string) Hashtbl.t = Hashtbl.create 20
 let reg_prim' i t = find_add i prim_tbl' (fun _ -> t)
 
+(* let c_char_to_char (e: C.t) : string 
+let rec c_str_to_str (e: C.t) : string = 
+  if e = c_str_nil () then ""
+  else if C.isApp e then
+    let (f, es) = C.destApp e in 
+    if f = c_str_cons () then
+      1 + c_nat_to_int (a_last es) *)
+
+let c_bool_to_bool (e: C.t) : bool = 
+  if e = c_true () then true
+  else if e = c_false () then false
+  else raise bedef
 
 let rec c_nat_to_int (e: C.t) : int =
   if e = c_zero () then 0 
@@ -112,11 +136,40 @@ let rec c_nat_to_int (e: C.t) : int =
     let _ = Feedback.msg_debug (Pp.str "Expected S/Z and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected S or 0 in nat_to_int"
+
+let rec c_pos_to_int (e: C.t) : int = 
+  if e = c_pos_one () then 1
+  else 
+    let (f, es) = C.destApp e in
+    let inner = c_pos_to_int @@ a_last es in 
+    if f = c_pos_dzero () then 2 * inner 
+    else if f = c_pos_done () then 2*inner + 1
+    else raise bedef
+
+  let c_int_to_int (e: C.t) : int =
+    if e = c_int_zero () then 
+      let _ = Feedback.msg_debug (Pp.str "returning 0") in
+      0 
+    else if C.isApp e then 
+      let (f, es) = C.destApp e in 
+      let inner = c_pos_to_int @@ a_last es in 
+      if f = c_int_pos () then inner
+      else if f = c_int_neg () then -1 * inner 
+      else
+        let _ = Feedback.msg_debug (Pp.str "Expected Pos/Neg and got:") in
+        let _ = Feedback.msg_debug (Constr.debug_print f) in
+        raise @@ BadExpr "expected pos/neg in int_to_int"
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected int constructor and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise @@ BadExpr "expected int constructor in int_to_int"
     
 
 type sort = 
-  Bits of int | 
-  SMT_Int
+  | Bits of int
+  | Smt_int
+  | Smt_bool 
+
 
 let sort_tbl : (C.t, sort) Hashtbl.t = Hashtbl.create 5
 
@@ -155,24 +208,49 @@ let equal_ctor (l: C.t) (r: unit -> C.t) : bool =
 let valid_sort (s: sort) : bool = 
   begin match s with 
   | Bits n -> n > 0
-  | SMT_Int -> true
+  | Smt_int 
+  | Smt_bool -> true
   end
 let pretty_sort (s: sort) : string = 
   begin match s with 
   | Bits n -> Format.sprintf "(_ BitVec %n)" n
-  | SMT_Int -> "Int"
+  | Smt_int -> "Int"
+  | Smt_bool -> "Bool"
   end
   
+type builtin_syms = 
+  | Smt_int_lit
+  | Smt_bool_lit
+
+let pretty_builtin (b: builtin_syms) = 
+  begin match b with 
+  | Smt_int_lit -> "<int literal>"
+  | Smt_bool_lit -> "<bool literal>"
+  end
+
+let builtin_arity (b: builtin_syms) = 
+  begin match b with 
+  | Smt_bool_lit
+  | Smt_int_lit -> 1
+  end
 
 let fun_symb_tbl : (Names.constructor, string) Hashtbl.t = Hashtbl.create 100
 let fun_arity_tbl : (Names.constructor, int) Hashtbl.t = Hashtbl.create 100
+let fun_builtin_tbl : (Names.constructor, builtin_syms) Hashtbl.t = Hashtbl.create 5
+
 
 let lookup_symb = Hashtbl.find_opt fun_symb_tbl
 let lookup_arity = Hashtbl.find_opt fun_arity_tbl
+let lookup_builtin = Hashtbl.find_opt fun_builtin_tbl
 
 let add_fun (f: Names.constructor) (symb: string) (arity: int) : unit = 
   Hashtbl.add fun_symb_tbl f symb;
   Hashtbl.add fun_arity_tbl f arity
+
+let add_builtin (f: Names.constructor) (b: builtin_syms) : unit = 
+  Hashtbl.add fun_builtin_tbl f b;
+  Hashtbl.add fun_arity_tbl f @@ builtin_arity b
+
 (* 
 let debug_tbls () = 
   Pp.pr_vertical_list (fun x -> x) @@ 
@@ -249,10 +327,7 @@ let rec c_n_tuple_to_bools (e: C.t) : bool list =
     let (f, es) = C.destApp e in 
     if equal_ctor f c_pair then
       let snoc_e = a_last es in 
-      let snoc_v = 
-        if snoc_e = c_true () then true
-        else if snoc_e = c_false () then false
-        else raise bedef in
+      let snoc_v = c_bool_to_bool snoc_e in 
       c_n_tuple_to_bools es.(Array.length es - 2) @ [snoc_v]
     else
       let _ = Feedback.msg_debug (Pp.str "pair:") in
@@ -320,11 +395,32 @@ and
     let (_, es) = C.destApp e in 
       extract_expr (a_last es)
 
+let pretty_bool (e: C.t) : string = 
+  let b = c_bool_to_bool e in
+  string_of_bool b
+
+let pretty_int (e: C.t) : string = 
+  let x = c_int_to_int e in
+  string_of_int x
+
+let pretty_builtin (args: C.t array) (b: builtin_syms) (arity: int) = 
+  let _ = debug_pp @@ Pp.str "printing builtin:" in 
+  let _ = debug_pp @@ Pp.str (pretty_builtin b) in  
+  let _ = debug_pp @@ Pp.str "with args:" in 
+  let _ = debug_pp @@ format_args args in  
+  begin match b, arity with 
+  | Smt_int_lit, 1 -> 
+    pretty_int @@ a_last args
+  | Smt_bool_lit, 1 -> 
+    pretty_bool @@ a_last args
+  | _, _ -> raise bedef
+  end
+
 let rec pretty_fun (f: C.t) (args: C.t list) : string = 
   if C.isConstruct f then 
     let (f_name, _) = C.destConstruct f in 
-    begin match lookup_symb f_name, lookup_arity f_name with 
-    | Some fs, Some n ->
+    begin match lookup_symb f_name, lookup_builtin f_name, lookup_arity f_name with 
+    | Some fs, None, Some n ->
       if n = List.length args then
         if n = 0 then 
           fs
@@ -332,10 +428,23 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
           Format.sprintf "(%s %s)" fs @@ String.concat " " (List.map pretty_tm args)
       else
         raise bedef
+    | None, Some b, Some n -> 
+      pretty_builtin [||] b n
+    | _, _, _ -> raise bedef
+    end
+  else if C.isApp f then
+    let _ = debug_pp @@ Pp.str "extracting builtin" in 
+    let (f', f_args) = C.destApp f in 
+    let _ = debug_pp @@ Pp.str "expecting construct:" in 
+    let _ = debug_pp @@ (C.debug_print f') in 
+    let (f'', _) = C.destConstruct f' in
+    let _ = debug_pp @@ Pp.str "found constructor" in 
+    begin match lookup_builtin f'', lookup_arity f'' with 
+    | Some sym, Some n -> pretty_builtin f_args sym n
     | _, _ -> raise bedef
     end
-  else 
-    let _ = debug_pp @@ Pp.str "construct for fun symbol, instead got:" in
+  else
+    let _ = debug_pp @@ Pp.str "expected construct for fun symbol, instead got:" in
     let _ = debug_pp @@ (C.debug_print f) in
     raise bedef
 
@@ -463,12 +572,12 @@ type query_opts =
 
 let build_query (vars: string list) (e: C.t) (opts: query_opts) : string = 
   let q_str = if opts.refute_query then 
-    Format.sprintf "(assert (not %s))" (pretty_tm e) 
+    Format.sprintf "(assert (not %s))" (pretty_fm e) 
   else
     if opts.negate_toplevel then
-      Format.sprintf "(assert (not %s))" @@ Smt.gen_binders (List.length vars) (pretty_tm e)
+      Format.sprintf "(assert (not %s))" @@ Smt.gen_binders (List.length vars) (pretty_fm e)
     else 
-      Format.sprintf "(assert %s)" @@ Smt.gen_binders (List.length vars) (pretty_tm e) in
+      Format.sprintf "(assert %s)" @@ Smt.gen_binders (List.length vars) (pretty_fm e) in
   Smt.gen_bv_query q_str 
 
 let dump_query (vars: string list) (e: EConstr.t) : unit = 
@@ -508,7 +617,7 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
     let (f, es) = C.destApp bod in 
     let (n, _) = C.destConst f in 
     let name = Names.Constant.to_string n in 
-    if name = "Leapfrog.FirstOrder.interp_fm" then
+    if name = "MirrorSolve.FirstOrder.interp_fm" then
       let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
       let bod' = a_last es in
         build_query vs bod' opts 
@@ -534,7 +643,7 @@ let set_backend_solver name =
       Feedback.msg_warning (Pp.str "Expected z3/cvc4/boolector")
   end
 
-let reg_fun (e: EConstr.t) (sym: string) (ar: int) : unit = 
+let reg_sym (e: EConstr.t) (sym: string) (ar: int) : unit = 
   let env = Global.env () in 
   let sigma = Evd.from_env env in 
   let e' = EConstr.to_constr sigma e in 
@@ -544,8 +653,26 @@ let reg_fun (e: EConstr.t) (sym: string) (ar: int) : unit =
   else
     raise bedef
 
+let reg_builtin (l: EConstr.t) (r: EConstr.t) : unit = 
+  let env = Global.env () in 
+  let sigma = Evd.from_env env in 
+  let l' = EConstr.to_constr sigma l in 
+  let r' = EConstr.to_constr sigma r in 
+  if C.isConstruct l' then
+    let (f, _) = C.destConstruct l' in 
+    if equal_ctor r' c_builtin_bool_lit then
+      add_builtin f Smt_bool_lit
+    else if equal_ctor r' c_builtin_int_lit then
+      add_builtin f Smt_int_lit
+    else
+      raise bedef
+  else
+    raise bedef
+
 let conv_sort (e: C.t) : sort option = 
-  if equal_ctor e (fun _ -> c_int_sort) then Some SMT_Int else None
+  if equal_ctor e (fun _ -> c_int_sort) then Some Smt_int 
+  else if equal_ctor e (fun _ -> c_bool_sort) then Some Smt_bool
+  else None
 
 let reg_sort (l: EConstr.t) (r: EConstr.t) : unit = 
   let env = Global.env () in

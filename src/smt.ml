@@ -9,7 +9,7 @@ let solver = ref Z3
 let set_solver = (:=) solver
 let get_solver _ = !solver
 
-let lang = {|(set-logic BV)|}
+let lang = {|(set-logic ALL)|}
 let preamble = {|
 
 (declare-datatypes ((sum 2)) 

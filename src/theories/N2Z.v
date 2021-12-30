@@ -105,11 +105,11 @@ Section N2Z.
   Program Definition n2z_forall_op {c} {srt: sig_sorts N.sig} (f: FirstOrder.fm sig (fmap_ctx' (CSnoc N.sig c srt))) : FirstOrder.fm sig (fmap_ctx' (CSnoc N.sig c srt)) := 
     match srt with 
     | N.BS => f
-    | N.NS => f
-      (* FImpl (FEq (s := Z.BS) 
+    | N.NS => 
+      FImpl (FEq (s := Z.BS) 
         (TFun _ (@BLit true) hnil) 
         (TFun _ Z.Gte ((TVar (VHere _ _ _)) ::: (TFun _ (@ZLit 0%Z) hnil) ::: hnil))
-      ) f *)
+      ) f
     end.
 
   (* Lemma n2z_tm_inj: 

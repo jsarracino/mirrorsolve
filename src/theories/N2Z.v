@@ -112,39 +112,96 @@ Section N2Z.
       ) f
     end.
 
-  (* Lemma n2z_tm_inj: 
-  forall 
-    (srt : sig_sorts N.sig) (c : ctx N.sig)
-    (v : valu N.sig N.fm_model c) (t t' : FirstOrder.tm N.sig c srt),
+  Lemma n2z_tm_inj: 
+  forall  (srt : sig_sorts N.sig) (c : ctx N.sig) (v : valu N.sig N.fm_model c)
+          (t t' : FirstOrder.tm N.sig c srt),
     interp_tm v t = interp_tm v t' <->
-    interp_tm
-      (fmap_valu N.sig sig n2z_sort N.fm_model fm_model (@n2z_mv) v)
-      (fmap_tm N.sig sig n2z_sort n2z_arr (@n2z_fun) (@n2z_fun_arrs) t) =
-    interp_tm
-      (fmap_valu N.sig sig n2z_sort N.fm_model fm_model (@n2z_mv) v)
-      (fmap_tm N.sig sig n2z_sort n2z_arr (@n2z_fun) (@n2z_fun_arrs) t').
+    interp_tm (fmap_valu N.sig sig N.fm_model fm_model n2z_func v)
+      (fmap_tm N.sig sig N.fm_model fm_model n2z_func (@n2z_fun_arrs) t) =
+    interp_tm (fmap_valu N.sig sig N.fm_model fm_model n2z_func v)
+      (fmap_tm N.sig sig N.fm_model fm_model n2z_func (@n2z_fun_arrs) t').
   Proof.
     intros.
     dependent induction t using tm_ind';
     dependent destruction t';
     simpl.
-    - inversion v0; subst;
-      dependent destruction v;
-      autorewrite with interp_tm.
+    - admit.
+    - admit.
+    - admit.
+    - 
+      (* dependent inversion srt. 
+      dependent inversion s.
+      destruct s eqn:?.
+      2: {
+        autorewrite with fmap_tm.
+        autorewrite with interp_tm.
+        simpl.
+        autorewrite with n2z_fun.
+        autorewrite with mod_fns.
+        split; intros; exfalso.
+        simple inversion H0.
+        inversion_sigma.
+        inversion H2.
 
-      autorewrite with fmap_valu.
-      unfold @n2
-      simpl.
+        dependent H0.
 
-      inversion v;  *)
+        Set Printing All.
+        destruct nat.
+        inversion H2.
+        inversion H5.
+        congruence.
+      }
+      + split; intros.
+        autorewrite with fmap_tm.
+        simpl.
+        autorewrite with n2z_fun.
+        autorewrite with interp_tm in *.
+        autorewrite with mod_fns in *.
 
-  
+        inversion s.
+        subst args0.
+        subst srt.
+        destruct t.
+        dependent destruction s.
+        inversion s.
+        inversion t.
+        induction s.
+        inversion s.
+        dependent destruction s.
+        dependent induction s.
+        
+        dependent destruction s.
+      inversion s.
+
+      inversion s. *)
+  Admitted.
+
+  Lemma n2z_fmap_forall_equi : 
+  forall  (srt : sig_sorts N.sig) (c : ctx N.sig) (v : valu N.sig N.fm_model c)
+          (f : FirstOrder.fm N.sig (CSnoc N.sig c srt)),
+    (forall vA : FirstOrder.mod_sorts N.sig N.fm_model srt,
+      interp_fm
+        (VSnoc sig fm_model (fmap_sorts n2z_func srt) (fmap_ctx' c)
+            (fmap_mv n2z_func srt vA)
+            (fmap_valu N.sig sig N.fm_model fm_model n2z_func v))
+        (fmap_fm N.sig sig N.fm_model fm_model n2z_func 
+            (@n2z_fun_arrs) (@n2z_rel_arrs) (@n2z_forall_op) f)) <->
+    (forall vB : FirstOrder.mod_sorts sig fm_model (fmap_sorts n2z_func srt),
+      interp_fm
+        (VSnoc sig fm_model (fmap_sorts n2z_func srt) (fmap_ctx' c) vB
+            (fmap_valu N.sig sig N.fm_model fm_model n2z_func v))
+        (n2z_forall_op
+            (fmap_fm N.sig sig N.fm_model fm_model n2z_func 
+              (@n2z_fun_arrs) (@n2z_rel_arrs) (@n2z_forall_op) f))).
+  Proof.
+    intros.
+  Admitted.
+
   Program Definition n2z_wf : functor_wf _ _ _ _ n2z_func (@n2z_fun_arrs) (@n2z_rel_arrs) (@n2z_forall_op) := {|
-    interp_tm_inj := _;
-    fmap_rel_equi := _;
-    interp_fmap_forall_equi := _;
+    interp_tm_inj := n2z_tm_inj;
+    fmap_rel_equi := ltac:(intros; inversion r);
+    interp_fmap_forall_equi := n2z_fmap_forall_equi;
   |}.
-  Admit Obligations.
 
   Lemma n2z_corr: 
     forall (c : ctx N.sig) (v : valu N.sig N.fm_model c) (f : FirstOrder.fm N.sig c),

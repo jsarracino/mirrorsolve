@@ -9,11 +9,14 @@ Import ListNotations.
 Import HListNotations.
 
 Require Import Coq.ZArith.BinInt.
+Set Universe Polymorphism.
 
 Section NFOL.
   Inductive sorts: Set :=
   | NS
   | BS.
+
+  Scheme Equality for sorts.
 
   Inductive funs: arity sorts -> sorts -> Type :=
   | NLit: forall (n: nat), funs [] NS

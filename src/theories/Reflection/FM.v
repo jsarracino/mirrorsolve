@@ -5,13 +5,14 @@ Require Import Coq.Lists.List.
 Require Import MirrorSolve.FirstOrder.
 
 Require Import MetaCoq.Template.All.
-Require Import MetaCoq.Template.Checker.
+Require Import MirrorSolve.Reflection.Core.
+Set Universe Polymorphism.
 
 Section ReflectFM.
   Variable (s: signature).
   Variable (m: model s).
 
-  Variable (reflect_t2tm : forall c, term -> option ({srt & (tm s c srt)})).
+  Variable (reflect_t2tm : forall c, term -> list (option ({srt & (tm s c srt)})) -> option ({srt & (tm s c srt)})).
   Variable (reflect_ind2srt : inductive -> option (sig_sorts s)).
 
   Variable (sort_eq_dec: EquivDec.EqDec (sig_sorts s) eq).
@@ -35,10 +36,7 @@ Section ReflectFM.
       end;
     mk_var CEmp _ := None.
 
-  Definition eq_term (l r: term) : bool := 
-    @eq_term config.default_checker_flags init_graph l r.
-
-  Definition reflect_t2tm' (c: ctx s) (t: term) : option ({srt & tm s c srt}) :=  
+  Fixpoint reflect_t2tm' (c: ctx s) (t: term) : option ({srt & tm s c srt}) :=  
     match t with 
     | tRel n => 
       match mk_var c n with 
@@ -46,7 +44,8 @@ Section ReflectFM.
         Some (existT _ srt (TVar v))
       | None => None
       end
-    | _ => reflect_t2tm c t
+    | tApp f es => reflect_t2tm c t (map (reflect_t2tm' c) es)
+    | _ => None
     end.
 
   Obligation Tactic := intros.

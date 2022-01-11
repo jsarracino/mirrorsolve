@@ -148,6 +148,7 @@ Definition test' : (FirstOrder.fm N.sig (CEmp N.sig)).
 Defined.
 
 MetaCoq Quote Definition test_2 := (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
+
 Definition test_2' : (FirstOrder.fm N.sig (CEmp N.sig)).
   set (foo := reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (CEmp _) 0 test_2).
   vm_compute in foo.
@@ -155,6 +156,8 @@ Definition test_2' : (FirstOrder.fm N.sig (CEmp N.sig)).
   | _ := Some ?X |- _ => exact X
   end.
 Defined.
+
+Print test_2'.
 
 Declare ML Module "mirrorsolve".
 
@@ -169,9 +172,10 @@ RegisterSMTFun Z.Mul "*" 2.
 RegisterSMTBuiltin Z.BLit BoolLit.
 RegisterSMTBuiltin Z.ZLit IntLit.
 
+
   (* forall n m, n <> 0 -> m * m = 2 * n * n -> m < 2 * n
    *)
-
+(* 
 Lemma nat_square_decreasing : 
   interp_fm (sig := N.sig) (VEmp _ N.fm_model) (FForall (sig :=  N.sig) NS (FForall (sig :=  N.sig) NS (
     FImpl (FNeg _ (FEq 
@@ -205,11 +209,24 @@ Proof.
   | |- ?G => 
     check_interp_pos G; admit
   end.
-Admitted.
+Admitted. *)
 
 Lemma nat_square_decreasing' : 
   interp_fm (sig := N.sig) (VEmp _ N.fm_model) test_2'.
 Proof.
+  unfold test_2'.
+  repeat (
+    intros || 
+    autorewrite with interp_tm in * ||
+    autorewrite with mod_fns in * ||
+    autorewrite with interp_fm in * 
+  ).
+  autorewrite with find in H.
+  autorewrite with find in H0.
+  autorewrite with find.
+  Restart.
+
+  unfold test_2'.
   eapply n2z_corr.
   match goal with 
   | |- interp_fm ?v ?f => 

@@ -129,8 +129,9 @@ Section N2Z.
     - admit.
     - admit.
     - 
-      (* dependent inversion srt. 
-      dependent inversion s.
+      (* 
+      destruct srt. 
+      dependent destruction s.
       destruct s eqn:?.
       2: {
         autorewrite with fmap_tm.

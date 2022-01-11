@@ -103,7 +103,7 @@ Section ReflectFM.
       | tProd ba_name pre pst => 
         match ba_name.(binder_name) with 
         | nAnon => 
-          match reflect_t2fm c (S acc) pre, reflect_t2fm c (S acc) pst with 
+          match reflect_t2fm c acc pre, reflect_t2fm c (S acc) pst with 
           | Some el, Some er => Some (FImpl el er)
           | _, _ => None
           end

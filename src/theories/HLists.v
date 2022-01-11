@@ -43,18 +43,18 @@ Module HList.
              (pf: List.In x ks)
              (e: t B ks)
     : B x :=
-    { get x in_pf (HCons a b rest) :=
-        match A_eq_dec x a with
-        | left pf => eq_rect_r B b pf
-        | right pf' =>
-          let rest_pf :=
-              match in_pf with
-              | or_introl eq_pf => False_ind _ (pf' (eq_sym eq_pf))
-              | or_intror rest_pf => rest_pf
-              end
-          in
-          get x rest_pf rest
-        end }.
+    get x in_pf (@HCons _ a b rest) :=
+      match A_eq_dec x a with
+      | left pf => eq_rect_r B b pf
+      | right pf' =>
+        let rest_pf :=
+          match in_pf with
+          | or_introl eq_pf => False_ind _ (pf' (eq_sym eq_pf))
+          | or_intror rest_pf => rest_pf
+          end
+        in
+        get x rest_pf rest
+      end.
 
   Equations bind
              {A B}
@@ -65,18 +65,18 @@ Module HList.
              (pf: List.In x ks)
              (e: t B ks)
     : t B ks :=
-    { bind x v in_pf (HCons a b rest) :=
-        match A_eq_dec x a with
-        | left pf => HCons a (eq_rect _ B v _ pf) rest
-        | right pf' =>
-          let rest_pf :=
-              match in_pf with
-              | or_introl eq_pf => False_ind _ (pf' (eq_sym eq_pf))
-              | or_intror rest_pf => rest_pf
-              end
-          in
+    bind x v in_pf (@HCons _ a b rest) :=
+      match A_eq_dec x a with
+      | left pf => HCons a (eq_rect _ B v _ pf) rest
+      | right pf' =>
+        let rest_pf :=
+          match in_pf with
+          | or_introl eq_pf => False_ind _ (pf' (eq_sym eq_pf))
+          | or_intror rest_pf => rest_pf
+          end
+        in
           HCons a b (bind x v rest_pf rest)
-        end }.
+      end.
 
   Lemma get_extensionality
         {A B}

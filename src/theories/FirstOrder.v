@@ -332,7 +332,7 @@ Section FOL.
 
   Equations reindex_tm {c c': ctx} {sort: sig.(sig_sorts)} (t: tm c' sort) : tm (app_ctx c c') sort := {
     reindex_tm (TVar _ _ v) := TVar _ _ (reindex_var v);
-    reindex_tm (TFun _ _ _ f args) := TFun _ _ _ f (reindex_tms args)
+    reindex_tm (TFun _ _ _ f args') := TFun _ _ _ f (reindex_tms args')
   } where reindex_tms {c c':ctx} {sorts: list sig.(sig_sorts)} (ts: HList.t (tm c') sorts) : HList.t (tm (app_ctx c c')) sorts := {
     reindex_tms hnil := hnil;
     reindex_tms (t ::: ts) := reindex_tm t ::: reindex_tms ts
@@ -349,8 +349,8 @@ Section FOL.
     : tm (app_ctx c1 c2) sort
     by struct t :=
     { weaken_tm _ _ c2 (TVar _ _ v) := TVar _ _ (weaken_var c2 v);
-      weaken_tm _ _ c2 (TFun _ _ _ f args) :=
-        TFun _ _ _ f (weaken_tms _ _ c2 args) }
+      weaken_tm _ _ c2 (TFun _ _ _ f args') :=
+        TFun _ _ _ f (weaken_tms _ _ c2 args') }
   where weaken_tms (sorts: list sig.(sig_sorts))
        (c1: ctx) (c2: ctx) (ts: HList.t (tm c1) sorts)
         : HList.t (tm (app_ctx c1 c2)) sorts
@@ -433,7 +433,7 @@ Section FOL.
     (t: tm c s)
     : tm (CSnoc c s') s := {
     tm_cons (TVar _ _ v) := TVar _ _ (VThere _ _ _ v);
-    tm_cons (TFun _ _ _ fn args) := TFun _ _ _ fn (tms_cons args)
+    tm_cons (TFun _ _ _ fn args') := TFun _ _ _ fn (tms_cons args')
   } where tms_cons {c s' s}
     (ts: HList.t (tm c) s)
     : HList.t (tm (CSnoc c s')) s := {

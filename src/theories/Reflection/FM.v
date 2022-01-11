@@ -17,13 +17,6 @@ Section ReflectFM.
 
   Variable (sort_eq_dec: EquivDec.EqDec (sig_sorts s) eq).
 
-  MetaCoq Quote Definition c_True := True.
-  MetaCoq Quote Definition c_False := False.
-  MetaCoq Quote Definition c_eq := @eq.
-  MetaCoq Quote Definition c_not := @not.
-  MetaCoq Quote Definition c_or := @or.
-  MetaCoq Quote Definition c_and := @and.
-
   Equations mk_var (c: ctx s) (n: nat) : option ({srt & var s c srt}) by struct n := 
     mk_var (CSnoc c' srt) 0 := Some (existT _ srt (VHere _ _ srt));
     mk_var (CSnoc c' srt) (S n') := 
@@ -36,21 +29,28 @@ Section ReflectFM.
       end;
     mk_var CEmp _ := None.
 
-  Fixpoint reflect_t2tm' (c: ctx s) (t: term) : option ({srt & tm s c srt}) :=  
+  MetaCoq Quote Definition c_True := True.
+  MetaCoq Quote Definition c_False := False.
+  MetaCoq Quote Definition c_eq := @eq.
+  MetaCoq Quote Definition c_not := @not.
+  MetaCoq Quote Definition c_or := @or.
+  MetaCoq Quote Definition c_and := @and.
+
+  Fixpoint reflect_t2tm' (c: ctx s) (acc: nat) (t: term) : option ({srt & tm s c srt}) :=  
     match t with 
     | tRel n => 
-      match mk_var c n with 
+      match mk_var c (n - acc) with 
       | Some (existT srt v) => 
         Some (existT _ srt (TVar v))
       | None => None
       end
-    | tApp f es => reflect_t2tm c t (map (reflect_t2tm' c) es)
-    | _ => None
+    | tApp f es => reflect_t2tm c t (map (reflect_t2tm' c acc) es)
+    | _ => reflect_t2tm c t []
     end.
 
   Obligation Tactic := intros.
-  Equations reflect_t2fm (c: ctx s) (t: term) : option (fm _ c) := 
-    reflect_t2fm c t := 
+  Equations reflect_t2fm (c: ctx s) (anon_acc: nat) (t: term) : option (fm _ c) by struct t := 
+    reflect_t2fm c acc t := 
       if eq_term t c_True then Some FTrue else 
       if eq_term t c_False then Some FFalse else
       match t with
@@ -58,7 +58,7 @@ Section ReflectFM.
         if eq_term f c_eq then 
           match es with 
           | _ :: tl :: tr :: _ => 
-            match reflect_t2tm' c tl, reflect_t2tm' c tr with 
+            match reflect_t2tm' c acc tl, reflect_t2tm' c acc tr with 
             | Some l, Some r => 
               let (sl, el) := l in 
               let (sr, er) := r in 
@@ -74,7 +74,7 @@ Section ReflectFM.
         else if eq_term f c_or then 
           match es with 
           | tl :: tr :: _ => 
-            match reflect_t2fm c tl, reflect_t2fm c tr with 
+            match reflect_t2fm c acc tl, reflect_t2fm c acc tr with 
             | Some l, Some r => Some (@FOr _ c l r)
             | _, _ => None
             end
@@ -83,7 +83,7 @@ Section ReflectFM.
         else if eq_term f c_and then 
           match es with 
           | tl :: tr :: _ => 
-            match reflect_t2fm c tl, reflect_t2fm c tr with 
+            match reflect_t2fm c acc tl, reflect_t2fm c acc tr with 
             | Some l, Some r => Some (@FAnd _ c l r)
             | _, _ => None
             end
@@ -92,7 +92,7 @@ Section ReflectFM.
         else if eq_term f c_not then 
           match es with 
           | x :: _ => 
-            match reflect_t2fm c x with 
+            match reflect_t2fm c acc x with 
             | Some x' => Some (FNeg _ x')
             | None => None
             end
@@ -103,7 +103,7 @@ Section ReflectFM.
       | tProd ba_name pre pst => 
         match ba_name.(binder_name) with 
         | nAnon => 
-          match reflect_t2fm c pre, reflect_t2fm c pst with 
+          match reflect_t2fm c (S acc) pre, reflect_t2fm c (S acc) pst with 
           | Some el, Some er => Some (FImpl el er)
           | _, _ => None
           end
@@ -114,7 +114,7 @@ Section ReflectFM.
             match srt with 
             | Some srt => 
               let c' := CSnoc _ c srt in
-              let inner := reflect_t2fm c' pst in 
+              let inner := reflect_t2fm c' acc pst in 
               match inner with 
               | Some fm => Some (FForall _ fm)
               | None => None

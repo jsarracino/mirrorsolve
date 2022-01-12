@@ -35,6 +35,7 @@ Module HList.
         | HCons a x hlt => P a x /\ all_rec _ hlt
       end.
 
+
   Equations get
              {A B}
              `{A_eq_dec: EquivDec.EqDec A eq}
@@ -43,7 +44,7 @@ Module HList.
              (pf: List.In x ks)
              (e: t B ks)
     : B x :=
-    get x in_pf (@HCons _ a b rest) :=
+    get x in_pf (@HCons a _ b rest) :=
       match A_eq_dec x a with
       | left pf => eq_rect_r B b pf
       | right pf' =>
@@ -65,7 +66,7 @@ Module HList.
              (pf: List.In x ks)
              (e: t B ks)
     : t B ks :=
-    bind x v in_pf (@HCons _ a b rest) :=
+    bind x v in_pf (@HCons a _ b rest) :=
       match A_eq_dec x a with
       | left pf => HCons a (eq_rect _ B v _ pf) rest
       | right pf' =>

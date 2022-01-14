@@ -147,7 +147,8 @@ Definition test' : (FirstOrder.fm N.sig (CEmp N.sig)).
   end.
 Defined.
 
-MetaCoq Quote Definition test_2 := (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
+MetaCoq Quote Definition test_2 := 
+  (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
 
 Definition test_2' : (FirstOrder.fm N.sig (CEmp N.sig)).
   set (foo := reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (CEmp _) 0 test_2).
@@ -156,8 +157,6 @@ Definition test_2' : (FirstOrder.fm N.sig (CEmp N.sig)).
   | _ := Some ?X |- _ => exact X
   end.
 Defined.
-
-Print test_2'.
 
 Declare ML Module "mirrorsolve".
 
@@ -244,4 +243,112 @@ Proof.
   | |- ?G => 
     check_interp_pos G; admit
   end.
+Admitted.
+
+Require Import Coq.Program.Equality.
+
+Definition reify_tm (t: term) : option ({T & T}) := Some (existT _ _ 0).
+
+Fixpoint reify_fm (t: term) : option Prop := 
+  if eq_term t c_True then Some True
+  else if eq_term t c_False then Some False 
+  else
+    match t with
+    | tApp f es => 
+      if eq_term f c_eq then 
+        match es with 
+        | _ :: tl :: tr :: _ => 
+          match reify_tm tl, reify_tm tr with 
+          | Some l, Some r => 
+            let (sl, el) := l in 
+            let (sr, er) := r in 
+              Some (el ~= er)
+          | _, _ => None
+          end
+        | _ => None
+        end
+      else if eq_term f c_or then 
+        match es with 
+        | tl :: tr :: _ => 
+          match reify_fm tl, reify_fm tr with 
+          | Some l, Some r => Some (l \/ r)
+          | _, _ => None
+          end
+        | _ => None
+        end
+      else if eq_term f c_and then 
+        match es with 
+        | tl :: tr :: _ => 
+          match reify_fm tl, reify_fm tr with 
+          | Some l, Some r => Some (l /\ r)
+          | _, _ => None
+          end
+        | _ => None
+        end
+      else if eq_term f c_not then 
+        match es with 
+        | x :: _ => 
+          match reify_fm x with 
+          | Some x' => Some (~ x')
+          | None => None
+          end
+        | _ => None
+        end
+      else
+        None
+    | tProd ba_name pre pst => 
+      match ba_name.(binder_name) with 
+      | nAnon => 
+        match reify_fm pre, reify_fm pst with 
+        | Some el, Some er => Some (el -> er)
+        | _, _ => None
+        end
+      | nNamed _ => None
+      end
+    | _ => None
+    end.
+
+Check reflect_t2fm.
+
+Lemma reify_interp :
+  forall t p fm,
+    reify_fm t = Some p -> 
+    reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (CEmp _) 0 t = Some fm -> 
+    (p <-> interp_fm (VEmp _ N.fm_model) fm).
+Admitted.
+
+MetaCoq Quote Definition test_reify := (0 = 0 -> True).
+
+Goal 0 ~= 0 -> True.
+Proof.
+  match goal with 
+  | |- ?G => 
+    eapply reify_interp with (p := G) (t := test_reify)
+  end.
+  - vm_compute.
+    exact eq_refl.
+  - 
+    set (foo := reflect_t2fm _ _ _ _ _ _ _).
+    vm_compute in foo.
+    subst.
+    exact eq_refl.
+  -
+
+    eapply n2z_corr.
+    match goal with 
+    | |- interp_fm ?v ?f => 
+      set (v' := v);
+      set (f' := f)
+    end.
+    vm_compute in f'.
+    subst v'.
+
+    unfold n2z_func.
+    autorewrite with fmap_valu.
+    subst f'.
+
+    match goal with 
+    | |- ?G => 
+      check_interp_pos G; admit
+    end.
 Admitted.

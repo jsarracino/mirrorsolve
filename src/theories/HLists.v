@@ -1,6 +1,9 @@
 From Equations Require Import Equations.
 Require Import Coq.Program.Equality.
 Require Import Coq.Classes.EquivDec.
+
+Set Universe Polymorphism.
+
 (* CPDT style heterogeneous lists. *)
 Module HList.
   Set Implicit Arguments.

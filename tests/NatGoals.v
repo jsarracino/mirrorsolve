@@ -57,8 +57,8 @@ Fixpoint term2nat (t: term) : option nat :=
     end.
 
 Obligation Tactic := intros.
-Equations reflect_t2tm {c: ctx N.sig} (t: term) (r_args: list (option ({srt & N.tm c srt}))) : option ({srt & N.tm c srt}) := 
-  reflect_t2tm (tApp f es) r_args := 
+Equations extract_t2tm {c: ctx N.sig} (t: term) (r_args: list (option ({srt & N.tm c srt}))) : option ({srt & N.tm c srt}) := 
+  extract_t2tm (tApp f es) r_args := 
     match r_args with 
     | [Some l; Some r] => 
       let (sl, tl) := l in
@@ -93,7 +93,7 @@ Equations reflect_t2tm {c: ctx N.sig} (t: term) (r_args: list (option ({srt & N.
       | None => None
       end
     end;
-  reflect_t2tm (tConstruct ind i x) _ := 
+  extract_t2tm (tConstruct ind i x) _ := 
     let t := (tConstruct ind i x) in 
     match term2bool t with 
     | Some b => Some (existT _ _ (TFun N.sig (N.BLit b) hnil))
@@ -103,7 +103,7 @@ Equations reflect_t2tm {c: ctx N.sig} (t: term) (r_args: list (option ({srt & N.
       | None => None
       end
     end;
-  reflect_t2tm _ _ := None.
+  extract_t2tm _ _ := None.
 
 MetaCoq Quote Definition nat_ind := (nat).
 MetaCoq Quote Definition bool_ind := (bool).
@@ -136,7 +136,7 @@ Definition ind2srt (i: inductive) : option N.sorts :=
 
 MetaCoq Quote Definition test := (forall (n: nat), true = true).
 Definition test' : (FirstOrder.fm N.sig (SLNil _)).
-  set (foo := reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 test).
+  set (foo := extract_t2fm N.sig (@extract_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 test).
   vm_compute in foo.
   match goal with 
   | _ := Some ?X |- _ => exact X
@@ -147,7 +147,7 @@ MetaCoq Quote Definition test_2 :=
   (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
 
 Definition test_2' : (FirstOrder.fm N.sig (SLNil _)).
-  set (foo := reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 test_2).
+  set (foo := extract_t2fm N.sig (@extract_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 test_2).
   vm_compute in foo.
   match goal with 
   | _ := Some ?X |- _ => exact X
@@ -170,76 +170,6 @@ RegisterSMTBuiltin Z.ZLit IntLit.
 
   (* forall n m, n <> 0 -> m * m = 2 * n * n -> m < 2 * n
    *)
-(* 
-Lemma nat_square_decreasing : 
-  interp_fm (sig := N.sig) (VEmp _ N.fm_model) (FForall (sig :=  N.sig) NS (FForall (sig :=  N.sig) NS (
-    FImpl (FNeg _ (FEq 
-      (TVar (VThere _ _ _ _ (VHere _ _ _)))
-      (nlit 0)
-      ))
-    (FImpl (FEq 
-      (bop N.Mul (TVar (VHere _ _ _)) (TVar ((VHere _ _ _))))
-      (bop N.Mul (nlit 2) (bop N.Mul (TVar (VThere _ _ _ _ (VHere _ _ _))) (TVar (VThere _ _ _ _ (VHere _ _ _))))))
-    (FEq tru
-      (bop N.Lt (TVar (VHere _ _ _)) (bop N.Mul (nlit 2) (TVar (VThere _ _ _ _ (VHere _ _ _)))))
-    ))
-  ))).
-Proof.
-  eapply n2z_corr.
-  match goal with 
-  | |- interp_fm ?v ?f => 
-    set (v' := v);
-    set (f' := f)
-  end.
-  vm_compute in f'.
-  
-  
-  subst v'.
-
-  unfold n2z_func.
-  autorewrite with fmap_valu.
-  subst f'.
-
-  match goal with 
-  | |- ?G => 
-    check_interp_pos G; admit
-  end.
-Admitted. *)
-
-Lemma nat_square_decreasing' : 
-  interp_fm (sig := N.sig) (VEmp _ N.fm_model) test_2'.
-Proof.
-  unfold test_2'.
-  repeat (
-    intros || 
-    autorewrite with interp_tm in * ||
-    autorewrite with mod_fns in * ||
-    autorewrite with interp_fm in * 
-  ).
-  autorewrite with find in H.
-  autorewrite with find in H0.
-  autorewrite with find.
-  Restart.
-
-  unfold test_2'.
-  eapply n2z_corr.
-  match goal with 
-  | |- interp_fm ?v ?f => 
-    set (v' := v);
-    set (f' := f)
-  end.
-  vm_compute in f'.
-  subst v'.
-
-  unfold n2z_func.
-  autorewrite with fmap_valu.
-  subst f'.
-
-  match goal with 
-  | |- ?G => 
-    check_interp_pos G; admit
-  end.
-Admitted.
 
 Require Import Coq.Program.Equality.
 
@@ -247,16 +177,14 @@ Inductive reif_ty := | TNat | TBool.
 
 Scheme Equality for reif_ty.
 
-Check reif_ty_eq_dec.
-
 Definition interp_rty rty := 
   match rty with 
   | TNat => nat
   | TBool => bool
   end.
 
-Equations parse_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : option ({ty & interp_rty ty}) := 
-  parse_t2nt (tApp f es) r_args := 
+Equations reify_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : option ({ty & interp_rty ty}) := 
+  reify_t2nt (tApp f es) r_args := 
     match r_args with 
     | [Some l; Some r] => 
       let (sl, tl) := l in
@@ -291,7 +219,7 @@ Equations parse_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : op
       | None => None
       end
     end;
-  parse_t2nt (tConstruct ind i x) _ := 
+  reify_t2nt (tConstruct ind i x) _ := 
     let t := (tConstruct ind i x) in 
     match term2bool t with 
     | Some b => Some (existT _ TBool b)
@@ -301,18 +229,18 @@ Equations parse_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : op
       | None => None
       end
     end;
-  parse_t2nt _ _ := None.
+  reify_t2nt _ _ := None.
 
-Definition parse_i2nty (i: inductive) : option reif_ty := 
+Definition reify_i2nty (i: inductive) : option reif_ty := 
   if eq_inductive i nat_ind' then Some TNat
   else if eq_inductive i bool_ind' then Some TBool
   else None.
 
 
-Theorem parse_reflect :
+Theorem reify_extract :
   forall t p (p': Prop) fm,
-    parse_t2fm reif_ty interp_rty reif_ty_eq_dec parse_t2nt parse_i2nty (SLNil _) 0 t = Some p -> 
-    reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 t = Some fm -> 
+    reify_t2fm reif_ty interp_rty reif_ty_eq_dec reify_t2nt reify_i2nty (SLNil _) 0 t = Some p -> 
+    extract_t2fm N.sig (@extract_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 t = Some fm -> 
     (p <-> p') ->
     (p' <-> interp_fm (VEmp _ N.fm_model) fm).
 Admitted.
@@ -321,12 +249,12 @@ Goal (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
 Proof.
   match goal with 
   | |- ?G => 
-    eapply parse_reflect with (p' := G) (t := test_2)
+    eapply reify_extract with (p' := G) (t := test_2)
   end.
-  - set (x := parse_t2fm _ _ _ _ _ _ _ _).
+  - set (x := reify_t2fm _ _ _ _ _ _ _ _).
     simpl in x.
-    Transparent parse_t2nt.
-    unfold parse_t2nt in x.
+    Transparent reify_t2nt.
+    unfold reify_t2nt in x.
     Transparent term2bool.
     Transparent term2nat.
     simpl in x.
@@ -334,7 +262,7 @@ Proof.
     simpl in x.
     exact eq_refl.
   - 
-    set (foo := reflect_t2fm _ _ _ _ _ _ _).
+    set (foo := extract_t2fm _ _ _ _ _ _ _).
     vm_compute in foo.
     exact eq_refl.
   - split; 

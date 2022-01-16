@@ -43,7 +43,7 @@ Module HList.
              (pf: List.In x ks)
              (e: t B ks)
     : B x :=
-    get x in_pf (@HCons _ a b rest) :=
+    get x in_pf (@HCons a _ b rest) :=
       match A_eq_dec x a with
       | left pf => eq_rect_r B b pf
       | right pf' =>
@@ -65,7 +65,7 @@ Module HList.
              (pf: List.In x ks)
              (e: t B ks)
     : t B ks :=
-  bind x v in_pf (@HCons _ a b rest) :=
+  bind x v in_pf (@HCons a _ b rest) :=
     match A_eq_dec x a with
     | left pf => HCons a (eq_rect _ B v _ pf) rest
     | right pf' =>
@@ -147,3 +147,11 @@ Module HListNotations.
   Notation "x ::: xs" := (HList.HCons _ x xs) (at level 60, right associativity).
   Notation "'hnil'" := (HList.HNil _).
 End HListNotations.
+
+Section SnocList.
+  Variable (T: Type).
+  Inductive snoc_list: Type :=
+  | SLNil: snoc_list
+  | Snoc: snoc_list -> T -> snoc_list.
+  Derive NoConfusion for snoc_list.
+End SnocList.

@@ -96,5 +96,3 @@ Section ZFOL.
 
 
 End ZFOL.
-
-Check Neg.

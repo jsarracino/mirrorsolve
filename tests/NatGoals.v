@@ -63,33 +63,29 @@ Equations reflect_t2tm {c: ctx N.sig} (t: term) (r_args: list (option ({srt & N.
     | [Some l; Some r] => 
       let (sl, tl) := l in
       let (sr, tr) := r in 
-      match sl as sl' return (N.tm c sl' -> N.tm c sr -> option ({srt & N.tm c srt})) with
-      | NS => 
-        match sr as sr' return (N.tm c NS -> N.tm c sr' -> option ({srt & N.tm c srt})) with
-        | NS => fun tl' tr' => 
-          if eq_term f c_plus then 
-            Some (existT _ _ (TFun N.sig N.Plus (tl' ::: tr' ::: hnil)))
-          else if eq_term f c_times then 
-            Some (existT _ _ (TFun N.sig N.Mul (tl' ::: tr' ::: hnil)))
-          else if eq_term f c_sub then 
-            Some (existT _ _ (TFun N.sig N.Sub (tl' ::: tr' ::: hnil)))
-          else if eq_term f c_mod then 
-            Some (existT _ _ (TFun N.sig N.Mod (tl' ::: tr' ::: hnil)))
-          else if eq_term f c_div then 
-            Some (existT _ _ (TFun N.sig N.Div (tl' ::: tr' ::: hnil)))
-          else if eq_term f c_lte then 
-            Some (existT _ _ (TFun N.sig N.Lte (tl' ::: tr' ::: hnil)))
-          else if eq_term f c_lt then 
-            Some (existT _ _ (TFun N.sig N.Lt (tl' ::: tr' ::: hnil)))
-          (* else if eq_term f c_gte then 
-            Some (existT _ _ (TFun N.sig N.Gte (tl' ::: tr' ::: hnil)))
-          else if eq_term f c_gt then 
-            Some (existT _ _ (TFun N.sig N.Gt (tl' ::: tr' ::: hnil))) *)
-          else 
-            None
-        | _ => fun _ _ => None
-        end
-      | _ => fun _ _ => None
+      match sl as sl', sr as sr' return N.tm c sl' -> N.tm c sr' -> option ({srt & N.tm c srt}) with
+      | NS, NS => fun tl' tr' => 
+        if eq_term f c_plus then 
+          Some (existT _ _ (TFun N.sig N.Plus (tl' ::: tr' ::: hnil)))
+        else if eq_term f c_times then 
+          Some (existT _ _ (TFun N.sig N.Mul (tl' ::: tr' ::: hnil)))
+        else if eq_term f c_sub then 
+          Some (existT _ _ (TFun N.sig N.Sub (tl' ::: tr' ::: hnil)))
+        else if eq_term f c_mod then 
+          Some (existT _ _ (TFun N.sig N.Mod (tl' ::: tr' ::: hnil)))
+        else if eq_term f c_div then 
+          Some (existT _ _ (TFun N.sig N.Div (tl' ::: tr' ::: hnil)))
+        else if eq_term f c_lte then 
+          Some (existT _ _ (TFun N.sig N.Lte (tl' ::: tr' ::: hnil)))
+        else if eq_term f c_lt then 
+          Some (existT _ _ (TFun N.sig N.Lt (tl' ::: tr' ::: hnil)))
+        (* else if eq_term f c_gte then 
+          Some (existT _ _ (TFun N.sig N.Gte (tl' ::: tr' ::: hnil)))
+        else if eq_term f c_gt then 
+          Some (existT _ _ (TFun N.sig N.Gt (tl' ::: tr' ::: hnil))) *)
+        else 
+          None
+      | _, _ => fun _ _ => None
       end tl tr
     | _ => 
       match term2nat (tApp f es) with 
@@ -139,8 +135,8 @@ Definition ind2srt (i: inductive) : option N.sorts :=
   else None.
 
 MetaCoq Quote Definition test := (forall (n: nat), true = true).
-Definition test' : (FirstOrder.fm N.sig (CEmp N.sig)).
-  set (foo := reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (CEmp _) 0 test).
+Definition test' : (FirstOrder.fm N.sig (SLNil _)).
+  set (foo := reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 test).
   vm_compute in foo.
   match goal with 
   | _ := Some ?X |- _ => exact X
@@ -150,8 +146,8 @@ Defined.
 MetaCoq Quote Definition test_2 := 
   (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
 
-Definition test_2' : (FirstOrder.fm N.sig (CEmp N.sig)).
-  set (foo := reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (CEmp _) 0 test_2).
+Definition test_2' : (FirstOrder.fm N.sig (SLNil _)).
+  set (foo := reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 test_2).
   vm_compute in foo.
   match goal with 
   | _ := Some ?X |- _ => exact X
@@ -247,92 +243,138 @@ Admitted.
 
 Require Import Coq.Program.Equality.
 
-Definition reify_tm (t: term) : option ({T & T}) := Some (existT _ _ 0).
+Inductive reif_ty := | TNat | TBool.
 
-Fixpoint reify_fm (t: term) : option Prop := 
-  if eq_term t c_True then Some True
-  else if eq_term t c_False then Some False 
-  else
-    match t with
-    | tApp f es => 
-      if eq_term f c_eq then 
-        match es with 
-        | _ :: tl :: tr :: _ => 
-          match reify_tm tl, reify_tm tr with 
-          | Some l, Some r => 
-            let (sl, el) := l in 
-            let (sr, er) := r in 
-              Some (el ~= er)
-          | _, _ => None
-          end
-        | _ => None
-        end
-      else if eq_term f c_or then 
-        match es with 
-        | tl :: tr :: _ => 
-          match reify_fm tl, reify_fm tr with 
-          | Some l, Some r => Some (l \/ r)
-          | _, _ => None
-          end
-        | _ => None
-        end
-      else if eq_term f c_and then 
-        match es with 
-        | tl :: tr :: _ => 
-          match reify_fm tl, reify_fm tr with 
-          | Some l, Some r => Some (l /\ r)
-          | _, _ => None
-          end
-        | _ => None
-        end
-      else if eq_term f c_not then 
-        match es with 
-        | x :: _ => 
-          match reify_fm x with 
-          | Some x' => Some (~ x')
-          | None => None
-          end
-        | _ => None
-        end
-      else
-        None
-    | tProd ba_name pre pst => 
-      match ba_name.(binder_name) with 
-      | nAnon => 
-        match reify_fm pre, reify_fm pst with 
-        | Some el, Some er => Some (el -> er)
-        | _, _ => None
-        end
-      | nNamed _ => None
+Scheme Equality for reif_ty.
+
+Check reif_ty_eq_dec.
+
+Definition interp_rty rty := 
+  match rty with 
+  | TNat => nat
+  | TBool => bool
+  end.
+
+Equations parse_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : option ({ty & interp_rty ty}) := 
+  parse_t2nt (tApp f es) r_args := 
+    match r_args with 
+    | [Some l; Some r] => 
+      let (sl, tl) := l in
+      let (sr, tr) := r in 
+      match sl as sl', sr as sr' return interp_rty sl' -> interp_rty sr' -> option ({ty & interp_rty ty}) with 
+      | TNat, TNat => fun tl' tr' =>
+        if eq_term f c_plus then 
+          Some (existT _ TNat (tl' + tr'))
+        else if eq_term f c_times then 
+          Some (existT _ TNat (tl' * tr'))
+        else if eq_term f c_sub then 
+          Some (existT _ TNat (tl' - tr'))
+        else if eq_term f c_mod then 
+          Some (existT _ TNat (Nat.modulo tl' tr'))
+        else if eq_term f c_div then 
+          Some (existT _ TNat (Nat.div tl' tr'))
+        else if eq_term f c_lte then 
+          Some (existT _ TBool (Nat.leb tl' tr'))
+        else if eq_term f c_lt then 
+          Some (existT _ TBool (Nat.ltb tl' tr'))
+        (* else if eq_term f c_gte then 
+          Some (existT _ TNat (TFun N.sig N.Gte (tl' ::: tr' ::: hnil)))
+        else if eq_term f c_gt then 
+          Some (existT _ TNat (TFun N.sig N.Gt (tl' ::: tr' ::: hnil))) *)
+        else 
+          None
+      | _, _ => fun _ _ => None
+      end tl tr
+    | _ => 
+      match term2nat (tApp f es) with 
+      | Some n => Some (existT _ TNat n)
+      | None => None
       end
-    | _ => None
-    end.
+    end;
+  parse_t2nt (tConstruct ind i x) _ := 
+    let t := (tConstruct ind i x) in 
+    match term2bool t with 
+    | Some b => Some (existT _ TBool b)
+    | None =>
+      match term2nat t with 
+      | Some n => Some (existT _ TNat n)
+      | None => None
+      end
+    end;
+  parse_t2nt _ _ := None.
 
-Check reflect_t2fm.
+Definition parse_i2nty (i: inductive) : option reif_ty := 
+  if eq_inductive i nat_ind' then Some TNat
+  else if eq_inductive i bool_ind' then Some TBool
+  else None.
 
-Lemma reify_interp :
-  forall t p fm,
-    reify_fm t = Some p -> 
-    reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (CEmp _) 0 t = Some fm -> 
-    (p <-> interp_fm (VEmp _ N.fm_model) fm).
+
+Theorem parse_reflect :
+  forall t p (p': Prop) fm,
+    parse_t2fm reif_ty interp_rty reif_ty_eq_dec parse_t2nt parse_i2nty (SLNil _) 0 t = Some p -> 
+    reflect_t2fm N.sig (@reflect_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 t = Some fm -> 
+    (p <-> p') ->
+    (p' <-> interp_fm (VEmp _ N.fm_model) fm).
 Admitted.
 
-MetaCoq Quote Definition test_reify := (0 = 0 -> True).
-
-Goal 0 ~= 0 -> True.
+Goal (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
 Proof.
   match goal with 
   | |- ?G => 
-    eapply reify_interp with (p := G) (t := test_reify)
+    eapply parse_reflect with (p' := G) (t := test_2)
   end.
-  - vm_compute.
+  - set (x := parse_t2fm _ _ _ _ _ _ _ _).
+    simpl in x.
+    Transparent parse_t2nt.
+    unfold parse_t2nt in x.
+    Transparent term2bool.
+    Transparent term2nat.
+    simpl in x.
+    unfold eq_rect_r in x.
+    simpl in x.
     exact eq_refl.
   - 
     set (foo := reflect_t2fm _ _ _ _ _ _ _).
     vm_compute in foo.
-    subst.
     exact eq_refl.
-  -
+  - split; 
+    intros.
+    + 
+      specialize (H n).
+      destruct H.
+      destruct H.
+      assert (x = (
+        forall x : nat,
+        exists p' : Prop,
+      Some
+        (n <> 0 ->
+        x * x = (n + (n + 0)) * n ->
+        Nat.ltb x (n + (n + 0)) = true) =
+      Some p' /\ p')) by admit.
+      subst x.
+      
+      specialize (H2 m).
+      destruct H2.
+      assert (x = (n <> 0 ->
+      m * m = (n + (n + 0)) * n ->
+      Nat.ltb m (n + (n + 0)) = true)) by admit.
+      destruct H2.
+      subst x.
+      clear H.
+      clear H2.
+      eauto.
+    +
+      eexists.
+      intros.
+      eexists.
+      * exact eq_refl.
+      * 
+        intros.
+        eexists.
+        split; [exact eq_refl|].
+        intros.
+        eapply H; auto.
+  - 
 
     eapply n2z_corr.
     match goal with 

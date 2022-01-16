@@ -102,7 +102,7 @@ Section N2Z.
     : HList.t (FirstOrder.tm sig (fmap_ctx' c)) (n2z_arr arr) := 
   match rel with end.
 
-  Program Definition n2z_forall_op {c} {srt: sig_sorts N.sig} (f: FirstOrder.fm sig (fmap_ctx' (CSnoc N.sig c srt))) : FirstOrder.fm sig (fmap_ctx' (CSnoc N.sig c srt)) := 
+  Program Definition n2z_forall_op {c} {srt: sig_sorts N.sig} (f: FirstOrder.fm sig (fmap_ctx' (Snoc _ c srt))) : FirstOrder.fm sig (fmap_ctx' (Snoc _ c srt)) := 
     match srt with 
     | N.BS => f
     | N.NS => 
@@ -179,18 +179,18 @@ Section N2Z.
 
   Lemma n2z_fmap_forall_equi : 
   forall  (srt : sig_sorts N.sig) (c : ctx N.sig) (v : valu N.sig N.fm_model c)
-          (f : FirstOrder.fm N.sig (CSnoc N.sig c srt)),
+          (f : FirstOrder.fm N.sig (Snoc _ c srt)),
     (forall vA : FirstOrder.mod_sorts N.sig N.fm_model srt,
       interp_fm
         (VSnoc sig fm_model (fmap_sorts n2z_func srt) (fmap_ctx' c)
-            (fmap_mv n2z_func srt vA)
-            (fmap_valu N.sig sig N.fm_model fm_model n2z_func v))
+            (fmap_valu N.sig sig N.fm_model fm_model n2z_func v)
+            (fmap_mv n2z_func srt vA))
         (fmap_fm N.sig sig N.fm_model fm_model n2z_func 
             (@n2z_fun_arrs) (@n2z_rel_arrs) (@n2z_forall_op) f)) <->
     (forall vB : FirstOrder.mod_sorts sig fm_model (fmap_sorts n2z_func srt),
       interp_fm
-        (VSnoc sig fm_model (fmap_sorts n2z_func srt) (fmap_ctx' c) vB
-            (fmap_valu N.sig sig N.fm_model fm_model n2z_func v))
+        (VSnoc sig fm_model (fmap_sorts n2z_func srt) (fmap_ctx' c)
+            (fmap_valu N.sig sig N.fm_model fm_model n2z_func v) vB)
         (n2z_forall_op
             (fmap_fm N.sig sig N.fm_model fm_model n2z_func 
               (@n2z_fun_arrs) (@n2z_rel_arrs) (@n2z_forall_op) f))).

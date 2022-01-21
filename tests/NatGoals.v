@@ -236,14 +236,99 @@ Definition reify_i2nty (i: inductive) : option reif_ty :=
   else if eq_inductive i bool_ind' then Some TBool
   else None.
 
+Lemma some_prop: 
+  forall p p': Prop,
+  Some p = Some p' <-> 
+  p = p'.
+Proof.
+  intros.
+  split; intros; subst; trivial; inversion H; trivial.
+Qed.
 
-Theorem reify_extract :
-  forall t p (p': Prop) fm,
+Lemma iff_distribute:
+  forall a b c d : Prop,
+    (a <-> c) -> 
+    (b <-> d) -> 
+    ((a -> b) <-> (c -> d)).
+Proof.
+  intros.
+  erewrite H.
+  erewrite H0.
+  eapply iff_refl.
+Qed.
+
+
+
+Theorem reify_extract t:
+  forall (p p': Prop) fm,
     reify_t2fm reif_ty interp_rty reif_ty_eq_dec reify_t2nt reify_i2nty (SLNil _) 0 t = Some p -> 
     extract_t2fm N.sig (@extract_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 t = Some fm -> 
     (p <-> p') ->
     (p' <-> interp_fm (VEmp _ N.fm_model) fm).
-Admitted.
+Proof.
+
+  induction t; intros; try now (
+    simpl in H;
+    inversion H
+  ).
+  -
+    simpl in H.
+    simpl in H0.
+    destruct (binder_name na) eqn:?.
+    + simpl in *.
+      (* Notice that the recursion modifies the environment here. We need a stronger theorem that describes the translation environment as well. *)
+      assert (0 = 1) by admit. 
+      erewrite <- H2 in *.
+      clear H2.
+      erewrite <- H1 in *.
+      repeat match goal with 
+      | H: (match ?X with | _ => _ end) = _ |- _ => 
+        destruct X; [| inversion H]
+      end.
+      repeat match goal with 
+      | H: Some _ = Some _ |- _ => 
+        erewrite some_prop in H; subst
+      | H: Some _ = Some _ |- _ => 
+        inversion H; subst
+      end.
+      
+      (* clear H1. *)
+      clear H0.
+
+      autorewrite with interp_fm.
+      eapply iff_distribute.
+      * eapply IHt1; [exact eq_refl | |eapply iff_refl]; trivial.
+      * eapply IHt2; [exact eq_refl | |eapply iff_refl]; trivial.
+    + admit.
+  - admit.
+  - simpl in H.
+    simpl in H0.
+    destruct (eq_term _ _); [
+      inversion H;
+      inversion H0;
+      subst;
+      erewrite H1;
+      eapply iff_refl
+    |].
+    destruct (eq_term _ _); [
+      inversion H;
+      inversion H0;
+      subst;
+      erewrite H1;
+      eapply iff_refl
+    |].
+    inversion H.
+  - simpl in H.
+    simpl in H0.
+    destruct (eq_term _ _); [
+      inversion H;
+      inversion H0;
+      subst;
+      erewrite H1;
+      eapply iff_refl
+    |].
+    inversion H.
+Admitted. 
 
 Goal (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
 Proof.
@@ -268,42 +353,30 @@ Proof.
   - split; 
     intros.
     + 
-      specialize (H n).
-      destruct H.
-      destruct H.
-      assert (x = (
-        forall x : nat,
-        exists p' : Prop,
-      Some
-        (n <> 0 ->
-        x * x = (n + (n + 0)) * n ->
-        Nat.ltb x (n + (n + 0)) = true) =
-      Some p' /\ p')) by admit.
-      subst x.
-      
-      specialize (H2 m).
-      destruct H2.
-      assert (x = (n <> 0 ->
-      m * m = (n + (n + 0)) * n ->
-      Nat.ltb m (n + (n + 0)) = true)) by admit.
-      destruct H2.
-      subst x.
-      clear H.
-      clear H2.
-      eauto.
+      repeat match goal with 
+      | H: forall (_: ?T), exists _, _ |- _ =>
+        let v := fresh "v" in 
+        evar (v: T);
+        specialize (H v);
+        subst v
+      | H: _ /\ _ |- _ => 
+        destruct H
+      | H: exists _, _ |- _ => 
+        destruct H
+      | H: Some _ = Some _ |- _ => 
+        erewrite some_prop in H
+      | H: _ = ?X |- _ => subst X
+      end.
+      intuition.
     +
-      eexists.
-      intros.
-      eexists.
-      * exact eq_refl.
-      * 
-        intros.
-        eexists.
-        split; [exact eq_refl|].
-        intros.
-        eapply H; auto.
+      repeat match goal with
+      | |- exists _: Prop, _ => eexists
+      | |- _ /\ _ => split
+      | |- Some _ = Some _ => exact eq_refl
+      | |- _ => intros
+      end.
+      intuition.
   - 
-
     eapply n2z_corr.
     match goal with 
     | |- interp_fm ?v ?f => 

@@ -27,6 +27,9 @@ MetaCoq Quote Definition c_div := @Nat.div.
 MetaCoq Quote Definition c_mod := @Nat.modulo.
 MetaCoq Quote Definition c_lte := @Nat.leb.
 MetaCoq Quote Definition c_lt := @Nat.ltb.
+(* 
+MetaCoq Unquote Definition reif_lt := (c_lt).
+Print reif_lt. *)
 
 (* MetaCoq Quote Definition c_gte := @Nat.geb.
 MetaCoq Quote Definition c_gt := @Nat.gtb. *)
@@ -330,13 +333,16 @@ Proof.
     inversion H.
 Admitted. 
 
+MetaCoq Test Quote (let x := 2 in x).
+
 Goal (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
 Proof.
   match goal with 
   | |- ?G => 
     eapply reify_extract with (p' := G) (t := test_2)
   end.
-  - set (x := reify_t2fm _ _ _ _ _ _ _ _).
+  1: {
+  set (x := reify_t2fm _ _ _ _ _ _ _ _).
     simpl in x.
     Transparent reify_t2nt.
     unfold reify_t2nt in x.
@@ -346,10 +352,13 @@ Proof.
     unfold eq_rect_r in x.
     simpl in x.
     exact eq_refl.
-  - 
+  }
+  1: {
     set (foo := extract_t2fm _ _ _ _ _ _ _).
     vm_compute in foo.
     exact eq_refl.
+  }
+    
   - split; 
     intros.
     + 

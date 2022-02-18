@@ -112,6 +112,19 @@ Section N2Z.
       ) f
     end.
 
+  Lemma n2z_var_inj: 
+    forall  (srt : sig_sorts N.sig) (c : ctx N.sig) (v : valu N.sig N.fm_model c)
+    (var var' : var N.sig c srt),
+      interp_tm v (TVar var) = interp_tm v (TVar var') <->
+      interp_tm (fmap_valu N.sig sig N.fm_model fm_model n2z_func v)
+      (fmap_tm N.sig sig N.fm_model fm_model n2z_func (@n2z_fun_arrs) (TVar var)) =
+      interp_tm (fmap_valu N.sig sig N.fm_model fm_model n2z_func v)
+      (fmap_tm N.sig sig N.fm_model fm_model n2z_func (@n2z_fun_arrs) (TVar var')).
+  Proof.
+  Admitted.
+
+  
+
   Lemma n2z_tm_inj: 
   forall  (srt : sig_sorts N.sig) (c : ctx N.sig) (v : valu N.sig N.fm_model c)
           (t t' : FirstOrder.tm N.sig c srt),
@@ -122,59 +135,6 @@ Section N2Z.
       (fmap_tm N.sig sig N.fm_model fm_model n2z_func (@n2z_fun_arrs) t').
   Proof.
     intros.
-    dependent induction t using tm_ind';
-    dependent destruction t';
-    simpl.
-    - admit.
-    - admit.
-    - admit.
-    - 
-      (* 
-      destruct srt. 
-      dependent destruction s.
-      destruct s eqn:?.
-      2: {
-        autorewrite with fmap_tm.
-        autorewrite with interp_tm.
-        simpl.
-        autorewrite with n2z_fun.
-        autorewrite with mod_fns.
-        split; intros; exfalso.
-        simple inversion H0.
-        inversion_sigma.
-        inversion H2.
-
-        dependent H0.
-
-        Set Printing All.
-        destruct nat.
-        inversion H2.
-        inversion H5.
-        congruence.
-      }
-      + split; intros.
-        autorewrite with fmap_tm.
-        simpl.
-        autorewrite with n2z_fun.
-        autorewrite with interp_tm in *.
-        autorewrite with mod_fns in *.
-
-        inversion s.
-        subst args0.
-        subst srt.
-        destruct t.
-        dependent destruction s.
-        inversion s.
-        inversion t.
-        induction s.
-        inversion s.
-        dependent destruction s.
-        dependent induction s.
-        
-        dependent destruction s.
-      inversion s.
-
-      inversion s. *)
   Admitted.
 
   Lemma n2z_fmap_forall_equi : 

@@ -8,28 +8,39 @@ Require Import MirrorSolve.HLists.
 Import ListNotations.
 Import HListNotations.
 
-Require Import Coq.ZArith.BinInt.
+Require Import SMTCoq.SMTCoq.
 Set Universe Polymorphism.
 
-Section NFOL.
+Import BVList.BITVECTOR_LIST.
+
+Require Import Coq.Numbers.BinNums.
+Require Import Coq.NArith.BinNat.
+
+Section BVFOL.
   Inductive sorts: Set :=
-  | NS
-  | BS.
+  | BS
+  | BV: forall (width: N), sorts.
 
   Scheme Equality for sorts.
 
+  (*  [[(concat s t)]] := λx:[0, n+m). if (x < m) then [[t]](x) else [[s]](x - m)
+   where
+   s and t are terms of sort (_ BitVec n) and (_ BitVec m), respectively,
+   0 < n, 0 < m.
+
+   - Function symbols for extraction
+
+   [[((_ extract i j) s))]] := λx:[0, i-j+1). [[s]](j + x)
+   where s is of sort (_ BitVec l), 0 ≤ j ≤ i < l.
+   
+   *)
+
   Inductive funs: arity sorts -> sorts -> Type :=
-  | NLit: forall (n: nat), funs [] NS
+  | BVLit: forall (n: N) (bv: bitvector n), funs [] (BV n)
   | BLit: forall (b: bool), funs [] BS
-  | Sub: funs [NS; NS] NS
-  | Plus: funs [NS; NS] NS
-  | Mul: funs [NS; NS] NS
-  | Div: funs [NS; NS] NS
-  | Mod: funs [NS; NS] NS
-  | Lte: funs [NS; NS] BS
-  | Lt: funs [NS; NS] BS
-  | Gte: funs [NS; NS] BS
-  | Gt: funs [NS; NS] BS.
+  | BVCat: forall (n m: N), funs [(BV n); (BV m)] (BV (n + m))
+  | BVExtr: forall (i n m: N), funs [BV m] (BV n).
+
 
   Inductive rels: arity sorts -> Type :=.
 
@@ -43,7 +54,7 @@ Section NFOL.
 
   Definition mod_sorts (s: sig_sorts sig) : Type :=
     match s with
-    | NS => nat
+    | BV w => bitvector w
     | BS => bool
     end.
 
@@ -51,17 +62,10 @@ Section NFOL.
   Equations 
     mod_fns params ret (f: sig_funs sig params ret) (args: HList.t mod_sorts params) 
     : mod_sorts ret :=
-    { mod_fns _ _ (BLit b) _ := b;
-      mod_fns _ _ (NLit n) _ := n;
-      mod_fns _ _ Sub (l ::: r ::: _) := Nat.sub l r;
-      mod_fns _ _ Plus (l ::: r ::: _) := Nat.add l r;
-      mod_fns _ _ Mul (l ::: r ::: _) := Nat.mul l r;
-      mod_fns _ _ Div (l ::: r ::: _) := Nat.div l r;
-      mod_fns _ _ Mod (l ::: r ::: _) := Nat.modulo l r;
-      mod_fns _ _ Lte (l ::: r ::: _) := Nat.leb l r;
-      mod_fns _ _ Lt (l ::: r ::: _) := Nat.ltb l r;
-      mod_fns _ _ Gte (l ::: r ::: _) := Nat.leb r l;
-      mod_fns _ _ Gt (l ::: r ::: _) := Nat.ltb l r;
+    { mod_fns _ _ (BVLit w bv) _ := bv;
+      mod_fns _ _ (BLit b) _ := b;
+      mod_fns _ _ (BVCat n m) (l ::: r ::: _) := bv_concat l r;
+      mod_fns _ _ (BVExtr i n m) (x ::: _) := bv_extr i n x;
     }.
 
   Definition mod_rels params
@@ -76,4 +80,4 @@ Section NFOL.
     FirstOrder.mod_rels := mod_rels;
   |}.
 
-End NFOL.
+End BVFOL.

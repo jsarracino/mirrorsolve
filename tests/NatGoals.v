@@ -90,6 +90,19 @@ Equations extract_t2tm {c: ctx N.sig} (t: term) (r_args: list (option ({srt & N.
           None
       | _, _ => fun _ _ => None
       end tl tr
+    | [Some i] => 
+      
+      if eq_term f c_succ then 
+        let (it, ie) := i in 
+        match it as it' return N.tm c it' -> option ({srt & N.tm c srt}) with 
+        | NS => 
+          fun x => 
+            let one := (TFun N.sig (N.NLit 1) hnil) in 
+            Some (existT _ _ (TFun N.sig N.Plus (one ::: x ::: hnil)))
+        | _ => fun _ => None
+        end ie
+      else
+        None
     | _ => 
       match term2nat (tApp f es) with 
       | Some n => Some (existT _ _ (TFun N.sig (N.NLit n) hnil))
@@ -166,6 +179,7 @@ RegisterSMTFun Z.Plus "+" 2.
 RegisterSMTFun Z.Gte ">=" 2.
 RegisterSMTFun Z.Lt "<" 2.
 RegisterSMTFun Z.Mul "*" 2.
+RegisterSMTFun Z.Lte "<=" 2.
 
 RegisterSMTBuiltin Z.BLit BoolLit.
 RegisterSMTBuiltin Z.ZLit IntLit.
@@ -216,6 +230,18 @@ Equations reify_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : op
           None
       | _, _ => fun _ _ => None
       end tl tr
+    | [Some i] => 
+      
+      if eq_term f c_succ then 
+        let (it, ie) := i in 
+        match it as it' return interp_rty it' -> option ({ty & interp_rty ty}) with 
+        | TNat => 
+          fun x =>  
+            Some (existT _ TNat (x + 1))
+        | _ => fun _ => None
+        end ie
+      else
+        None
     | _ => 
       match term2nat (tApp f es) with 
       | Some n => Some (existT _ TNat n)
@@ -333,74 +359,145 @@ Proof.
     inversion H.
 Admitted. 
 
-MetaCoq Test Quote (let x := 2 in x).
+(* MetaCoq Test Quote (let x := 2 in x). *)
 
-Goal (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
-Proof.
+Transparent reify_t2nt.
+Transparent term2bool.
+Transparent term2nat.
+
+Ltac simpl_reify_tm :=
+  match goal with 
+  | |- reify_t2fm _ _ _ _ _ _ _ _ = Some _ => 
+    let x := fresh "x" in 
+    set (x := reify_t2fm _ _ _ _ _ _ _ _);
+    
+    simpl in x;
+    unfold eq_rect_r in x;
+    simpl in x;
+    exact eq_refl
+  end.
+
+Ltac simpl_extract_tm := exact eq_refl. 
+
+Ltac discharge_equiv_reif_orig := 
+  split; 
+  intros; [
+    repeat match goal with 
+    | H: forall (_: ?T), exists _, _ |- _ =>
+      let v := fresh "v" in 
+      evar (v: T);
+      specialize (H v);
+      subst v
+    | H: _ /\ _ |- _ => 
+      destruct H
+    | H: exists _, _ |- _ => 
+      destruct H
+    | H: Some _ = Some _ |- _ => 
+      erewrite some_prop in H
+    | H: _ = ?X |- _ => subst X
+    end;
+    intuition eauto | 
+    repeat match goal with
+    | |- exists _: Prop, _ => eexists
+    | |- _ /\ _ => split
+    | |- Some _ = Some _ => exact eq_refl
+    | |- _ => intros
+    end;
+    intuition eauto
+  ].
+
+Ltac n2z_smt := 
+  eapply n2z_corr;
+  let v' := fresh "v" in 
+  let f' := fresh "f" in 
+  match goal with 
+  | |- interp_fm ?v ?f => 
+    set (v' := v);
+    set (f' := f)
+  end;
+  vm_compute in f';
+  subst v';
+
+  unfold n2z_func;
+  autorewrite with fmap_valu;
+  subst f';
+
   match goal with 
   | |- ?G => 
-    eapply reify_extract with (p' := G) (t := test_2)
+    check_interp_pos G; admit
   end.
-  1: {
-  set (x := reify_t2fm _ _ _ _ _ _ _ _).
-    simpl in x.
-    Transparent reify_t2nt.
-    unfold reify_t2nt in x.
-    Transparent term2bool.
-    Transparent term2nat.
-    simpl in x.
-    unfold eq_rect_r in x.
-    simpl in x.
-    exact eq_refl.
-  }
-  1: {
-    set (foo := extract_t2fm _ _ _ _ _ _ _).
-    vm_compute in foo.
-    exact eq_refl.
-  }
-    
-  - split; 
-    intros.
-    + 
-      repeat match goal with 
-      | H: forall (_: ?T), exists _, _ |- _ =>
-        let v := fresh "v" in 
-        evar (v: T);
-        specialize (H v);
-        subst v
-      | H: _ /\ _ |- _ => 
-        destruct H
-      | H: exists _, _ |- _ => 
-        destruct H
-      | H: Some _ = Some _ |- _ => 
-        erewrite some_prop in H
-      | H: _ = ?X |- _ => subst X
-      end.
-      intuition.
-    +
-      repeat match goal with
-      | |- exists _: Prop, _ => eexists
-      | |- _ /\ _ => split
-      | |- Some _ = Some _ => exact eq_refl
-      | |- _ => intros
-      end.
-      intuition.
-  - 
-    eapply n2z_corr.
-    match goal with 
-    | |- interp_fm ?v ?f => 
-      set (v' := v);
-      set (f' := f)
-    end.
-    vm_compute in f'.
-    subst v'.
 
-    unfold n2z_func.
-    autorewrite with fmap_valu.
-    subst f'.
+Ltac reflect_goal t' := 
+  match goal with 
+  | |- ?G => 
+    eapply reify_extract with (p' := G) (t := t')
+  end; [
+    simpl_reify_tm |
+    simpl_extract_tm |
+    discharge_equiv_reif_orig | 
+    n2z_smt
+  ].
 
-    match goal with 
-    | |- ?G => 
-      check_interp_pos G; admit
-    end.
+  
+Goal (forall n m, n <> 0 -> m * m = 2 * n * n -> Nat.ltb m (2 * n) = true).
+Proof.
+  reflect_goal test_2.
 Admitted.
+
+MetaCoq Quote Definition test_3 := 
+  (forall n m, m * (n + 1) = m * n + m).
+
+Goal (forall n m, m * (n + 1) = m * n + m).
+Proof.
+  reflect_goal test_3.
+Admitted.
+
+MetaCoq Quote Definition test_4 := (forall n, S n = n + 1).
+
+Goal (forall n, S n = n + 1).
+Proof. 
+  reflect_goal test_4.
+Admitted.
+
+MetaCoq Quote Definition test_5 := ((forall n, (forall m, m * n = 0) -> n = 0)).
+
+Goal (forall n, (forall m, m * n = 0) -> n = 0).
+Proof.
+  intros.
+  induction n; trivial.
+  specialize (H 1).
+  simpl in H.
+  erewrite PeanoNat.Nat.add_0_r in H.
+  exact H.
+
+  Restart.
+  reflect_goal test_5.
+  eapply H.
+  intros.
+  specialize (H0 m).
+  destruct H0.
+  destruct H0.
+  assert ((m * x = 0) = x0) by (eapply some_prop; trivial).
+  subst.
+  exact H1.
+Admitted.
+
+MetaCoq Quote Definition test_6 := (forall n m, (Nat.ltb n m = true) -> forall p, Nat.ltb (p + n) (p + m) = true).
+
+(* from software foundations chapter on  *)
+Theorem plus_ble_compat_l : forall n m,
+  (Nat.ltb n m = true) -> forall p, Nat.ltb (p + n) (p + m) = true.
+Proof.
+  intros.
+  induction p; intuition eauto.
+
+  Restart.
+
+  reflect_goal test_6.
+  specialize (H1 H0).
+  specialize (H1 p).
+  destruct H1 as [? [? ?]].
+  assert ((Nat.ltb (p + n) (p + m) = true) = x) by (eapply some_prop; trivial).
+  subst.
+  trivial.
+Admitted.0

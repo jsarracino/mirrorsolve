@@ -500,4 +500,4 @@ Proof.
   assert ((Nat.ltb (p + n) (p + m) = true) = x) by (eapply some_prop; trivial).
   subst.
   trivial.
-Admitted.0
+Admitted.

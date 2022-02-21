@@ -1,6 +1,10 @@
 From Equations Require Import Equations.
 Require Import Coq.Program.Equality.
 Require Import Coq.Classes.EquivDec.
+Require Import Coq.Lists.List.
+Require Import Coq.Logic.Eqdep.
+
+Import ListNotations.
 
 Set Universe Polymorphism.
 
@@ -143,6 +147,224 @@ Module HList.
       + unfold equiv, complement in c.
         congruence.
       + apply IHks.
+  Qed.
+
+  Lemma bind_proof_irrelevance:
+    forall A (A_eq_dec: EqDec A eq) B (l: list A) (t: HList.t B l) k v pf pf',
+      HList.bind k v pf t =
+      HList.bind k v pf' t.
+  Proof.
+    induction l; intros.
+    - simpl in pf.
+      tauto.
+    - simpl in *.
+      dependent destruction t0.
+      autorewrite with bind.
+      destruct (A_eq_dec k a); eauto.
+      destruct pf, pf'; try congruence.
+      cbn.
+      erewrite IHl; eauto.
+  Qed.
+
+  Fixpoint app {A: Type} (f: A -> Type)
+             {l1 l2: list A}
+             (h1: t f l1)
+             (h2: t f l2) : t f (l1 ++ l2).
+  Proof.
+    destruct l1.
+    - exact h2.
+    - inversion h1.
+      constructor.
+      + exact X.
+      + apply app.
+        * apply X0.
+        * apply h2.
+  Defined.
+
+  Lemma get_app_l:
+    forall A (A_eq_dec: EqDec A eq) B (l1 l2: list A) (t1: t B l1) (t2: t B l2) k pf pf',
+      In k l1 ->
+      get k pf (app t1 t2) = get k pf' t1.
+  Proof.
+    intros.
+    dependent induction t1.
+    - simpl in *.
+      tauto.
+    - simpl in *.
+      destruct (A_eq_dec k a) eqn:?.
+      + cbn.
+        autorewrite with get.
+        now rewrite Heqs.
+      + autorewrite with get.
+        rewrite Heqs.
+        cbn.
+        autorewrite with get.
+        rewrite Heqs.
+        simpl.
+        destruct pf; try congruence.
+        destruct pf'; try congruence.
+        auto.
+  Qed.
+
+  Lemma get_app_r:
+    forall A (A_eq_dec: EqDec A eq) B (l1 l2: list A) (t1: t B l1) (t2: t B l2) k pf pf',
+      ~ In k l1 ->
+      get k pf (app t1 t2) = get k pf' t2.
+  Proof.
+    intros.
+    dependent induction t1.
+    - simpl in *.
+      apply get_proof_irrelevance.
+    - cbn.
+      autorewrite with get.
+      destruct (A_eq_dec k a) eqn:?.
+      + exfalso.
+        apply H.
+        destruct e.
+        eauto with datatypes.
+      + cbn.
+        erewrite IHt1; eauto with datatypes.
+  Qed.
+
+  Lemma bind_app_l:
+    forall A (A_eq_dec: EqDec A eq) B (l1 l2: list A) (t1: t B l1) (t2: t B l2) k v pf pf',
+      bind k v pf (app t1 t2) =
+      app (bind k v pf' t1) t2.
+  Proof.
+    induction l1; intros.
+    - cbv in pf'.
+      tauto.
+    - dependent destruction t1.
+      destruct (A_eq_dec k a) eqn:Heq.
+      + autorewrite with bind.
+        rewrite Heq.
+        simpl.
+        unfold eq_rect_r, eq_rect.
+        destruct e.
+        simpl.
+        autorewrite with bind.
+        rewrite Heq.
+        reflexivity.
+      + simpl.
+        autorewrite with bind.
+        rewrite Heq.
+        cbn.
+        autorewrite with bind.
+        rewrite Heq.
+        cbn.
+        erewrite IHl1.
+        eauto.
+  Qed.
+
+  Lemma bind_app_r:
+    forall A (A_eq_dec: EqDec A eq) B (l1 l2: list A) (t1: t B l1) (t2: t B l2) k v pf pf',
+      ~ In k l1 ->
+      bind k v pf (app t1 t2) =
+      app t1 (bind k v pf' t2).
+  Proof.
+    induction l1; intros.
+    - dependent destruction t1.
+      cbn in pf, pf'.
+      apply bind_proof_irrelevance.
+    - dependent destruction t1.
+      destruct (A_eq_dec k a) eqn:Heq.
+      + exfalso.
+        apply H.
+        unfold equiv in *.
+        subst a.
+        eauto with datatypes.
+      + cbn.
+        assert (Hnotin: ~ List.In k l1) by eauto with datatypes.
+        assert (Hinl1l2: List.In k (l1 ++ l2)) by eauto with datatypes.
+        assert (Hinl2: List.In k l2) by eauto with datatypes.
+        specialize (IHl1 l2 t1 t2 k v Hinl1l2 pf' Hnotin).
+        rewrite <- IHl1.
+        autorewrite with bind.
+        rewrite Heq.
+        cbn.
+        erewrite bind_proof_irrelevance; eauto.
+  Qed.
+
+  Fixpoint map_inj X A (B: A -> Type) (f: X -> A)
+    (l: list X) {struct l} :
+      t (fun x => B (f x)) l ->
+      t B (List.map f l).
+  Proof.
+    refine (match l as l' return t (fun x => B (f x)) l' ->
+                                             t B (List.map f l')
+            with
+            | [] => fun h => HNil _
+            | x :: xs => fun h => _
+            end).
+    inversion h.
+    exact (HCons _ X0 (map_inj _ _ _ _ _ X1)).
+  Defined.
+
+  Lemma get_map_inj:
+    forall (X A: Type)
+      (A_equiv: Equivalence (@eq A))
+      (A_eq_dec: @EqDec A _ A_equiv)
+      (X_equiv: Equivalence (@eq X))
+      (X_eq_dec: @EqDec X _ X_equiv) (B: A -> Type) (f: X -> A) l (xs: t (fun x => B (f x)) l) k pf pf',
+      (forall x y, f x = f y -> x = y) ->
+      get (f k) pf (map_inj _ f xs) = get k pf' xs.
+  Proof.
+    intros.
+    induction l.
+    - cbv in pf'.
+      tauto.
+    - simpl in pf.
+      dependent destruction xs.
+      cbn.
+      autorewrite with get.
+      destruct (A_eq_dec _ _), (X_eq_dec _ _).
+      + unfold equiv in *.
+        subst a.
+        cbn.
+        unfold eq_rect_r.
+        erewrite <- !eq_rect_eq.
+        reflexivity.
+      + pose proof (H _ _ e).
+        congruence.
+      + congruence.
+      + simpl in *.
+        destruct pf, pf'; try congruence.
+        erewrite IHl; eauto.
+  Qed.
+
+  Lemma bind_map_inj:
+    forall (X A: Type)
+      (A_equiv: Equivalence (@eq A))
+      (A_eq_dec: @EqDec A _ A_equiv)
+      (X_equiv: Equivalence (@eq X))
+      (X_eq_dec: @EqDec X _ X_equiv) (B: A -> Type) (f: X -> A) l (xs: t (fun x => B (f x)) l) k v pf pf',
+      (forall x y, f x = f y -> x = y) ->
+      bind (f k) v pf (map_inj _ f xs) = map_inj _ f (bind k v pf' xs).
+  Proof.
+    intros.
+    induction l.
+    - simpl in pf'.
+      tauto.
+    - dependent destruction xs.
+      simpl.
+      autorewrite with bind.
+      destruct (X_eq_dec k a) eqn:Heq; cbn.
+      + autorewrite with bind.
+        destruct (A_eq_dec (f k) (f a)); try congruence.
+        f_equal.
+        destruct e.
+        simpl.
+        erewrite eq_rect_eq; eauto.
+      + autorewrite with bind.
+        simpl.
+        destruct (A_eq_dec (f k) (f a)).
+        * exfalso.
+          apply c.
+          apply H.
+          apply e.
+        * f_equal.
+          erewrite IHl.
+          eauto.
   Qed.
 
 End HList.

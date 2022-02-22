@@ -7,7 +7,7 @@ jobs:
     strategy:
       matrix:
         coq_version:
-          - '8.14.1'
+          - '8.14'
           - '8.13.2'
           - '8.13'
         ocaml_version:

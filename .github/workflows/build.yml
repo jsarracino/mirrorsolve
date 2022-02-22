@@ -14,10 +14,10 @@ steps:
       coq_version: ${{ matrix.coq_version }}
       ocaml_version: ${{ matrix.ocaml_version }}
       before_install: |
-      startGroup "Print opam config"
-        opam repo add coq-released https://coq.inria.fr/opam/released;
-        opam config list;
-        opam repo list;
-        opam list
-      endGroup
+        startGroup "Print opam config"
+          opam repo add coq-released https://coq.inria.fr/opam/released;
+          opam config list;
+          opam repo list;
+          opam list
+        endGroup
 

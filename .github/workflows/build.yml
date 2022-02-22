@@ -1,4 +1,7 @@
 runs-on: ubuntu-latest
+on:
+  - push
+  - pull_request
 strategy:
   matrix:
     coq_version:

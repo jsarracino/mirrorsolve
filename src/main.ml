@@ -51,6 +51,10 @@ let c_hcons () = get_coq "p4a.core.hcons"
 let c_inl () = get_coq "core.sum.inl"
 let c_inr () = get_coq "core.sum.inr"
 
+
+let c_nil () = get_coq "core.list.nil"
+let c_cons () = get_coq "core.list.cons"
+
 let c_true () = get_coq "core.bool.true"
 let c_false () = get_coq "core.bool.false"
 let c_pair () = get_coq "core.prod.intro"
@@ -65,6 +69,21 @@ let c_store () = get_coq "p4a.sorts.store"
 let c_zero () = get_coq "num.nat.O"
 let c_succ () = get_coq "num.nat.S"
 
+let c_bin_zero () = get_coq "num.N.N0"
+let c_bin_pos () = get_coq "num.N.Npos"
+
+(* let c_bin_succ () = get_coq "foo" *)
+
+(* Register xI as num.pos.xI.
+Register xO as num.pos.xO.
+Register xH as num.pos.xH. *)
+
+let c_pos_H () = get_coq "num.pos.xH"
+let c_pos_I () = get_coq "num.pos.xI"
+let c_pos_O () = get_coq "num.pos.xO"
+
+
+
 let c_prop_not () = get_coq "core.not.type"
 
 let c_bits_lit () = get_coq "p4a.funs.bitslit"
@@ -72,10 +91,12 @@ let c_concat () = get_coq "p4a.funs.concat"
 let c_slice () = get_coq "p4a.funs.slice"
 let c_lookup () = get_coq "p4a.funs.lookup"
 
-let c_unit () = get_coq "core.unit.tt"
+(* let c_unit () = get_coq "core.unit.tt" *)
 
 let c_vhere () = get_coq "p4a.core.vhere"
 let c_vthere () = get_coq "p4a.core.vthere"
+
+let c_n_tup () = get_coq "p4a.core.mk_n_tuple"
 
 
 let find_add i tbl builder = 
@@ -90,6 +111,39 @@ let find_add i tbl builder =
 let prim_tbl' : (C.t, string) Hashtbl.t = Hashtbl.create 20
 let reg_prim' i t = find_add i prim_tbl' (fun _ -> t)
 
+
+
+let rec c_pos_to_int (e: C.t) : int =
+  if e = c_pos_H () then 1 
+  else if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    if f = c_pos_I () then
+      1 + 2 * c_pos_to_int (a_last es)
+    else if f = c_pos_O () then
+      2 * c_pos_to_int (a_last es)
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected pos.I/O and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise @@ BadExpr "expected I/O in pos_to_int"
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected positive ctor and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected I/O or 1 in pos_to_int"
+
+let c_bin_to_int (e: C.t) : int =
+  if e = c_bin_zero () then 0 
+  else if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    if f = c_bin_pos () then
+      c_pos_to_int (a_last es)
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected N.pos and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise @@ BadExpr "expected N.pos in bin_to_int"
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected N ctor and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected N.0 or N.pos in bin_to_int"
 
 let rec c_nat_to_int (e: C.t) : int =
   if e = c_zero () then 0 
@@ -126,8 +180,7 @@ let extract_sort (e: C.t) : sort =
   else
     let (f, es) = C.destApp e in 
       if f = c_bits () then 
-        let (_, es) = C.destApp e in 
-        Bits (c_nat_to_int (a_last es))
+        Bits (c_bin_to_int (a_last es))
       else
         let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
         let _ = Feedback.msg_debug (Constr.debug_print e) in
@@ -259,7 +312,7 @@ let rec extract_ctx (e: C.t) : C.t list =
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected csnoc/cnil inside ctx list"
 
-let rec c_n_tuple_to_bools (e: C.t) : bool list =
+(* let rec c_n_tuple_prod_to_bools (e: C.t) : bool list =
   if e = c_unit () then []
   
   else if C.isApp e then 
@@ -270,7 +323,7 @@ let rec c_n_tuple_to_bools (e: C.t) : bool list =
         if snoc_e = c_true () then true
         else if snoc_e = c_false () then false
         else raise bedef in
-      c_n_tuple_to_bools es.(Array.length es - 2) @ [snoc_v]
+      c_n_tuple_prod_to_bools es.(Array.length es - 2) @ [snoc_v]
     else
       let _ = Feedback.msg_debug (Pp.str "pair:") in
       let _ = Feedback.msg_debug (Constr.debug_print @@ c_pair ()) in
@@ -282,7 +335,46 @@ let rec c_n_tuple_to_bools (e: C.t) : bool list =
     let _ = Feedback.msg_debug (Constr.debug_print @@ c_pair ()) in
     let _ = Feedback.msg_debug (Pp.str "Expected pair and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
-    raise @@ BadExpr "expected app/pair in tuple2bool"
+    raise @@ BadExpr "expected app/pair in tuple2bool" *)
+
+let rec c_list_to_list (e: C.t) (conv: C.t -> 'a) : 'a list = 
+  if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    if equal_ctor f c_nil then 
+      []
+    else if equal_ctor f c_cons then 
+      conv es.(Array.length es - 2) :: c_list_to_list (a_last es) conv
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected nil/cons in c_list_to_list and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print f) in
+      raise @@ BadExpr "expected nil/cons in coq list conversion "
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected app in c_list_to_list and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected app in coq list conversion"
+
+let c_bool_to_bool (e: C.t) : bool = 
+  if e = c_true () then true
+  else if e = c_false () then false
+  else 
+    let _ = Feedback.msg_debug (Pp.str "Expected true/false in bool conversion and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected true/false in coq bool conversion"
+
+let c_n_tuple_to_bools (e: C.t) : bool list =
+  if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    if equal_ctor f c_n_tup then
+      c_list_to_list es.(Array.length es - 2) c_bool_to_bool
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected n_tuple ctor in n_tuple conversion and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise @@ BadExpr "expected n_tuple ctor in tuple2bool"
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected app and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected app in tuple2bool"
+    
 
 let print_bools (bs: bool list) : Pp.t = 
   Pp.(++) (Pp.str "#b") (Pp.prlist (fun b -> Pp.str (if b then "1" else "0")) bs)
@@ -345,6 +437,7 @@ and
       extract_expr (a_last es)
 
 let rec pretty_expr (e: C.t) : string =
+  
   try
     begin match C.kind e with 
     | C.App(f, es) -> 
@@ -354,6 +447,8 @@ let rec pretty_expr (e: C.t) : string =
           Format.sprintf "(= %s %s)" a1 a2
       else if equal_ctor f c_impl then 
         let _ = debug_pp @@ Pp.str "extracting impl" in
+        let _ = debug_pp @@ C.debug_print @@ es.(Array.length es - 2) in
+        let _ = debug_pp @@ C.debug_print (a_last es) in
         let a1, a2 = pretty_expr es.(Array.length es - 2), pretty_expr (a_last es) in
           Format.sprintf "(=> %s %s)" a1 a2
       else if equal_ctor f c_and then 
@@ -389,14 +484,15 @@ let rec pretty_expr (e: C.t) : string =
               else if equal_ctor f' c_slice then 
                 let _ = debug_pp @@ Pp.str "extracting slice" in
                 (* n hi lo *)
-                let hi = c_nat_to_int es'.(Array.length es' - 2) in 
-                let lo = c_nat_to_int (a_last es') in 
+                let hi = c_bin_to_int es'.(Array.length es' - 2) in 
+                let lo = c_bin_to_int (a_last es') in 
                 Format.sprintf "((_ extract %n %n) %s)" hi lo (pretty_expr @@ List.hd fargs)
               else if equal_ctor f' c_lookup then 
                 let _ = debug_pp @@ Pp.str "extracting lookup fun" in
                 Format.sprintf "(%s %s)" (pretty_key (a_last es')) (pretty_expr @@ List.hd fargs)
               else if equal_ctor f' c_bits_lit then 
                 let _ = debug_pp @@ Pp.str "extracting bitslit" in
+                let _ = debug_pp @@ C.debug_print (a_last es') in
                 Pp.string_of_ppcmds @@ print_bools @@ c_n_tuple_to_bools @@ (a_last es')
               else 
                 let _ = debug_pp @@ Pp.str "unexpected function symbol:" in

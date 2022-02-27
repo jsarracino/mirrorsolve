@@ -63,3 +63,5 @@ val reg_c_env_ctors : Constr.t list -> unit
 val clear_env_ctors : unit -> unit
 
 val set_backend_solver : string -> unit
+
+val c_nat_to_int : Constr.t -> int

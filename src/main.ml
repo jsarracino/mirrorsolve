@@ -96,7 +96,7 @@ let c_lookup () = get_coq "p4a.funs.lookup"
 let c_vhere () = get_coq "p4a.core.vhere"
 let c_vthere () = get_coq "p4a.core.vthere"
 
-let c_n_tup () = get_coq "p4a.core.mk_n_tuple"
+(* let c_n_tup () = get_coq "p4a.core.mk_n_tuple" *)
 
 
 let find_add i tbl builder = 
@@ -361,8 +361,8 @@ let c_bool_to_bool (e: C.t) : bool =
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected true/false in coq bool conversion"
 
-let c_n_tuple_to_bools (e: C.t) : bool list =
-  if C.isApp e then 
+let c_n_tuple_to_bools (e: C.t) : bool list = c_list_to_list e c_bool_to_bool
+  (* if C.isApp e then 
     let (f, es) = C.destApp e in 
     if equal_ctor f c_n_tup then
       c_list_to_list es.(Array.length es - 2) c_bool_to_bool
@@ -373,7 +373,7 @@ let c_n_tuple_to_bools (e: C.t) : bool list =
   else
     let _ = Feedback.msg_debug (Pp.str "Expected app and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
-    raise @@ BadExpr "expected app in tuple2bool"
+    raise @@ BadExpr "expected app in tuple2bool" *)
     
 
 let print_bools (bs: bool list) : Pp.t = 

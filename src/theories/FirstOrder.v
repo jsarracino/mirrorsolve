@@ -158,6 +158,30 @@ Section FOL.
           forall val: m.(mod_sorts) s,
             interp_fm (CSnoc c s) (VSnoc _ _ val v) f }.
 
+    Variable (wf: forall s, m.(mod_sorts) s -> Prop).
+    Equations interp_fm_wf (c: ctx) (v: valu c) (f: fm c) : Prop
+      by struct f :=
+      { interp_fm_wf _ v (FTrue _) := True;
+        interp_fm_wf _ v (FFalse _) := False;
+        interp_fm_wf _ v (FRel c typs rel args) :=
+          m.(mod_rels) typs rel (interp_tms c _ v args);
+        interp_fm_wf _ v (FEq c s t1 t2) :=
+          interp_tm c s v t1 = interp_tm c s v t2;
+        interp_fm_wf _ v (FNeg _ f) :=
+          ~ interp_fm_wf _ v f;
+        interp_fm_wf _ v (FOr _ f1 f2) :=
+          interp_fm_wf _ v f1 \/ interp_fm_wf _ v f2;
+        interp_fm_wf _ v (FAnd _ f1 f2) :=
+          interp_fm_wf _ v f1 /\ interp_fm_wf _ v f2;
+        interp_fm_wf _ v (FImpl _ f1 f2) :=
+          interp_fm_wf _ v f1 -> interp_fm_wf _ v f2;
+        interp_fm_wf _ v (FForall c s f) :=
+          forall val: m.(mod_sorts) s,
+            wf s val ->
+            interp_fm_wf (CSnoc c s) (VSnoc _ _ val v) f }. 
+             
+
+    
     (* A few tactics for converting between normal Prop goals and interp_fm goals  *)
     Lemma eq_interp:
       forall c srt v l r, 
@@ -305,6 +329,49 @@ Section FOL.
         eauto.
   Qed.
 
+  Fixpoint valu_wf {c m} wf (vs: valu m c) : Prop :=
+    match vs with 
+    | VEmp _ => True
+    | VSnoc _ srt _ v inner  => 
+      wf srt v /\ valu_wf wf inner
+    end.
+
+  Lemma quantify_correct_wf:
+    forall m wf c c' (v': valu m c') phi,
+     interp_fm_wf m wf c' v' (quantify c phi) <->
+     forall valu,
+       valu_wf wf valu ->
+       interp_fm_wf m wf (app_ctx c' c) (app_valu v' valu) phi.
+  Proof.
+    induction c.
+    - cbn.
+      intuition.
+      + dependent destruction valu0.
+        assumption.
+      + specialize (H (VEmp _)).
+        autorewrite with app_valu in *.
+        now eapply H.
+    - cbn.
+      intuition.
+      + cbn in *.
+        dependent destruction valu0.
+        rewrite IHc in H.
+        specialize (H valu0).
+        autorewrite with app_valu interp_fm_wf in *.
+        simpl in *.
+        eapply H; intuition eauto.
+      + rewrite IHc.
+        intros v ?.
+        autorewrite with interp_fm_wf.
+        intros.
+        pose (VSnoc _ _ _ val v) as v''.
+        specialize (H v'').
+        eapply H.
+        subst v''.
+        simpl.
+        intuition eauto.
+  Qed.
+
   Equations quantify_all {c: ctx} (f: fm c): fm CEmp := {
     @quantify_all (CSnoc c _) f := quantify_all (FForall _ _ f);
     @quantify_all CEmp f := f
@@ -329,6 +396,31 @@ Section FOL.
         apply H.
       + autorewrite with interp_fm; intros.
         apply H.
+  Qed.
+
+  Lemma quantify_all_correct_wf:
+    forall m wf c phi,
+     interp_fm_wf m wf CEmp (VEmp _) (quantify_all phi) <->
+     forall valu,
+       valu_wf wf valu ->
+       interp_fm_wf m wf c valu phi.
+  Proof.
+    dependent induction c; intros.
+    - autorewrite with quantify_all.
+      firstorder.
+      now dependent destruction valu0.
+    - autorewrite with quantify_all.
+      rewrite IHc.
+      split; intros.
+      + dependent destruction valu0.
+        specialize (H valu0).
+        autorewrite with interp_fm_wf in H.
+        simpl in *.
+        intuition eauto.
+      + autorewrite with interp_fm_wf; intros.
+        apply H.
+        simpl.
+        intuition eauto.
   Qed.
 
   Fixpoint reindex_var {c c': ctx} {sort: sig.(sig_sorts)} (v: var c' sort) : var (app_ctx c c') sort :=
@@ -497,6 +589,7 @@ Arguments FForall {_ _} _.
 Arguments FImpl {_ _} _ _.
 
 Arguments interp_fm {_ _ _} _ _.
+Arguments interp_fm_wf {_ _ _ _} _ _.
 Arguments interp_tm {_ _ _ _} _ _.
 Arguments interp_tms {_ _ _ _} _ _.
 
@@ -509,7 +602,7 @@ Arguments reindex_tms {sig c c' sorts} ts.
 Arguments weaken_var {sig sort c1} c2 v.
 Arguments weaken_tm {sig sort c1} c2 t.
 
-
+Arguments valu_wf {_ _ _} _ _.
 
 Register TVar as p4a.core.var.
 Register TFun as p4a.core.fun.

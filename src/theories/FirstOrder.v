@@ -335,6 +335,20 @@ Section FOL.
     | VSnoc _ srt _ v inner  => 
       wf srt v /\ valu_wf wf inner
     end.
+  
+  Lemma app_valu_wf: 
+    forall {c c' m} wf (v: valu m c) (v': valu m c'), 
+      valu_wf wf v -> 
+      valu_wf wf v' -> 
+      valu_wf wf (app_valu v v').
+  Proof.
+    dependent induction v';
+    dependent destruction v; 
+    autorewrite with app_valu;
+    intuition;
+    simpl;
+    intuition.
+  Qed.
 
   Lemma quantify_correct_wf:
     forall m wf c c' (v': valu m c') phi,

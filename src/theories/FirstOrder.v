@@ -172,6 +172,17 @@ Section FOL.
       apply iff_refl.
     Qed.
 
+    Lemma neg_interp:
+      forall c v f, 
+        (~ interp_fm c v f)
+          <-> 
+        interp_fm c v (FNeg _ f).
+    Proof.
+      intros.
+      autorewrite with interp_fm.
+      apply iff_refl.
+    Qed.
+
     (* Require Import Coq.Logic.JMeq.
     Lemma forall_interp:
       forall c srt v (F : mod_sorts m srt -> fm (CSnoc c srt)) t', 

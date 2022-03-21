@@ -153,37 +153,37 @@ End ExtractFM.
 
 
 
-Section ReifyFM.
-  Variable (Ty: Type).
-  Variable (interp_ty: Ty -> Type).
+Section DenoteFM.
 
-  Variable (ty_eq_dec: EquivDec.EqDec Ty eq).
+  Variable (s: signature).
+  Variable (m: model s).
 
-  Notation res_ty := (option ({ty & interp_ty ty})).
-  Notation env_ty := (snoc_list ({ty & interp_ty ty})).
+  Variable (sorts_eq_dec: EquivDec.EqDec (s.(sig_sorts)) eq).
 
-  Variable (reify_t2tm : term -> list res_ty -> res_ty).
-  Variable (reify_ind : inductive -> option Ty).
+  Notation res_ty := (option ({ty & s.(mod_sorts) m ty})).
+  (* Notation env_ty := ({c & valu s m c}). *)
+  Notation env_ty c := (valu s m c).
 
-  Fixpoint reify_var (env: env_ty) (n: nat) : res_ty :=
+  Variable (denote_tm : term -> list res_ty -> res_ty).
+  Variable (reify_ind : inductive -> option (s.(sig_sorts))).
+
+  Fixpoint denote_var {c} (env: env_ty c) (n: nat) : res_ty :=
     match env, n with 
-    | Snoc _ x, 0 => Some x
-    | Snoc env' _, S n' => reify_var env' n'
-    | SLNil, _ => None
+    | VSnoc _ _ _ x, 0 => Some (existT _ _ x)
+    | VSnoc _ _ env' _, S n' => denote_var env' n'
+    | VEmp, _ => None
     end.
 
-  Fixpoint reify_t2tm' (env: env_ty) (acc: nat) (t: term) : res_ty :=  
+  Fixpoint denote_tm' {c} (env: env_ty c) (acc: nat) (t: term) : res_ty :=  
     match t with 
-    | tRel n => reify_var env (n - acc)
-    | tApp f es => reify_t2tm t (map (reify_t2tm' env acc) es)
-    | _ => reify_t2tm t []
+    | tRel n => denote_var env (n - acc)
+    | tApp f es => denote_tm t (map (denote_tm' env acc) es)
+    | _ => denote_tm t []
     end.
-
-  Definition ret (p: Prop) : option (env_ty -> option Prop) := Some (fun _ => Some p).
 
   Obligation Tactic := intros.
-  Equations reify_t2fm (env: env_ty) (anon_acc: nat) (t: term) : option Prop by struct t := 
-    reify_t2fm env acc t := 
+  Equations denote_t2fm {c} (env: env_ty c) (anon_acc: nat) (t: term) : option Prop by struct t := 
+    denote_t2fm env acc t := 
       if eq_term t c_True then Some True else 
       if eq_term t c_False then Some False else
       match t with
@@ -191,11 +191,11 @@ Section ReifyFM.
         if eq_term f c_eq then 
           match es with 
           | _ :: tl :: tr :: _ => 
-            match reify_t2tm' env acc tl, reify_t2tm' env acc tr with 
+            match denote_tm' env acc tl, denote_tm' env acc tr with 
             | Some l, Some r => 
               let (tl, el) := l in 
               let (tr, er) := r in 
-                match ty_eq_dec tl tr with 
+                match sorts_eq_dec tl tr with 
                 | left HEq => 
                   Some (el = (eq_rect_r _ er HEq))
                 | _ => None
@@ -207,7 +207,7 @@ Section ReifyFM.
         else if eq_term f c_or then 
           match es with 
           | tl :: tr :: _ => 
-            match reify_t2fm env acc tl, reify_t2fm env acc tr with 
+            match denote_t2fm env acc tl, denote_t2fm env acc tr with 
             | Some l, Some r => Some (l \/ r)
             | _, _ => None
             end
@@ -216,7 +216,7 @@ Section ReifyFM.
         else if eq_term f c_and then 
           match es with 
           | tl :: tr :: _ => 
-            match reify_t2fm env acc tl, reify_t2fm env acc tr with 
+            match denote_t2fm env acc tl, denote_t2fm env acc tr with 
             | Some l, Some r => Some (l /\ r)
             | _, _ => None
             end
@@ -225,7 +225,7 @@ Section ReifyFM.
         else if eq_term f c_not then 
           match es with 
           | x :: _ => 
-            match reify_t2fm env acc x with 
+            match denote_t2fm env acc x with 
             | Some x' => Some (~ x')
             | None => None
             end
@@ -236,7 +236,7 @@ Section ReifyFM.
       | tProd ba_name pre pst => 
         match ba_name.(binder_name) with 
         | nAnon =>
-          match reify_t2fm env acc pre, reify_t2fm env (S acc) pst with 
+          match denote_t2fm env acc pre, denote_t2fm env (S acc) pst with 
           | Some el, Some er => Some (el -> er)
           | _, _ => None
           end
@@ -246,10 +246,10 @@ Section ReifyFM.
             let ty := reify_ind i in 
             match ty with
             | Some ty' => Some (
-              forall x: interp_ty ty', 
+              forall x: (s.(mod_sorts) m ty'), 
               exists p',
-              let env' := Snoc _ env (existT _ ty' x) in
-                  reify_t2fm env' acc pst = Some p' /\
+              let env' := VSnoc _ _ ty' c env x in
+                  denote_t2fm env' acc pst = Some p' /\
                   p'
               )
             | None => None
@@ -267,10 +267,10 @@ Section ReifyFM.
   MetaCoq Quote Definition test_5 := (forall (x: unit), x = tt).
   MetaCoq Quote Definition test_6 := (forall (x: unit), True \/ False \/ ~ True).
 
-  Eval vm_compute in reify_t2fm (SLNil _)  0 test_1.
+  Eval vm_compute in denote_t2fm (SLNil _)  0 test_1.
   Eval vm_compute in reify_t2fm (SLNil _)  0 test_2. 
   Eval vm_compute in reify_t2fm (SLNil _)  0 test_3.
   Eval vm_compute in reify_t2fm (SLNil _)  0 test_4.
   Eval vm_compute in reify_t2fm (SLNil _)  0 test_5.
   Eval vm_compute in reify_t2fm (SLNil _)  0 test_6. *)
-End ReifyFM.
+End DenoteFM.

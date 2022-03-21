@@ -190,23 +190,23 @@ RegisterSMTBuiltin Z.ZLit IntLit.
 
 Require Import Coq.Program.Equality.
 
-Inductive reif_ty := | TNat | TBool.
+Inductive denote_ty := | TNat | TBool.
 
-Scheme Equality for reif_ty.
+Scheme Equality for denote_ty.
 
-Definition interp_rty rty := 
-  match rty with 
+Definition interp_dty dty := 
+  match dty with 
   | TNat => nat
   | TBool => bool
   end.
 
-Equations reify_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : option ({ty & interp_rty ty}) := 
-  reify_t2nt (tApp f es) r_args := 
+Equations denote_tm (t: term) (args: list (option ({ty & interp_dty ty}))) : option ({ty & interp_dty ty}) := 
+  denote_tm (tApp f es) r_args := 
     match r_args with 
     | [Some l; Some r] => 
       let (sl, tl) := l in
       let (sr, tr) := r in 
-      match sl as sl', sr as sr' return interp_rty sl' -> interp_rty sr' -> option ({ty & interp_rty ty}) with 
+      match sl as sl', sr as sr' return interp_dty sl' -> interp_dty sr' -> option ({ty & interp_dty ty}) with 
       | TNat, TNat => fun tl' tr' =>
         if eq_term f c_plus then 
           Some (existT _ TNat (tl' + tr'))
@@ -234,7 +234,7 @@ Equations reify_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : op
       
       if eq_term f c_succ then 
         let (it, ie) := i in 
-        match it as it' return interp_rty it' -> option ({ty & interp_rty ty}) with 
+        match it as it' return interp_dty it' -> option ({ty & interp_dty ty}) with 
         | TNat => 
           fun x =>  
             Some (existT _ TNat (x + 1))
@@ -248,7 +248,7 @@ Equations reify_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : op
       | None => None
       end
     end;
-  reify_t2nt (tConstruct ind i x) _ := 
+  denote_tm (tConstruct ind i x) _ := 
     let t := (tConstruct ind i x) in 
     match term2bool t with 
     | Some b => Some (existT _ TBool b)
@@ -258,9 +258,9 @@ Equations reify_t2nt (t: term) (args: list (option ({ty & interp_rty ty}))) : op
       | None => None
       end
     end;
-  reify_t2nt _ _ := None.
+  denote_tm _ _ := None.
 
-Definition reify_i2nty (i: inductive) : option reif_ty := 
+Definition denote_i2nty (i: inductive) : option denote_ty := 
   if eq_inductive i nat_ind' then Some TNat
   else if eq_inductive i bool_ind' then Some TBool
   else None.
@@ -286,11 +286,9 @@ Proof.
   eapply iff_refl.
 Qed.
 
-
-
-Theorem reify_extract t:
+Theorem denote_extract t:
   forall (p p': Prop) fm,
-    reify_t2fm reif_ty interp_rty reif_ty_eq_dec reify_t2nt reify_i2nty (SLNil _) 0 t = Some p -> 
+    denote_t2fm denote_ty interp_dty denote_ty_eq_dec denote_tm denote_i2nty (SLNil _) 0 t = Some p -> 
     extract_t2fm N.sig (@extract_t2tm) ind2srt N.sorts_eq_dec (SLNil _) 0 t = Some fm -> 
     (p <-> p') ->
     (p' <-> interp_fm (VEmp _ N.fm_model) fm).
@@ -361,15 +359,15 @@ Admitted.
 
 (* MetaCoq Test Quote (let x := 2 in x). *)
 
-Transparent reify_t2nt.
+Transparent denote_tm.
 Transparent term2bool.
 Transparent term2nat.
 
 Ltac simpl_reify_tm :=
   match goal with 
-  | |- reify_t2fm _ _ _ _ _ _ _ _ = Some _ => 
+  | |- denote_tm _ _ _ _ _ _ _ _ = Some _ => 
     let x := fresh "x" in 
-    set (x := reify_t2fm _ _ _ _ _ _ _ _);
+    set (x := denote_tm _ _ _ _ _ _ _ _);
     
     simpl in x;
     unfold eq_rect_r in x;

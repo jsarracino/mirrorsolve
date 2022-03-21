@@ -10,12 +10,20 @@ Import HListNotations.
 (* 
 From SMTCoq Require Import SMTCoq. *)
 
+Set Universe Polymorphism.
 Section BFOL.
   Inductive sorts: Set :=
   | BoolSort.
 
+  Scheme Equality for sorts.
+  Set Universe Polymorphism.
+
   Inductive funs: arity sorts -> sorts -> Type :=
-  | BLit: forall (b: bool), funs [] BoolSort.
+  | BLit: forall (b: bool), funs [] BoolSort
+  | BAnd: funs [BoolSort; BoolSort] BoolSort
+  | BOr: funs [BoolSort; BoolSort] BoolSort
+  | BNot: funs [BoolSort] BoolSort
+  | BImpl: funs [BoolSort; BoolSort] BoolSort.
 
   Inductive rels: arity sorts -> Type :=.
 
@@ -29,14 +37,20 @@ Section BFOL.
 
   Definition mod_sorts (s: sig_sorts sig) : Type :=
     match s with
-    | Bool => bool
+    | BoolSort => bool
     end.
+
+  Local Open Scope bool_scope.
 
   Obligation Tactic := idtac.
   Equations 
     mod_fns params ret (f: sig_funs sig params ret) (args: HList.t mod_sorts params) 
     : mod_sorts ret :=
-    { mod_fns _ _ (BLit b) hnil := b
+    { mod_fns _ _ (BLit b) hnil := b;
+      mod_fns _ _ BAnd (x ::: y ::: hnil) := x && y;
+      mod_fns _ _ BOr (x ::: y ::: hnil) := x || y;
+      mod_fns _ _ BImpl (x ::: y ::: hnil) := implb x y;
+      mod_fns _ _ BNot (x ::: hnil) := negb x
     }.
 
   Definition mod_rels params

@@ -160,18 +160,20 @@ Section DenoteFM.
 
   Variable (sorts_eq_dec: EquivDec.EqDec (s.(sig_sorts)) eq).
 
-  Notation res_ty := (option ({ty & s.(mod_sorts) m ty})).
+  Notation res_ty := ({ty & option (s.(mod_sorts) m ty)}).
   (* Notation env_ty := ({c & valu s m c}). *)
   Notation env_ty c := (valu s m c).
 
   Variable (denote_tm : term -> list res_ty -> res_ty).
   Variable (reify_ind : inductive -> option (s.(sig_sorts))).
 
+  Variable (default_ty : s.(sig_sorts)).
+
   Fixpoint denote_var {c} (env: env_ty c) (n: nat) : res_ty :=
     match env, n with 
-    | VSnoc _ _ _ x, 0 => Some (existT _ _ x)
+    | VSnoc _ _ _ x, 0 => (existT _ _ (Some x))
     | VSnoc _ _ env' _, S n' => denote_var env' n'
-    | VEmp, _ => None
+    | VEmp, _ => existT _ default_ty None
     end.
 
   Fixpoint denote_tm' {c} (env: env_ty c) (acc: nat) (t: term) : res_ty :=  
@@ -181,30 +183,32 @@ Section DenoteFM.
     | _ => denote_tm t []
     end.
 
+  Definition pure {c} (p: Prop) : option (env_ty c -> Prop) := Some (fun _ => p).
+
   Obligation Tactic := intros.
-  Equations denote_t2fm {c} (env: env_ty c) (anon_acc: nat) (t: term) : option Prop by struct t := 
-    denote_t2fm env acc t := 
-      if eq_term t c_True then Some True else 
-      if eq_term t c_False then Some False else
+  Equations denote_t2fm {c} (anon_acc: nat) (t: term) : option (env_ty c -> Prop) by struct t := 
+    denote_t2fm acc t := 
+      if eq_term t c_True then pure True else 
+      if eq_term t c_False then pure False else
       match t with
       | tApp f es => 
         if eq_term f c_eq then 
           match es with 
-          | _ :: tl :: tr :: _ => 
-            match denote_tm' env acc tl, denote_tm' env acc tr with 
-            | Some l, Some r => 
-              let (tl, el) := l in 
-              let (tr, er) := r in 
-                match sorts_eq_dec tl tr with 
-                | left HEq => 
-                  Some (el = (eq_rect_r _ er HEq))
-                | _ => None
-                end
-            | _, _ => None
-            end
+          | _ :: tl :: tr :: _ => Some (fun env =>
+            let (tl, el) := denote_tm' env acc tl in 
+            let (tr, er) := denote_tm' env acc tr in 
+            match sorts_eq_dec tl tr with 
+            | left HEq =>
+              match el, er with 
+              | Some l, Some r => 
+                l = (eq_rect_r _ r HEq)
+              | _, _ => False
+              end
+            | _ => False
+            end)
           | _ => None
           end
-        else if eq_term f c_or then 
+        (* else if eq_term f c_or then 
           match es with 
           | tl :: tr :: _ => 
             match denote_t2fm env acc tl, denote_t2fm env acc tr with 
@@ -230,14 +234,14 @@ Section DenoteFM.
             | None => None
             end
           | _ => None
-          end
+          end *)
         else
           None
       | tProd ba_name pre pst => 
         match ba_name.(binder_name) with 
         | nAnon =>
-          match denote_t2fm env acc pre, denote_t2fm env (S acc) pst with 
-          | Some el, Some er => Some (el -> er)
+          match denote_t2fm acc pre, denote_t2fm (S acc) pst with 
+          | Some el, Some er => Some (fun env => (el env -> er env))
           | _, _ => None
           end
         | nNamed _ =>
@@ -245,13 +249,15 @@ Section DenoteFM.
           | tInd i _ => 
             let ty := reify_ind i in 
             match ty with
-            | Some ty' => Some (
-              forall x: (s.(mod_sorts) m ty'), 
-              exists p',
-              let env' := VSnoc _ _ ty' c env x in
-                  denote_t2fm env' acc pst = Some p' /\
-                  p'
-              )
+            | Some ty' => 
+              match denote_t2fm acc pst with 
+              | Some p => Some ( fun env => 
+                forall x: (s.(mod_sorts) m ty'),
+                  let env' := VSnoc _ _ ty' c env x in 
+                    p env'
+                )
+              | None => None
+              end
             | None => None
             end
           | _ => None

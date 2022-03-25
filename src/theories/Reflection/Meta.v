@@ -13,6 +13,17 @@ Require Import MirrorSolve.HLists.
 
 Require Import MirrorSolve.Utils.
 
+Require Import Coq.Logic.EqdepFacts.
+
+
+Module M <: EqdepElimination.
+  Monomorphic Axiom eq_rect_eq :
+    forall (U:Type) (p:U) (Q:U -> Type) (x:Q p) (h:p = p),
+      x = eq_rect p Q x p h.
+End M.
+
+Module M' := EqdepTheory(M).
+
 Section Meta.
   Set Universe Polymorphism.
   Variable (s: signature).
@@ -124,14 +135,154 @@ Section Meta.
     | tInt i => f15 i
     | tFloat f17 => f16 f17
     end.
+    
+
+  Inductive rel_args {c} : list ({ty & option (mod_sorts s m ty)}) -> list (option ({ty & tm s c ty})) -> Type :=
+  | RelNil : rel_args nil nil
+  | RelConsSome : 
+    forall l r ty v v',
+      rel_args l r -> 
+      rel_args ((existT _ ty (Some v)) :: l) (Some (existT _ ty v') :: r)
+  | RelConsNone : 
+    forall l r ty, 
+      rel_args l r -> 
+      rel_args ((existT _ ty None) :: l) (None :: r).
+
+  Definition denote_extract_tf_typs 
+    (denote_tf : term -> list ({ty & option (mod_sorts s m ty)}) -> ({ty & option (mod_sorts s m ty)})) 
+    (extract_tf: forall c, term -> list (option ({ty & tm s c ty})) -> option ({ty & tm s c ty})) t :=
+    forall c env env' ty ty' v v',
+       denote_tf t env = existT _ ty (Some v) ->
+       extract_tf c t env' = Some (existT _ ty' v') -> 
+       ty = ty'.
+
+  (* Fixpoint e2valu {c} (env: list ({ty & option (mod_sorts s m ty)})) : option (valu s m c).
+    refine (
+      match env with 
+      | nil => Some (VEmp _ _)
+      | (existT ty (Some v)) :: env' => 
+        match e2valu env' with 
+        | Some vs => _
+        | None => None
+        end
+      end
+    ).
+  Admitted. *)
+
+  Definition denote_extract_tf_vs 
+    (denote_tf : term -> list ({ty & option (mod_sorts s m ty)}) -> ({ty & option (mod_sorts s m ty)})) 
+    (extract_tf: forall c, term -> list (option ({ty & tm s c ty})) -> option ({ty & tm s c ty})) t :=
+      forall c env env' ty v v',
+        rel_args env env' -> 
+        denote_tf t env = existT _ ty (Some v) ->
+        extract_tf c t env' = Some (existT _ ty v') -> 
+        forall env_v, v = interp_tm env_v v'.
+
+  Require Import Coq.Program.Equality.
+
+  Lemma denote_mk_var_types: 
+    forall def_ty c (env: valu s _ c) n ty ty' v v', 
+      denote_var s m def_ty env n = existT _ ty (Some v) -> 
+      match mk_var s c n with
+      | Some s0 => let (srt, v0) := s0 in Some (srt; TVar v0)
+      | None => None
+      end = Some (existT _ ty' v') -> 
+      ty = ty'.
+  Proof.
+    induction n; induction c; intros; simpl in *.
+    - autorewrite with mk_var in H0.
+      inversion H0.
+    - dependent destruction env.
+      simpl in *.
+      autorewrite with mk_var in H0.
+      inversion H.
+      inversion H0.
+      trivial.
+    - dependent destruction env.
+      simpl in H.
+      inversion H.
+    - 
+      dependent destruction env.
+      simpl in *.
+      admit.
+  Admitted.
+
+  Lemma denote_extract'_tm'_types :  
+    forall t extract_tf dtf c def_ty (env: valu s _ c) i ty v ty' v',
+      denote_extract_tf_typs dtf extract_tf t ->
+      denote_tm' s m dtf def_ty env i t = (existT _ ty (Some v)) -> 
+      extract_t2tm' s extract_tf c i t = Some (existT _ ty' v') -> 
+      ty = ty'. 
+  Proof.
+    induction t using term_ind'; try now (intros; 
+      simpl in *;
+      intuition eauto
+    ).
+    simpl; intros.
+    eapply denote_mk_var_types; eauto.
+  Qed.
+
+  Lemma denote_extract_rel_args : 
+    forall args denote_tf def_ty c (env: valu s _ c) i extract_tf j,
+      rel_args (map (denote_tm' s m denote_tf def_ty env i) args) (map (extract_t2tm' s extract_tf c j) args).
+  Proof.
+    induction args; [intros; econstructor |].
+    revert a.
+    induction a;
+    intros;
+    simpl in *.
+    
+  Admitted.
 
 
-  Theorem denote_extract:
-    forall t denote_tf extract_tf i2srt (p p': Prop) i j c (v: valu s _ c) fm,
-      denote_t2fm s m sorts_eq_dec denote_tf i2srt v i t = Some p -> 
+
+
+  Lemma denote_extract'_tm'_corr :  
+    forall t denote_tf extract_tf c def_ty (env: valu s _ c) i j ty v v', 
+      denote_extract_tf_vs denote_tf extract_tf t ->
+      denote_tm' s m denote_tf def_ty env i t = (existT _ ty (Some v)) -> 
+      extract_t2tm' s extract_tf c j t = Some (existT _ ty v') -> 
+      v = interp_tm env v'.
+  Proof.
+    induction t using term_ind'; (try now intros;
+      simpl in *;
+      match goal with 
+      | H: denote_extract_tf_vs _ _ _ |- _ => 
+        eapply H; eauto; econstructor 
+      end
+    ); intros.
+
+    - admit.
+    - simpl in H1.
+      simpl in H2.
+      Opaque map.
+      eapply H0; eauto.
+      eapply denote_extract_rel_args.
+  Admitted.
+
+  Lemma denote_extract'_tm'_equiv_forward :  
+    forall t s m extract_tf dtf c def_ty (env: valu s _ c) i j ty v, 
+      extract_t2tm' s extract_tf c j t = Some (existT _ ty v) -> 
+      denote_tm' s m dtf def_ty env i t = (existT _ ty (Some (interp_tm env v))).
+  Admitted.
+
+  (* Lemma denote_extract'_tm'_eq :  
+    forall t1 t2 s m extract_tf dtf c def_ty (env: valu s _ c) i j ty v ty' v', 
+      denote_tm' s m dtf def_ty env i t1 = (existT _ ty (Some v)) ->
+      denote_tm' s m dtf def_ty env i t2 = (existT _ ty' (Some v')) -> 
+      extract_t2tm' s extract_tf c j t = Some (existT _ ty' v') -> 
+      ty = ty'. 
+  Admitted. *)
+
+  Require Import Coq.Program.Equality.
+  Require Import Coq.Logic.Eqdep_dec.
+
+
+  Theorem denote_extract':
+    forall t denote_tf extract_tf i2srt i j c (v: valu s _ c) fm def_ty p,
+      @denote_t2fm s m sorts_eq_dec denote_tf i2srt def_ty c i t = Some p -> 
       extract_t2fm s extract_tf i2srt sorts_eq_dec c j t = Some fm -> 
-      (p <-> p') ->
-      (p' <-> interp_fm (m := m) v fm).
+      (p v <-> interp_fm (m := m) v fm).
   Proof.
 
   induction t using term_ind'; intros; try now (
@@ -143,19 +294,16 @@ Section Meta.
     simpl in H0.
     destruct (binder_name na) eqn:?.
     + simpl in *.
-      erewrite <- H1 in *.
-
       repeat match goal with 
       | H: (match ?X with | _ => _ end) = _ |- _ => 
         destruct X eqn:?; [| inversion H]
       end.
 
-
       repeat match goal with 
       | H: Some _ = Some _ |- _ => 
         erewrite some_prop in H; subst
       | H: Some _ = Some _ |- _ => 
-        inversion H; subst
+        progress (inversion H; subst)
       end.
       
       (* clear H1. *)
@@ -164,8 +312,7 @@ Section Meta.
       autorewrite with interp_fm.
       eapply iff_distribute.
       * eapply IHt1; eauto.
-        eapply iff_refl.
-      * eapply IHt2; eauto; eapply iff_refl.
+      * eapply IHt2; eauto.
     + 
 
       repeat match goal with 
@@ -177,36 +324,17 @@ Section Meta.
       | H: Some _ = Some _ |- _ => 
         erewrite some_prop in H; subst
       | H: Some _ = Some _ |- _ => 
-        inversion H; subst
+        progress (inversion H; subst)
       end.
 
       autorewrite with interp_fm.
-      simpl.
-
-      erewrite <- H1.
-
-      admit.
-
-      (*
 
       split; intros.
 
-      * destruct H.
-        specialize (H val).
-        destruct H.
-        specialize (IHt2 match_tacs0 x x).
-        eapply IHt2; intuition eauto.
-      * simpl in *.
-        eexists.
-        intros.
-        specialize (H x).
-        split.
-        2: eapply H.
-        -- eapply IHt2.
-        exists p'.
-        exists H. *)
-
-
+      * specialize (H1 val).
+        eapply IHt2 with (p := P); eauto.
+      * specialize (H1 x).
+        eapply IHt2 with (p := P); eauto.
   - 
     autorewrite with denote_t2fm in *.
     autorewrite with extract_t2fm in *.
@@ -215,92 +343,113 @@ Section Meta.
     | H: Some _ = Some _ |- _ => 
       erewrite some_prop in H; subst
     | H: Some _ = Some _ |- _ => 
-      inversion H; subst
+      progress (inversion H; subst)
     | _ => try now congruence
     | H: (match ?X with | _ => _ end) = _ |- _ => 
       destruct X eqn:?; try now congruence
-    end;
-    autorewrite with interp_fm;
-    (try now intuition eauto);
-    repeat match goal with 
-    | H: (match ?X with | _ => _ end) = _ |- _ => 
-      destruct X eqn:?; try now congruence
-    | H: Some _ = Some _ |- _ => 
-      erewrite some_prop in H; subst
-    | H: Some _ = Some _ |- _ => 
-      inversion H; subst
-    | _ => try now congruence
-    end;
-    autorewrite with interp_fm;
-    repeat match goal with 
-    | H: (match ?X with | _ => _ end) = _ |- _ => 
+    | H: (match ?X with | _ => _ end) |- _ => 
       destruct X eqn:?; try now congruence
     end;
-    erewrite <- H2;
-    unfold eq_rect_r in *; simpl in *;
-    repeat match goal with 
-    | H: Forall _ (_ :: _) |- _ => 
-      inversion H; subst; clear H
-    end.
+    autorewrite with interp_fm.
+    + unfold pure in H0.
+      inversion H0.
+      split; trivial.
+    
     (* equality, \/, /\, and ~ *)
     +
+      destruct args eqn:?; try now congruence.
+      destruct l eqn:?; try now congruence.
+      destruct l0 eqn:?; try now congruence.
+      repeat match goal with 
+      | H: Forall _ (_ :: _) |- _ => 
+        progress (inversion H; subst; clear H)
+      | H: Some _ = Some _ |- _ => 
+        progress (inversion H; subst; clear H)
+      | H: (match ?X with | _ => _ end) = _ |- _ => 
+        destruct X eqn:?; try now congruence
+      end.
       unfold eq_rect_r.
-      simpl.
-      (* Need a lemma for interp_tm and denote_tm'/extract_t2tm'.
-        Also, it should be the case that x0 = x2?
-      *)
-      admit.
-    + split; intros.
-      * match goal with 
-        | H: _ \/ _ |- _ => 
-          destruct H
-        end; [left | right].
-        -- eapply H4 with (p := P) (p' := p'); intuition eauto.
-        -- eapply H3 with (p := P0) (p' := p'); intuition eauto.
-      * 
-        match goal with 
-        | H: _ \/ _ |- _ => 
-          destruct H
-        end. 
-        -- left; eapply H4 with (p := P) (p' := P); intuition eauto.
-        -- right; eapply H3 with (p := P0) (p' := P0); intuition eauto.
-    + intuition eauto.
-      * eapply H4 with (p := P) (p' := P); intuition eauto.
-      * eapply H3 with (p := P0) (p' := P0); intuition eauto.
-      * eapply H4 with (p := P) (p' := P); intuition eauto.
-      * eapply H3 with (p := P0) (p' := P0); intuition eauto.
-    + clear H5.
-      erewrite H4 with (p := P) (p' := P); intuition eauto.
+      unfold eq_rect.
+      destruct (eq_sym _).
+      split; intros.
+      * repeat match goal with 
+        | H: let (_, _) := ?X in _ |- _ => 
+          destruct X eqn:?; try now congruence
+        | H: (match ?X with | _ => _ end) = _ |- _ => 
+          destruct X eqn:?; try now congruence
+        | H: match ?X with | _ => _ end |- _ => 
+          destruct X eqn:?; try now congruence
+        end;
+        (try now contradiction);
+        autorewrite with interp_fm.
+        destruct (eq_sym _); subst.
+        assert (x1 = x0) by (eapply denote_extract'_tm'_types; eauto).
+        subst.
+        assert (m1 = interp_tm v t3).
+        eapply denote_extract'_tm'_corr; eauto.
+        erewrite <- H.
+        eapply denote_extract'_tm'_corr; try eapply Heqo0.
+        eauto.
+      *  
+        autorewrite with interp_fm in H.
+
+        repeat erewrite denote_extract'_tm'_equiv_forward; eauto.
+
+        repeat match goal with 
+        | |- match ?X with | _ => _ end => 
+          destruct X eqn:?; try now congruence
+        end.
+        unfold eq_sym.
+        assert (e0 = eq_refl) by (eapply M'.UIP_refl).
+        erewrite H0.
+        trivial.
+
+    
   - simpl in H.
     simpl in H0.
-    erewrite <- H1.
-    clear H1.
     repeat (destruct (eq_term _ _)); 
     (try now congruence);
     repeat match goal with 
     | H: Some _ = Some _ |- _ => 
       erewrite some_prop in H; subst
     | H: Some _ = Some _ |- _ => 
-      inversion H; subst
+      progress (inversion H; subst)
+    | |- _ => unfold pure in *
     end;
+    simpl in *;
     autorewrite with interp_fm;
     eapply iff_refl.
 
   - simpl in H.
     simpl in H0.
-    erewrite <- H1.
-    clear H1.
     repeat (destruct (eq_term _ _)); 
     (try now congruence);
     repeat match goal with 
     | H: Some _ = Some _ |- _ => 
       erewrite some_prop in H; subst
     | H: Some _ = Some _ |- _ => 
-      inversion H; subst
+      progress (inversion H; subst)
+    | |- _ => unfold pure in *
     end;
+    simpl in *;
     autorewrite with interp_fm;
     eapply iff_refl.
-  Admitted. 
+  Qed.
 
+  
+
+
+  Lemma denote_extract:
+    forall t denote_tf extract_tf i2srt i j c (v: valu s _ c) fm def_ty p p',
+      @denote_t2fm s m sorts_eq_dec denote_tf i2srt def_ty c i t = Some p -> 
+      extract_t2fm s extract_tf i2srt sorts_eq_dec c j t = Some fm -> 
+      (p v <-> p') ->
+      (p' <-> interp_fm (m := m) v fm).
+  Proof.
+    intros.
+    erewrite <- H1.
+    eapply denote_extract' with (p := p);
+    eauto.
+  Qed.
 
 End Meta.

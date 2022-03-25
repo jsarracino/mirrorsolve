@@ -7,8 +7,6 @@ Require Import MirrorSolve.HLists.
 
 Import ListNotations.
 Import HListNotations.
-(* 
-From SMTCoq Require Import SMTCoq. *)
 
 Set Universe Polymorphism.
 Section BFOL.

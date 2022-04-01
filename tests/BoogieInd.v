@@ -3,6 +3,8 @@
 Require Import Coq.ZArith.BinInt.
 Require Import Coq.Classes.EquivDec.
 
+Require Import Coq.Lists.List.
+
 Section Boogie.
 
   Inductive Typ := 
@@ -36,16 +38,13 @@ Section Boogie.
 
   Definition get {t} (v: Var t) (st: State) : Value t := st _ v.
 
-  Fixpoint eval_expr {t} (st: State) (e: Expr t) : Value t.
-  refine (
+  Fixpoint eval_expr {t} (st: State) (e: Expr t) : Value t :=
     match e in Expr t' return Value t' with 
-    | Plus l r => (eval_expr _ st l + eval_expr _ st r)%Z
-    | Minus l r => (eval_expr _ st l - eval_expr _ st r)%Z
+    | Plus l r => (eval_expr st l + eval_expr st r)%Z
+    | Minus l r => (eval_expr st l - eval_expr st r)%Z
     | ILit v => v
     | EVar v => get v st
-    end
-  ).
-  Defined.
+    end.
 
   Inductive Command := 
   | Seq: forall (c1 c2 : Command), Command
@@ -53,34 +52,102 @@ Section Boogie.
   | Assert: forall (test: State -> Prop), Command
   | Assume: forall (test: State -> Prop), Command
   | Havoc: forall {t} (v: Var t), Command
-  | Cond: forall (test: State -> Prop) (c_true : Command) (c_false: Command), Command.
+  | Cond: forall (test: State -> Prop) (c_true : Command) (c_false: Command), Command
+  | While: forall (test: State -> Prop) (inv: State -> Prop) (measure: State -> nat) (modifies : list {t & Var t}) (body: Command), Command.
 
-  Fixpoint semantics (c: Command) : State -> State -> Prop.
+  Fixpoint quantify_vars (s: State) (Pred: State -> Prop) (vars: list {t & Var t}) : Prop := 
+    match vars with 
+    | nil => Pred s
+    | existT _ t v :: vars' =>
+      forall (rhs: Value t), 
+        quantify_vars (put v rhs s) Pred vars'
+    end.  
+
+  Definition skip := Assert (fun _ => True).
+
+  Fixpoint unroll_loop (n: nat) (test: State -> Prop) (body: Command) : Command := 
+    match n with 
+    | 0 => skip
+    | S n => Cond test (unroll_loop n test body) skip
+    end.
+
+  Inductive semantics : Command -> State -> State -> Prop := 
+  | SemSeq : forall c1 c2 s s' s'', 
+    semantics c1 s s' -> 
+    semantics c2 s' s'' -> 
+    semantics (Seq c1 c2) s s''
+  | SemAssign : forall t v rhs s s', 
+    s' = put v (eval_expr s rhs) s ->
+    semantics (@Assign t v rhs) s s'
+  | SemAssert : forall (test: State -> Prop) s s', 
+    test s -> 
+    s = s' -> 
+    semantics (Assert test) s s'
+  | SemAssume : forall (test: State -> Prop) s s', 
+    test s -> 
+    s = s' -> 
+    semantics (Assume test) s s'
+  | SemHavoc : forall t v s s',
+    forall (rhs: Value t), 
+      s' = put v rhs s -> 
+      semantics (@Havoc t v) s s'
+  | SemCond : forall (test : State -> Prop) ct cf s s', 
+    (test s -> semantics ct s s') -> 
+    (~ test s -> semantics cf s s') -> 
+    semantics (Cond test ct cf) s s'
+  | SemWhileDone : forall (test : State -> Prop) inv measure modifies body s s',
+    ~ test s -> 
+    s = s' -> 
+    semantics (While test inv measure modifies body) s s' 
+  | SemWhileIter : forall (test : State -> Prop) inv measure body modifies s s' s'',
+    test s -> 
+    semantics body s s' -> 
+    semantics (While test inv measure modifies body) s' s'' -> 
+    semantics (While test inv measure modifies body) s s''. 
+
+  Lemma inv_assign : 
+    forall {t v rhs s s'}, 
+      semantics (@Assign t v rhs) s s' -> 
+      s' = put v (eval_expr s rhs) s.
+  Proof.
+    intros.
+    refine (
+      match H with 
+      | SemAssign _ _ _ _ _ _ => _ 
+      end
+    ); trivial.
+  Qed.
+
+  Ltac red_env := 
+    repeat match goal with
+    | H : semantics (Seq _ _) _ _ |- _ => 
+      inversion H; subst; clear H
+    | H : semantics (Assign _ _) _ _ |- _ => 
+      let H' := fresh "H'" in 
+      pose proof (H': inv_assign H);
+      subst;
+      clear H;
+      clear H'
+    | H : _ /\ _ |- _ => destruct H
+    end.
+
+
+  Fixpoint wp (c: Command) (Pred: State -> Prop) {struct c} : State -> Prop.
   refine (
     match c with 
-    | Seq c1 c2 => fun s_pre s_post => 
-      exists s', semantics c1 s_pre s' /\ semantics c2 s' s_post
-    | Assign v rhs => fun s_pre s_post => 
-      s_post = put v (eval_expr s_pre rhs) s_pre
-    | Assert test => fun s_pre s_post => test s_pre /\ s_pre = s_post
-    | Assume test => fun s_pre s_post => test s_pre /\ s_pre = s_post
-    | @Havoc t v => fun s_pre s_post => forall (rhs: Value t), s_post = put v rhs s_pre
-    | Cond test ct cf => fun s_pre s_post => 
-      (test s_pre -> semantics ct s_pre s_post) /\ (~ test s_pre -> semantics cf s_pre s_post)
-    end
-  ).
-  Defined.
-
-
-  Fixpoint wp_command (c: Command) (Pred: State -> Prop) {struct c} : State -> Prop.
-  refine (
-    match c with 
-    | Seq c1 c2 => wp_command c1 (wp_command c2 Pred)
+    | Seq c1 c2 => wp c1 (wp c2 Pred)
     | Assign v rhs => fun s => Pred (put v (eval_expr s rhs) s)
     | Assert test => fun s => test s /\ Pred s
     | Assume test => fun s => (test s -> Pred s)
     | @Havoc t v => fun s => forall (rhs: Value t), Pred (put v rhs s)
-    | Cond test ct cf => fun s => (test s /\ wp_command ct Pred s) \/ (~ test s /\ wp_command cf Pred s)
+    | Cond test ct cf => fun s => (test s /\ wp ct Pred s) \/ (~ test s /\ wp cf Pred s)
+    | While test inv measure modifies body => fun s => 
+      inv s /\ (
+        quantify_vars s (fun s' => 
+          (test s' /\ inv s' -> wp body inv s') /\ 
+          (~ test s' /\ inv s' -> Pred s')
+        ) modifies
+      )
     end
   ).
   Defined.
@@ -96,17 +163,18 @@ Section Boogie.
   Lemma wp_spec :
     forall (c: Command) (Pred: State -> Prop) (s s' : State), 
       semantics c s s' -> 
-      wp_command c Pred s -> 
+      wp c Pred s -> 
       Pred s'.
   Proof.
-    induction c; simpl; intros; try subst; trivial.
+  Admitted.
+    (* induction c; simpl; intros; try subst; trivial.
     - simpl in *.
-      destruct H as [? [? ?]].
-      pose proof (IHc1 (wp_command c2 Pred)).
-      eapply IHc2.
-      * eapply H1.
-      * eapply H2; intuition eauto.
-    - intuition eauto.
+      inversion H; subst; clear H.
+      pose proof (IHc1 (wp c2 Pred)).
+      eapply IHc2; intuition eauto.
+    - inversion H; subst; clear H.
+      simpl in *.
+      intuition eauto.
       subst; trivial.
     - intuition eauto.
       subst.
@@ -120,7 +188,7 @@ Section Boogie.
       * eapply IHc1;
         intuition eauto.
       * eapply IHc2; intuition eauto.
-  Qed.
+  Qed. *)
 
   Definition pred_top := fun (s : State) => True.
 End Boogie.
@@ -194,31 +262,49 @@ Section McCarthy91.
     R <- (plus (var R) (lit 1%Z)) ;;
     R <- (plus (var R) (lit 1%Z)).
 
+  Notation semantics := (semantics M91Vars var_eq_dec).
+
+  Ltac red_env := 
+    repeat match goal with
+    | H : semantics (_ ;; _) _ _ |- _ => 
+      inversion H; subst; clear H
+    | H : semantics (_ <- _) _ _ |- _ => 
+      let H' := fresh "H'" in 
+      pose proof (H': inv_assign _ _ H);
+      subst;
+      clear H;
+      clear H'
+    | H : _ /\ _ |- _ => destruct H
+    end.
+
   Goal forall st st', 
-    semantics M91Vars var_eq_dec test_1 st st' -> 
+    semantics test_1 st st' -> 
     (st' _ N = st _ N) /\ (st' _ R = st _ N + 2)%Z.
   Proof.
     intros.
-    unfold semantics, test_1 in H.
-    repeat match goal with 
-    | H: ex _ |- _ => destruct H
-    | H: _ /\ _ |- _ => destruct H
-    end.
+    unfold test_1 in H.
+    red_env.
+    inversion H1; subst.
+    clear H1.
+    pose proof (inv_assign _ _ H6).
+    pose proof (inv_assign _ _ H5).
     subst.
-    intuition.
+    split; [trivial|].
+    simpl put.
+
+    unfold get, put.
     simpl.
-    unfold put, get.
-    simpl.
-    erewrite H.
+    inversion H0.
     Lia.lia.
   Qed.
 
-  Goal forall st, wp_command M91Vars var_eq_dec test_1 top st.
+  Goal forall (st : State M91Vars), wp M91Vars var_eq_dec test_1 (fun st' => st' _ R = st' _ N + 2 /\ st' _ N = st _ N)%Z st.
   Proof.
     intros.
-    simpl wp_command.
+    simpl wp.
     intuition.
-    exact I.
+    unfold get, put; simpl.
+    Lia.lia.
   Qed.
 (* 
   procedure ok2()
@@ -242,11 +328,10 @@ Section McCarthy91.
   Definition test_2_post_strong (s: State M91Vars) := 
     s _ R = 10%Z.
 
-
-  Goal forall st, wp_command M91Vars var_eq_dec test_2 test_2_post_weak st.
+  Goal forall st, wp M91Vars var_eq_dec test_2 test_2_post_weak st.
   Proof.
     intros.
-    simpl wp_command.
+    simpl wp.
     unfold put, test_2_post_weak.
     simpl.
     intuition.
@@ -370,13 +455,13 @@ Section McCarthy91.
     ((rhs0 <=? 100)%Z = true -> rhs = 91%Z))).
 
   Goal forall st st',
-    semantics M91Vars var_eq_dec mccarthy st st' -> 
+    semantics mccarthy st st' -> 
     mc_post st'.
   Proof.
     intros.
     eapply wp_spec; eauto.
     clear H.
-    simpl wp_command.
+    simpl wp.
     unfold BoogieInd.put, BoogieInd.get, mc_post.
     simpl.
     generalize (st _ McCarthy91.N).

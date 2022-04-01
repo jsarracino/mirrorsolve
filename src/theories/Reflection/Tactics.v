@@ -55,11 +55,19 @@ Section Tactics.
     deep_f: s.(sig_funs) args ret; 
   }.
 
+  Inductive tac_lits := | bool_lit | z_lit.
+
+  Definition lit_ty (t: tac_lits) : Type := 
+    match t with 
+    | bool_lit => bool
+    | z_lit => BinNums.Z
+    end.
+
   Inductive tac_syn :=
     | tacFun : 
       forall (fs: fun_sym), tac_syn
     | tacLit : 
-      forall (ty: sorts) (dv: mod_sorts ty) (deep_t: forall c, tm s c ty), tac_syn.
+      forall (lit : tac_lits) (denote_lit: lit_ty lit -> {ty & mod_sorts ty}) (extract_lit: lit_ty lit -> forall c, {ty & tm s c ty}), tac_syn.
 
   Fixpoint denote_tac_args (tac_args: list sorts) (opt_args: list (option ({ty & mod_sorts ty}))) : option (denote_args tac_args) := 
     match opt_args with 
@@ -95,22 +103,79 @@ Section Tactics.
       conv_fun (fun vs => f (v ::: vs))
     end.
 
-  Definition denote_tac (tac: tac_syn) (opt_args : list (option ({ty & mod_sorts ty}))) : option ({ty & mod_sorts ty}) :=
+  MetaCoq Quote Definition c_tru := true.
+  MetaCoq Quote Definition c_fls := false.
+
+  Definition denote_bool (t: term) : option bool := 
+    if eq_term t c_tru then Some true
+    else if eq_term t c_fls then Some false
+    else None.
+
+  MetaCoq Quote Definition c_x1 := BinNums.xI.
+  MetaCoq Quote Definition c_x0 := BinNums.xO.
+  MetaCoq Quote Definition c_xH := BinNums.xH.
+
+  Fixpoint denote_pos (t: term) : option BinNums.positive := 
+    if eq_term t c_xH then Some BinNums.xH else
+      match t with 
+      | tApp t' [i] => 
+        match denote_pos i with 
+        | Some i' => 
+          if eq_term t' c_x1 then Some (BinNums.xI i')
+          else if eq_term t' c_x0 then Some (BinNums.xO i')
+          else None
+        | _ => None
+        end
+      | _ => None
+      end.
+
+  MetaCoq Quote Definition c_zzero := BinNums.Z0.
+  MetaCoq Quote Definition c_zpos := BinNums.Zpos.
+  MetaCoq Quote Definition c_zneg := BinNums.Zneg.
+
+  Definition denote_Z (t: term) : option BinNums.Z := 
+    if eq_term t c_zzero then Some BinNums.Z0 else
+      match t with 
+      | tApp t' [i] => 
+        match denote_pos i with 
+        | Some p => 
+          if eq_term t' c_zpos then Some (BinNums.Zpos p)
+          else if eq_term t' c_zneg then Some (BinNums.Zneg p)
+          else None
+        | _ => None
+        end
+      | _ => None
+      end.
+
+  Require Import Coq.ZArith.BinIntDef.
+  MetaCoq Quote Definition one := (1%Z).
+
+  Definition denote_lit (lit: tac_lits) (t: term) : option (lit_ty lit) :=
+    match lit with 
+    | bool_lit => denote_bool t
+    | z_lit => denote_Z t
+    end.
+  
+  Definition denote_tac (tac: tac_syn) (opt_args : list (option ({ty & mod_sorts ty}))) (t: term) : option ({ty & mod_sorts ty}) :=
     match tac with 
     | tacFun fs => 
       match denote_tac_args (fs.(args)) opt_args with 
       | Some wrapped_args => Some (existT _ fs.(ret) (apply_denote_func _ wrapped_args (conv_fun (s.(mod_fns) _ _ _ fs.(deep_f)))))
       | None => None
       end
-    | tacLit ty v _ => Some (existT _ ty v)
+    | tacLit lit dt _ => 
+      match denote_lit lit t with 
+      | Some dlit => Some (dt dlit)
+      | None => None
+      end
     end.
 
-  Definition denote_mtac (mtac: term * tac_syn) (t: term) (args: list (option ({ty & mod_sorts ty})%type)) : option ({ty & mod_sorts ty}) :=
-    let (tm, tac) := mtac in 
-    if eq_term tm t then denote_tac tac args
+  Definition denote_mtac (mtac: (term -> bool) * tac_syn) (t: term) (args: list (option ({ty & mod_sorts ty})%type)) : option ({ty & mod_sorts ty}) :=
+    let (test, tac) := mtac in 
+    if test t then denote_tac tac args t
     else None.
         
-  Fixpoint denote_mtacs (mtacs: list (term * tac_syn)) (t: term) (args: list (option ({ty & mod_sorts ty})%type)) : option ({ty & mod_sorts ty}) := 
+  Fixpoint denote_mtacs (mtacs: list ((term -> bool) * tac_syn)) (t: term) (args: list (option ({ty & mod_sorts ty})%type)) : option ({ty & mod_sorts ty}) := 
     match mtacs with 
     | nil => None
     | mtac :: mtacs => 
@@ -120,8 +185,12 @@ Section Tactics.
       end
     end.
 
-  Equations denote_tm (mtacs: list (term * tac_syn)) (t: term) (args: list (option ({ty & mod_sorts ty}))) : option ({ty & mod_sorts ty}) := 
-    denote_tm mtacs (tApp f _) r_args := denote_mtacs mtacs f r_args; 
+  Equations denote_tm (mtacs: list ((term -> bool) * tac_syn)) (t: term) (args: list (option ({ty & mod_sorts ty}))) : option ({ty & mod_sorts ty}) := 
+    denote_tm mtacs (tApp f args) r_args := 
+      match denote_mtacs mtacs f r_args with 
+      | Some x => Some x
+      | None => denote_mtacs mtacs (tApp f args) r_args (* literal tactics need to be called on the whole term *)
+      end;
     denote_tm mtacs t r_args := denote_mtacs mtacs t r_args.
 
   Fixpoint extract_args {c: ctx s} (arg_tys : list sorts) (r_args: list (option ({srt & tm s c srt}))) : option (HList.t (tm s c) arg_tys) :=
@@ -157,19 +226,23 @@ Section Tactics.
     | None => None
     end.
 
-  Definition extract_tac (c: ctx s) (tac: tac_syn) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
+  Definition extract_tac (c: ctx s) (tac: tac_syn) (r_args: list (option ({srt & tm s c srt}))) (t: term) : option ({srt & tm s c srt}) := 
     match tac with 
     | tacFun fs => extract_fun fs r_args
-    | tacLit ty _ l => Some (existT _ ty (l c))
+    | tacLit lit _ ef => 
+      match denote_lit lit t with 
+      | Some dlit => Some (ef dlit c)
+      | None => None
+      end
     end.
 
-  Definition extract_mtac (c: ctx s) (mtac: term * tac_syn) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
-    let (t', tac) := mtac in 
-    if eq_term t t' then extract_tac c tac r_args 
+  Definition extract_mtac (c: ctx s) (mtac: (term -> bool) * tac_syn) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
+    let (test, tac) := mtac in 
+    if test t then extract_tac c tac r_args t
     else None.
 
 
-  Fixpoint extract_mtacs (c: ctx s) (mtacs: list (term * tac_syn)) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
+  Fixpoint extract_mtacs (c: ctx s) (mtacs: list ((term -> bool) * tac_syn)) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
     match mtacs with 
     | nil => None
     | mt :: mtacs => 
@@ -180,8 +253,12 @@ Section Tactics.
     end.
 
   Obligation Tactic := intros.
-  Equations extract_t2tm {c: ctx s} (mtacs: list (term * tac_syn)) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
-    extract_t2tm mtacs (tApp f _) r_args := extract_mtacs c mtacs f r_args;
+  Equations extract_t2tm {c: ctx s} (mtacs: list ((term -> bool) * tac_syn)) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
+    extract_t2tm mtacs (tApp f args) r_args := 
+      match extract_mtacs c mtacs f r_args with 
+      | Some v => Some v
+      | None => extract_mtacs c mtacs (tApp f args) r_args
+      end;
     extract_t2tm mtacs t r_args := extract_mtacs c mtacs t r_args.
 
 
@@ -194,7 +271,7 @@ Section Tactics.
     | _ :: _ => None
     end.
 
-  Variable match_tacs : list (term * tac_syn).
+  Variable match_tacs : list ((term -> bool) * tac_syn).
   Variable match_inds : list (term * sorts).
 
   Lemma denote_extract_specialized: 

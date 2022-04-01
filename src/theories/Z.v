@@ -15,6 +15,8 @@ Section ZFOL.
   | ZS
   | BS.
 
+  Scheme Equality for sorts.
+
   Inductive funs: arity sorts -> sorts -> Type :=
   | ZLit: forall (z: Z), funs [] ZS
   | BLit: forall (b: bool), funs [] BS

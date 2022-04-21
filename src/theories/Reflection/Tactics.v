@@ -111,6 +111,23 @@ Section Tactics.
     else if eq_term t c_fls then Some false
     else None.
 
+  MetaCoq Quote Definition c_nzero := 0%nat.
+  MetaCoq Quote Definition c_nsucc := S%nat.
+
+  Fixpoint denote_nat (t: term) : option nat := 
+    if eq_term t c_nzero then Some 0
+    else 
+      match t with 
+      | tApp t' [i] => 
+        match denote_nat i with 
+        | Some i' => 
+          if eq_term t' c_nsucc then Some (S i')
+          else None
+        | _ => None
+        end
+      | _ => None
+      end.
+
   MetaCoq Quote Definition c_x1 := BinNums.xI.
   MetaCoq Quote Definition c_x0 := BinNums.xO.
   MetaCoq Quote Definition c_xH := BinNums.xH.

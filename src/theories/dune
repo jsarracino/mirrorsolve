@@ -1,6 +1,8 @@
 (include_subdirs qualified)
+ (dirs (:standard \ examples))
 
 (coq.theory
  (name MirrorSolve)
  (package mirrorsolve)
+ (modules (:standard \ Sum))
 )

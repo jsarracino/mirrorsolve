@@ -17,10 +17,10 @@ Section FOL.
   Variable sig: signature.
 
   (* Variable context. *)
-  Inductive ctx: Type :=
-  | CEmp: ctx
-  | CSnoc: ctx -> sig.(sig_sorts) -> ctx.
-  Derive NoConfusion for ctx.
+  Definition ctx := snoc_list sig.(sig_sorts).
+
+  Notation CSnoc := (Snoc sig.(sig_sorts)).
+  Notation CEmp := (SLNil sig.(sig_sorts)).
 
   Import HListNotations.
 
@@ -30,6 +30,8 @@ Section FOL.
            | H: existT _ _ _ = existT _ _ _ |- _ =>
              eapply Eqdep.EqdepTheory.inj_pair2 in H; subst
            end.
+
+  
 
   Inductive var: ctx -> sig.(sig_sorts) -> Type :=
   | VHere:
@@ -117,14 +119,14 @@ Section FOL.
     Inductive valu : ctx -> Type :=
     | VEmp: valu CEmp
     | VSnoc: forall s c,
-        m.(mod_sorts) s ->
         valu c ->
+        m.(mod_sorts) s ->
         valu (CSnoc c s).
     Derive Signature for valu.
 
     Equations find {c s} (x: var c s) (v: valu c) : m.(mod_sorts) s :=
-      { find (VHere _ _) (VSnoc _ _ val _) := val;
-        find (VThere _ _ _ x') (VSnoc _ _ _ v') := find x' v' }.
+      { find (VHere _ _) (VSnoc _ _ _ val) := val;
+        find (VThere _ _ _ x') (VSnoc _ _ v' _) := find x' v' }.
 
     Equations interp_tm (c: ctx) (s: sig_sorts sig) (v: valu c) (t: tm c s) : m.(mod_sorts) s
       by struct t :=
@@ -156,7 +158,7 @@ Section FOL.
           interp_fm _ v f1 -> interp_fm _ v f2;
         interp_fm _ v (FForall c s f) :=
           forall val: m.(mod_sorts) s,
-            interp_fm (CSnoc c s) (VSnoc _ _ val v) f }.
+            interp_fm (CSnoc c s) (VSnoc _ _ v val) f }.
 
     (* A few tactics for converting between normal Prop goals and interp_fm goals  *)
     Lemma eq_interp:
@@ -164,6 +166,17 @@ Section FOL.
         (interp_tm c srt v l = interp_tm c srt v r)
           <-> 
         interp_fm c v (FEq _ _ l r).
+    Proof.
+      intros.
+      autorewrite with interp_fm.
+      apply iff_refl.
+    Qed.
+
+    Lemma neg_interp:
+      forall c v f, 
+        (~ interp_fm c v f)
+          <-> 
+        interp_fm c v (FNeg _ f).
     Proof.
       intros.
       autorewrite with interp_fm.
@@ -182,20 +195,20 @@ Section FOL.
 
   Fixpoint app_ctx (c1 c2: ctx): ctx :=
     match c2 with
-    | CEmp => c1
-    | CSnoc c2' sort => CSnoc (app_ctx c1 c2') sort
+    | SLNil _ => c1
+    | Snoc _ c2' sort => CSnoc (app_ctx c1 c2') sort
     end.
 
   Fixpoint ccons s (c: ctx) :=
     match c with
-    | CEmp => CSnoc CEmp s
-    | CSnoc c s0 => CSnoc (ccons s c) s0
+    | SLNil _ => CSnoc CEmp s
+    | Snoc _ c s0 => CSnoc (ccons s c) s0
     end.
 
   Fixpoint app_ctx' (c1 c2: ctx): ctx :=
     match c1 with
-    | CEmp => c2
-    | CSnoc c1' sort => app_ctx' c1' (ccons sort c2)
+    | SLNil _ => c2
+    | Snoc _ c1' sort => app_ctx' c1' (ccons sort c2)
     end.
 
   Equations app_valu
@@ -205,11 +218,11 @@ Section FOL.
              (v': valu m c')
     : valu m (app_ctx c c') :=
     { app_valu v (VEmp _) := v;
-      app_valu v (VSnoc _ _ _ x v') := VSnoc _ _ _ x (app_valu v v') }.
+      app_valu v (VSnoc _ _ _ v' x) := VSnoc _ _ _ (app_valu v v') x }.
 
   Equations vcons {c s m} (x: mod_sorts m s) (v: valu m c) : valu m (ccons s c) :=
-    { vcons x (VEmp _) := VSnoc _ _ _ x (VEmp _);
-      vcons x (VSnoc _ _ _ y v) := VSnoc _ _ _ y (vcons x v) }.
+    { vcons x (VEmp _) := VSnoc _ _ _ (VEmp _) x;
+      vcons x (VSnoc _ _ _ v y) := VSnoc _ _ _ (vcons x v) y }.
 
   Equations app_valu'
              {m: model}
@@ -218,7 +231,7 @@ Section FOL.
              (v': valu m c')
     : valu m (app_ctx' c c') :=
     { app_valu' (VEmp _) v' := v';
-      app_valu' (VSnoc _ _ _ x v) v' := app_valu' v (vcons x v') }.
+      app_valu' (VSnoc _ _ _ v x) v' := app_valu' v (vcons x v') }.
 
   Lemma app_ctx_emp_l:
     forall c,
@@ -261,8 +274,8 @@ Section FOL.
 
   Fixpoint quantify {c0: ctx} (c: ctx): fm (app_ctx c0 c) -> fm c0 :=
     match c as c' return fm (app_ctx c0 c') -> fm c0 with
-    | CEmp => fun f => f
-    | CSnoc c' sort => fun f => quantify c' (FForall _ _ f)
+    | SLNil _ => fun f => f
+    | Snoc _ c' sort => fun f => quantify c' (FForall _ _ f)
     end.
 
   Lemma quantify_correct:
@@ -291,7 +304,7 @@ Section FOL.
         intros v.
         autorewrite with interp_fm.
         intros.
-        pose (VSnoc _ _ _ val v) as v''.
+        pose (VSnoc _ _ _ v val) as v''.
         specialize (H v'').
         eauto.
   Qed.
@@ -444,7 +457,7 @@ Section FOL.
   Lemma interp_tm_tm_cons:
     forall m c s (t: tm c s) (v: valu m c) s' val,
       interp_tm m c s v t =
-      interp_tm m (CSnoc c s') s (VSnoc m s' c val v) (tm_cons t).
+      interp_tm m (CSnoc c s') s (VSnoc m s' c v val) (tm_cons t).
   Proof.
     dependent induction t using tm_ind'; intros.
     - autorewrite with tm_cons.
@@ -520,10 +533,126 @@ Register FForall as p4a.core.forall.
 
 Register FImpl as p4a.core.impl.
 
-Register CEmp as p4a.core.cnil.
-Register CSnoc as p4a.core.csnoc.
+Register SLNil as p4a.core.cnil.
+Register Snoc as p4a.core.csnoc.
 
 Register HList.HNil as p4a.core.hnil.
 Register HList.HCons as p4a.core.hcons.
 
 
+Section FMap.
+  Variable (sigA sigB: signature).
+  Variable (mA: model sigA).
+  Variable (mB: model sigB).
+  Record theory_functor {sigA sigB: signature} {mA: model sigA} {mB: model sigB} := {
+   fmap_sorts : sigA.(sig_sorts) -> sigB.(sig_sorts);
+   fmap_arity : arity sigA.(sig_sorts) -> arity sigB.(sig_sorts);
+   fmap_funs : forall arr srt, sigA.(sig_funs) arr srt  -> sigB.(sig_funs) (fmap_arity arr) (fmap_sorts srt);
+   fmap_rels : forall arr, sigA.(sig_rels) arr -> sigB.(sig_rels) (fmap_arity arr);
+   fmap_mv : forall srt, mod_sorts sigA mA srt -> mod_sorts sigB mB (fmap_sorts srt);
+  }.
+
+  
+  Variable (a2b: @theory_functor sigA sigB mA mB).
+  
+
+  Fixpoint fmap_ctx (c: ctx sigA) : ctx sigB := 
+    match c with 
+    | SLNil _ => SLNil _
+    | Snoc _ i x => Snoc _ (fmap_ctx i) (a2b.(fmap_sorts) x)
+    end.
+
+  Equations fmap_var {c srt} (v: var sigA c srt) : var sigB (fmap_ctx c) (a2b.(fmap_sorts) srt) :=
+  { 
+    fmap_var (VHere _ c s) := VHere _ _ _;
+    fmap_var (VThere _ _ _ _ i) := VThere _ _ _ _ (fmap_var i)
+  }.
+
+  Equations fmap_valu {c} (v: valu sigA mA c) : valu sigB mB (fmap_ctx c) := 
+    fmap_valu VEmp := VEmp _ _;
+    fmap_valu (VSnoc _ _ i x) := VSnoc _ _ _ _ (fmap_valu i) (a2b.(fmap_mv) _ x).
+
+
+  Variable (fmap_fun_arrs: forall c arr srt, 
+    sig_funs sigA arr srt -> 
+    HList.t (fun srt' : sig_sorts sigA => tm sigB (fmap_ctx c) (a2b.(fmap_sorts) srt')) arr ->
+    HList.t (tm sigB (fmap_ctx c)) (a2b.(fmap_arity) arr)
+  ).
+  
+  Equations fmap_tm {c srt} (t: tm sigA c srt) : tm sigB (fmap_ctx c) (a2b.(fmap_sorts) srt) := 
+  {
+    fmap_tm (TVar v) := TVar (fmap_var v);
+    fmap_tm (@TFun _ c arr srt f args) := 
+      TFun _ (a2b.(fmap_funs) _ _ f) (fmap_fun_arrs _ _ _ f (fmap_tm_args args))
+  }
+  where fmap_tm_args {c arr} (args: HList.t (tm sigA c) arr) 
+    : HList.t (fun srt' : sig_sorts sigA => tm sigB (fmap_ctx c) (a2b.(fmap_sorts) srt')) arr := 
+  {
+    fmap_tm_args hnil := hnil;
+    fmap_tm_args (h ::: t) := (fmap_tm h) ::: (fmap_tm_args t)
+  }.
+
+  Variable (fmap_rel_arrs: forall c arr, 
+    sig_rels sigA arr -> 
+    HList.t (fun srt' : sig_sorts sigA => tm sigB (fmap_ctx c) (a2b.(fmap_sorts) srt')) arr ->
+    HList.t (tm sigB (fmap_ctx c)) (a2b.(fmap_arity) arr)
+  ).
+
+  Variable (fmap_fm_fforall_op : 
+    forall c s, 
+      fm sigB (fmap_ctx (Snoc _ c s)) -> 
+      fm sigB (fmap_ctx (Snoc _ c s))
+  ).
+
+  Equations fmap_fm {c} (f: fm sigA c) : fm sigB (fmap_ctx c) :=
+  {
+    fmap_fm FTrue := FTrue;
+    fmap_fm FFalse := FFalse;
+    fmap_fm (FEq l r) := FEq (fmap_tm l) (fmap_tm r);
+    fmap_fm (FRel r args') := FRel _ (a2b.(fmap_rels) _ r) (fmap_rel_arrs _ _ r (fmap_tm_args args'));
+    fmap_fm (FNeg x) := FNeg _ (fmap_fm x);
+    fmap_fm (FOr l r) := FOr _ (fmap_fm l) (fmap_fm r);
+    fmap_fm (FAnd l r) := FAnd _ (fmap_fm l) (fmap_fm r);
+    fmap_fm (FImpl l r) := FImpl (fmap_fm l) (fmap_fm r);
+    fmap_fm (FForall s i) := 
+      FForall _ (fmap_fm_fforall_op _ s (fmap_fm i))
+  }.
+
+  Record functor_wf := {
+    interp_tm_inj:
+    forall srt c (v: valu _ mA c) t t',
+      interp_tm v t = interp_tm v t' <->
+      interp_tm (fmap_valu v) (fmap_tm t) = interp_tm (fmap_valu v) (fmap_tm (c:=c) (srt:=srt) t');
+    fmap_rel_equi:
+      forall c v args r r_args,
+        mod_rels sigA mA args r (interp_tms v r_args) <->
+        mod_rels sigB mB (a2b.(fmap_arity) args) (a2b.(fmap_rels) args r) (interp_tms (fmap_valu v) (fmap_rel_arrs c args r (fmap_tm_args r_args)));
+    interp_fmap_forall_equi: 
+      forall srt c v (f : fm sigA (Snoc _ c srt)),
+        (forall vA,
+          interp_fm (VSnoc sigB mB (a2b.(fmap_sorts) srt) (fmap_ctx c) (fmap_valu v) (a2b.(fmap_mv) srt vA)) (fmap_fm f)) <->
+        (forall vB,
+          interp_fm (VSnoc sigB mB (a2b.(fmap_sorts) srt) (fmap_ctx c) (fmap_valu v) vB) (fmap_fm_fforall_op _ srt (fmap_fm f)))
+  }.
+
+  Theorem fmap_corr (wf: functor_wf): 
+    forall (c: ctx sigA) v f, 
+      interp_fm v f <-> interp_fm (fmap_valu v) (fmap_fm (c:= c) f).
+  Proof.
+    inversion wf.
+    intros.
+    dependent induction f;
+    autorewrite with fmap_fm;
+    autorewrite with interp_fm;
+    try erewrite IHf;
+    try erewrite IHf1;
+    try erewrite IHf2;
+    try eapply iff_refl.
+    - eapply interp_tm_inj0.
+    - eapply fmap_rel_equi0.
+    - fold fmap_ctx.
+      setoid_rewrite IHf.
+      setoid_rewrite fmap_valu_equation_2.
+      eapply interp_fmap_forall_equi0.
+  Qed.
+End FMap.

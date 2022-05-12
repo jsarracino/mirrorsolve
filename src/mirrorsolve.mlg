@@ -12,28 +12,31 @@ VERNAC COMMAND EXTEND DebugFuns CLASSIFIED AS QUERY
     let msg = Main.debug_lib_refs () in 
     Feedback.msg_notice msg
   }
-| [ "ShowCompTables" ] -> { 
-    let msg = Main.debug_tbls () in 
-    Feedback.msg_notice msg
+END
+
+VERNAC COMMAND EXTEND RegisterFun CLASSIFIED AS QUERY
+| [ "RegisterSMTFun" constr(e) string(nme) int(arity) ] -> {
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let (_, e') = Constrintern.interp_constr_evars env sigma e in 
+      Main.reg_sym e' nme arity 
+  }
+| [ "RegisterSMTBuiltin" constr(l) constr(r) ] -> {
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let (sigma', l') = Constrintern.interp_constr_evars env sigma l in 
+    let (_, r') = Constrintern.interp_constr_evars env sigma r in 
+      Main.reg_builtin l' r'
+  }
+| [ "RegisterSMTSort" constr(l) constr(r) ] -> {
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let (sigma', l') = Constrintern.interp_constr_evars env sigma l in 
+    let (_, r') = Constrintern.interp_constr_evars env sigma' r in 
+      Main.reg_sort l' r'
   }
 END
 
-VERNAC COMMAND EXTEND RegisterInd CLASSIFIED AS QUERY
-| [ "RegisterEnvCtors" constr_list(es) ] -> { 
-    let worker e = 
-      let env = Global.env () in
-      let sigma = Evd.from_env env in
-      let (sigma', e') = Constrintern.interp_constr_evars env sigma e in
-        EConstr.to_constr sigma' e'
-      in
-
-    let es' = List.map worker es in 
-    Main.reg_c_env_ctors es'
-  }
-| [ "ClearEnvCtors" ] -> { 
-    Main.clear_env_ctors ()
-  }
-END
 
 TACTIC EXTEND Pretty
 | [ "pretty" constr(e) ] -> { 

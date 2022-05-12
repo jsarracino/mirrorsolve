@@ -7,23 +7,29 @@ Require Import MirrorSolve.HLists.
 
 Import ListNotations.
 Import HListNotations.
-(* 
-From SMTCoq Require Import SMTCoq. *)
 
+Require Import Coq.ZArith.BinInt.
 Set Universe Polymorphism.
-Section BFOL.
+
+Section NFOL.
   Inductive sorts: Set :=
-  | BoolSort.
+  | NS
+  | BS.
 
   Scheme Equality for sorts.
-  Set Universe Polymorphism.
 
   Inductive funs: arity sorts -> sorts -> Type :=
-  | BLit: forall (b: bool), funs [] BoolSort
-  | BAnd: funs [BoolSort; BoolSort] BoolSort
-  | BOr: funs [BoolSort; BoolSort] BoolSort
-  | BNot: funs [BoolSort] BoolSort
-  | BImpl: funs [BoolSort; BoolSort] BoolSort.
+  | NLit: forall (n: nat), funs [] NS
+  | BLit: forall (b: bool), funs [] BS
+  | Sub: funs [NS; NS] NS
+  | Plus: funs [NS; NS] NS
+  | Mul: funs [NS; NS] NS
+  | Div: funs [NS; NS] NS
+  | Mod: funs [NS; NS] NS
+  | Lte: funs [NS; NS] BS
+  | Lt: funs [NS; NS] BS
+  | Gte: funs [NS; NS] BS
+  | Gt: funs [NS; NS] BS.
 
   Inductive rels: arity sorts -> Type :=.
 
@@ -37,20 +43,25 @@ Section BFOL.
 
   Definition mod_sorts (s: sig_sorts sig) : Type :=
     match s with
-    | BoolSort => bool
+    | NS => nat
+    | BS => bool
     end.
-
-  Local Open Scope bool_scope.
 
   Obligation Tactic := idtac.
   Equations 
     mod_fns params ret (f: sig_funs sig params ret) (args: HList.t mod_sorts params) 
     : mod_sorts ret :=
-    { mod_fns _ _ (BLit b) hnil := b;
-      mod_fns _ _ BAnd (x ::: y ::: hnil) := x && y;
-      mod_fns _ _ BOr (x ::: y ::: hnil) := x || y;
-      mod_fns _ _ BImpl (x ::: y ::: hnil) := implb x y;
-      mod_fns _ _ BNot (x ::: hnil) := negb x
+    { mod_fns _ _ (BLit b) _ := b;
+      mod_fns _ _ (NLit n) _ := n;
+      mod_fns _ _ Sub (l ::: r ::: _) := Nat.sub l r;
+      mod_fns _ _ Plus (l ::: r ::: _) := Nat.add l r;
+      mod_fns _ _ Mul (l ::: r ::: _) := Nat.mul l r;
+      mod_fns _ _ Div (l ::: r ::: _) := Nat.div l r;
+      mod_fns _ _ Mod (l ::: r ::: _) := Nat.modulo l r;
+      mod_fns _ _ Lte (l ::: r ::: _) := Nat.leb l r;
+      mod_fns _ _ Lt (l ::: r ::: _) := Nat.ltb l r;
+      mod_fns _ _ Gte (l ::: r ::: _) := Nat.leb r l;
+      mod_fns _ _ Gt (l ::: r ::: _) := Nat.ltb l r;
     }.
 
   Definition mod_rels params
@@ -59,20 +70,10 @@ Section BFOL.
     match args with
     end.
 
-  Program Definition fm_model : model sig := {|
+  Definition fm_model : model sig := {|
     FirstOrder.mod_sorts := mod_sorts;
     FirstOrder.mod_fns := mod_fns;
     FirstOrder.mod_rels := mod_rels;
   |}.
 
-
-  Lemma b_interp_subst b: 
-    forall c v, 
-      b = interp_tm (c := c) (sig := sig) (m := fm_model) v (TFun sig (BLit b) hnil).
-  Proof.
-    intros.
-    vm_compute; reflexivity.
-  Qed.
-
-End BFOL.
-
+End NFOL.

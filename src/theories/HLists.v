@@ -51,17 +51,17 @@ Module HList.
              (pf: List.In x ks)
              (e: t B ks)
     : B x :=
-    get x in_pf (@HCons a _ b rest) :=
+    get x in_pf (HCons a b rest') :=
       match A_eq_dec x a with
       | left pf => eq_rect_r B b pf
       | right pf' =>
         let rest_pf :=
-          match in_pf with
-          | or_introl eq_pf => False_ind _ (pf' (eq_sym eq_pf))
-          | or_intror rest_pf => rest_pf
-          end
+            match in_pf with
+            | or_introl eq_pf => False_ind _ (pf' (eq_sym eq_pf))
+            | or_intror rest_pf => rest_pf
+            end
         in
-        get x rest_pf rest
+        get x rest_pf rest'
       end.
 
   Equations bind
@@ -73,18 +73,18 @@ Module HList.
              (pf: List.In x ks)
              (e: t B ks)
     : t B ks :=
-    bind x v in_pf (@HCons a _ b rest) :=
-      match A_eq_dec x a with
-      | left pf => HCons a (eq_rect _ B v _ pf) rest
-      | right pf' =>
-        let rest_pf :=
+  bind x v in_pf (HCons a b rest') :=
+    match A_eq_dec x a with
+    | left pf => HCons a (eq_rect _ B v _ pf) rest'
+    | right pf' =>
+      let rest_pf :=
           match in_pf with
           | or_introl eq_pf => False_ind _ (pf' (eq_sym eq_pf))
           | or_intror rest_pf => rest_pf
           end
-        in
-          HCons a b (bind x v rest_pf rest)
-      end.
+      in
+      HCons a b (bind x v rest_pf rest')
+    end.
 
   Lemma get_extensionality
         {A B}
@@ -373,3 +373,11 @@ Module HListNotations.
   Notation "x ::: xs" := (HList.HCons _ x xs) (at level 60, right associativity).
   Notation "'hnil'" := (HList.HNil _).
 End HListNotations.
+
+Section SnocList.
+  Variable (T: Type).
+  Inductive snoc_list: Type :=
+  | SLNil: snoc_list
+  | Snoc: snoc_list -> T -> snoc_list.
+  Derive NoConfusion for snoc_list.
+End SnocList.

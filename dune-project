@@ -9,6 +9,7 @@
  (depends 
   (coq-equations (= 1.3~beta1+8.13))
   (coq (>= 8.13.0))
+  (coq-metacoq-template (= 1.0~beta2+8.13))
  )
  (synopsis "SMT integration for Coq using reflection")
  (description  "SMT integration for Coq using reflection")

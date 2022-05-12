@@ -7,23 +7,40 @@ Require Import MirrorSolve.HLists.
 
 Import ListNotations.
 Import HListNotations.
-(* 
-From SMTCoq Require Import SMTCoq. *)
 
+Require Import SMTCoq.SMTCoq.
 Set Universe Polymorphism.
-Section BFOL.
+
+Import BVList.BITVECTOR_LIST.
+
+Require Import Coq.Numbers.BinNums.
+Require Import Coq.NArith.BinNat.
+
+Section BVFOL.
   Inductive sorts: Set :=
-  | BoolSort.
+  | BS
+  | BV: forall (width: N), sorts.
 
   Scheme Equality for sorts.
-  Set Universe Polymorphism.
+
+  (*  [[(concat s t)]] := λx:[0, n+m). if (x < m) then [[t]](x) else [[s]](x - m)
+   where
+   s and t are terms of sort (_ BitVec n) and (_ BitVec m), respectively,
+   0 < n, 0 < m.
+
+   - Function symbols for extraction
+
+   [[((_ extract i j) s))]] := λx:[0, i-j+1). [[s]](j + x)
+   where s is of sort (_ BitVec l), 0 ≤ j ≤ i < l.
+   
+   *)
 
   Inductive funs: arity sorts -> sorts -> Type :=
-  | BLit: forall (b: bool), funs [] BoolSort
-  | BAnd: funs [BoolSort; BoolSort] BoolSort
-  | BOr: funs [BoolSort; BoolSort] BoolSort
-  | BNot: funs [BoolSort] BoolSort
-  | BImpl: funs [BoolSort; BoolSort] BoolSort.
+  | BVLit: forall (n: N) (bv: bitvector n), funs [] (BV n)
+  | BLit: forall (b: bool), funs [] BS
+  | BVCat: forall (n m: N), funs [(BV n); (BV m)] (BV (n + m))
+  | BVExtr: forall (i n m: N), funs [BV m] (BV n).
+
 
   Inductive rels: arity sorts -> Type :=.
 
@@ -37,20 +54,18 @@ Section BFOL.
 
   Definition mod_sorts (s: sig_sorts sig) : Type :=
     match s with
-    | BoolSort => bool
+    | BV w => bitvector w
+    | BS => bool
     end.
-
-  Local Open Scope bool_scope.
 
   Obligation Tactic := idtac.
   Equations 
     mod_fns params ret (f: sig_funs sig params ret) (args: HList.t mod_sorts params) 
     : mod_sorts ret :=
-    { mod_fns _ _ (BLit b) hnil := b;
-      mod_fns _ _ BAnd (x ::: y ::: hnil) := x && y;
-      mod_fns _ _ BOr (x ::: y ::: hnil) := x || y;
-      mod_fns _ _ BImpl (x ::: y ::: hnil) := implb x y;
-      mod_fns _ _ BNot (x ::: hnil) := negb x
+    { mod_fns _ _ (BVLit w bv) _ := bv;
+      mod_fns _ _ (BLit b) _ := b;
+      mod_fns _ _ (BVCat n m) (l ::: r ::: _) := bv_concat l r;
+      mod_fns _ _ (BVExtr i n m) (x ::: _) := bv_extr i n x;
     }.
 
   Definition mod_rels params
@@ -59,20 +74,10 @@ Section BFOL.
     match args with
     end.
 
-  Program Definition fm_model : model sig := {|
+  Definition fm_model : model sig := {|
     FirstOrder.mod_sorts := mod_sorts;
     FirstOrder.mod_fns := mod_fns;
     FirstOrder.mod_rels := mod_rels;
   |}.
 
-
-  Lemma b_interp_subst b: 
-    forall c v, 
-      b = interp_tm (c := c) (sig := sig) (m := fm_model) v (TFun sig (BLit b) hnil).
-  Proof.
-    intros.
-    vm_compute; reflexivity.
-  Qed.
-
-End BFOL.
-
+End BVFOL.

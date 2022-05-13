@@ -46,6 +46,12 @@ let c_tt () = get_coq "p4a.core.tt"
 let c_ff () = get_coq "p4a.core.ff"
 let c_fun () = get_coq "p4a.core.fun"
 
+
+(* Register nil as core.list.nil.
+Register cons as core.list.cons. *)
+let c_nil () = get_coq "core.list.nil"
+let c_cons () = get_coq "core.list.cons"
+
 let c_hnil () = get_coq "p4a.core.hnil"
 let c_hcons () = get_coq "p4a.core.hcons"
 let c_inl () = get_coq "core.sum.inl"
@@ -73,6 +79,9 @@ let c_int_zero () = get_coq "num.Z.Z0"
 let c_int_pos () = get_coq "num.Z.Zpos"
 let c_int_neg () = get_coq "num.Z.Zneg"
 
+let c_n_zero () = get_coq "num.N.N0"
+let c_n_pos () = get_coq "num.N.Npos"
+
 let c_prop_not () = get_coq "core.not.type"
 
 let c_bits_lit () = get_coq "p4a.funs.bitslit"
@@ -86,6 +95,14 @@ let c_vhere () = get_coq "p4a.core.vhere"
 let c_vthere () = get_coq "p4a.core.vthere"
 let c_int_sort = get_coq "p4a.core.smt_int"
 let c_bool_sort = get_coq "p4a.core.smt_bool"
+let c_bv_sort = get_coq "p4a.bv.s_bv"
+
+let c_bv_lit = get_coq "p4a.bv.f_lit"
+let c_bv_cat = get_coq "p4a.bv.f_cat"
+let c_bv_extr = get_coq "p4a.bv.f_extr"
+
+let c_smt_bv_ctor = get_coq "p4a.bv.smt_bv_ctor"
+
 
 let c_builtin_bool_lit () = get_coq "p4a.core.bool_lit"
 let c_builtin_int_lit () = get_coq "p4a.core.int_lit"
@@ -164,20 +181,35 @@ let rec c_pos_to_int (e: C.t) : int =
       let _ = Feedback.msg_debug (Constr.debug_print e) in
       raise @@ BadExpr "expected int constructor in int_to_int"
     
+let c_binnat_to_int (e: C.t) : int =
+  if e = c_n_zero () then 0 
+  else if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    if f = c_n_pos () then
+      c_pos_to_int (a_last es)
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected pos and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print f) in
+      raise @@ BadExpr "expected pos in binnat_to_int"
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected n0/npos and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected 0 or pos in binnat_to_int"
 
 type sort = 
-  | Bits of int
+  | Smt_bv of int option
   | Smt_int
   | Smt_bool 
 
 
-let sort_tbl : (C.t, sort) Hashtbl.t = Hashtbl.create 5
+let sort_tbl : (C.t, sort) Hashtbl.t = 
+  Hashtbl.create 5 ;;
+  Hashtbl.add sort_tbl c_bv_sort (Smt_bv None)
 
 let lookup_sort (e: C.t) : sort option = Hashtbl.find_opt sort_tbl e
 let add_sort = Hashtbl.add sort_tbl
 
-(* assumes that sorts are always apps (even nullary sorts) *)
-let extract_sort (e: C.t) : sort = 
+let extract_prim_sort (e: C.t) =
   begin match lookup_sort e with 
   | Some x -> x
   | None ->
@@ -185,20 +217,16 @@ let extract_sort (e: C.t) : sort =
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "unexpected constructor for sorts (see debug)"   
   end   
-  
-  (* if not @@ C.isApp e then 
-    let _ = Feedback.msg_debug (Pp.str "Expected app for sort and got:") in
-    let _ = Feedback.msg_debug (Constr.debug_print e) in
-    raise @@ BadExpr "expected app for sort" 
-  else
+
+let extract_sort (e: C.t) =
+  if C.isApp e then 
     let (f, es) = C.destApp e in 
-    begin match lookup_sort f with 
-    | Some x -> x
-    | None ->
-      let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
-      let _ = Feedback.msg_debug (Constr.debug_print f) in
-      raise @@ BadExpr "unexpected constructor for sorts (see debug)"   
-    end    *)
+      begin match extract_prim_sort f with 
+      | Smt_bv None -> Smt_bv (Some (c_binnat_to_int es.(0)))
+      | x -> x
+      end
+  else
+    extract_prim_sort e
 
 let equal_ctor (l: C.t) (r: unit -> C.t) : bool = 
   let (l', _) = C.destConstruct l in 
@@ -207,13 +235,15 @@ let equal_ctor (l: C.t) (r: unit -> C.t) : bool =
 
 let valid_sort (s: sort) : bool = 
   begin match s with 
-  | Bits n -> n > 0
+  | Smt_bv (Some n) -> n > 0
+  | Smt_bv None -> false
   | Smt_int 
   | Smt_bool -> true
   end
 let pretty_sort (s: sort) : string = 
   begin match s with 
-  | Bits n -> Format.sprintf "(_ BitVec %n)" n
+  | Smt_bv (Some n) -> Format.sprintf "(_ BitVec %n)" n
+  | Smt_bv None -> raise bedef
   | Smt_int -> "Int"
   | Smt_bool -> "Bool"
   end
@@ -221,15 +251,18 @@ let pretty_sort (s: sort) : string =
 type builtin_syms = 
   | Smt_int_lit
   | Smt_bool_lit
+  | Smt_bv_lit
 
 let pretty_builtin (b: builtin_syms) = 
   begin match b with 
   | Smt_int_lit -> "<int literal>"
   | Smt_bool_lit -> "<bool literal>"
+  | Smt_bv_lit -> "<bv literal>"
   end
 
 let builtin_arity (b: builtin_syms) = 
   begin match b with 
+  | Smt_bv_lit
   | Smt_bool_lit
   | Smt_int_lit -> 1
   end
@@ -250,6 +283,16 @@ let add_fun (f: Names.constructor) (symb: string) (arity: int) : unit =
 let add_builtin (f: Names.constructor) (b: builtin_syms) : unit = 
   Hashtbl.add fun_builtin_tbl f b;
   Hashtbl.add fun_arity_tbl f @@ builtin_arity b
+
+let init_concat (_: unit) =
+  let (concat_symb, _) = C.destConstruct c_bv_cat in 
+  add_fun concat_symb "concat" 2
+
+let init_bv_lit (_: unit) =
+  let (bv_symb, _) = C.destConstruct c_bv_lit in 
+  add_builtin bv_symb Smt_bv_lit
+
+let _ = init_concat () ;; init_bv_lit ()
 
 (* 
 let debug_tbls () = 
@@ -319,6 +362,24 @@ let rec extract_ctx (e: C.t) : C.t list =
     let _ = Feedback.msg_debug (Pp.str (Format.sprintf "Expected snoc/nil and got:")) in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected csnoc/cnil inside ctx list"
+
+let rec extract_list (inner: C.t -> 'a) (e: C.t) : 'a list =
+  if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    if equal_ctor f c_cons then
+      let v = inner es.(Array.length es - 2) in
+      let vs = extract_list inner (a_last es) in  
+        v :: vs
+    else if equal_ctor f c_nil then []
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected cons and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print f) in
+      raise @@ BadExpr "expected cons in extract_list"
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected nil/cons and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected nil/cons in extract_list"
+
 
 let rec c_n_tuple_to_bools (e: C.t) : bool list =
   if e = c_unit () then []
@@ -403,12 +464,31 @@ let pretty_int (e: C.t) : string =
   let x = c_int_to_int e in
   string_of_int x
 
+let pretty_bv (e: C.t) : string =
+  let _ = debug_pp @@ Pp.str "extracting bv literal with arg" in
+  let _ = debug_pp @@ C.debug_print e in 
+  begin match C.kind e with 
+  | C.App(f, es) -> 
+    if f = c_smt_bv_ctor then 
+      (* arg 1 is a list of bools *)
+      Pp.string_of_ppcmds @@ print_bools @@ extract_list c_bool_to_bool es.(1)
+    else  
+      let _ = debug_pp @@ Pp.str "unrecognized function argument for bv arg" in
+      let _ = debug_pp @@ C.debug_print f in 
+        raise bedef
+  | _ -> 
+    let _ = debug_pp @@ Pp.str "unrecognized kind for bv arg" in
+      raise bedef
+  end
+
 let pretty_builtin (args: C.t array) (b: builtin_syms) (arity: int) = 
   let _ = debug_pp @@ Pp.str "printing builtin:" in 
   let _ = debug_pp @@ Pp.str (pretty_builtin b) in  
   let _ = debug_pp @@ Pp.str "with args:" in 
   let _ = debug_pp @@ format_args args in  
   begin match b, arity with 
+  | Smt_bv_lit, 1 -> 
+    pretty_bv @@ a_last args
   | Smt_int_lit, 1 -> 
     pretty_int @@ a_last args
   | Smt_bool_lit, 1 -> 
@@ -439,46 +519,26 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
     let _ = debug_pp @@ (C.debug_print f') in 
     let (f'', _) = C.destConstruct f' in
     let _ = debug_pp @@ Pp.str "found constructor" in 
-    begin match lookup_builtin f'', lookup_arity f'' with 
-    | Some sym, Some n -> pretty_builtin f_args sym n
-    | _, _ -> raise bedef
-    end
-  else
-    let _ = debug_pp @@ Pp.str "expected construct for fun symbol, instead got:" in
-    let _ = debug_pp @@ (C.debug_print f) in
-    raise bedef
-
-
-    (* if C.isApp fe then
-      let (f', args') = C.destApp fe in 
-        if equal_ctor f' c_concat then
-          let _ = debug_pp @@ Pp.str "extracting concat fun" in
-          begin match fargs with 
-          | l :: r :: _ -> 
-            (* The concatenation order in smtlib2 is suffix-then-prefix. *)
-            Format.sprintf "(concat %s %s)" (pretty_expr r) (pretty_expr l)
-          | _ -> raise bedef
-          end
-        else if equal_ctor f' c_slice then 
-          let _ = debug_pp @@ Pp.str "extracting slice" in
-          (* n hi lo *)
-          let hi = c_nat_to_int es'.(Array.length es' - 2) in 
-          let lo = c_nat_to_int (a_last es') in 
-          Format.sprintf "((_ extract %n %n) %s)" hi lo (pretty_expr @@ List.hd fargs)
-        else if equal_ctor f' c_lookup then 
-          let _ = debug_pp @@ Pp.str "extracting lookup fun" in
-          Format.sprintf "(%s %s)" (pretty_key (a_last es')) (pretty_expr @@ List.hd fargs)
-        else if equal_ctor f' c_bits_lit then 
-          let _ = debug_pp @@ Pp.str "extracting bitslit" in
-          Pp.string_of_ppcmds @@ print_bools @@ c_n_tuple_to_bools @@ (a_last es')
-        else 
-          let _ = debug_pp @@ Pp.str "unexpected function symbol:" in
-          let _ = debug_pp @@ C.debug_print f' in
-          raise bedef
+    if equal_ctor f' (fun _ -> c_bv_extr) && false then 
+      raise bedef
+      (* begin match args with 
+      | 
+      let _ = debug_pp @@ Pp.str "extracting slice" in
+      (* n hi lo *)
+      let hi = c_nat_to_int es'.(Array.length es' - 2) in 
+      let lo = c_nat_to_int (a_last es') in 
+      Format.sprintf "((_ extract %n %n) %s)" hi lo (pretty_expr @@ List.hd fargs) *)
     else 
-      let _ = debug_pp @@ Pp.str "unexpected function interior:" in
-      let _ = debug_pp @@ C.debug_print f in
-      raise bedef *)
+      begin match lookup_builtin f'', lookup_arity f'' with 
+      | Some sym, Some n -> pretty_builtin f_args sym n
+      | _, _ -> 
+        let _ = debug_pp @@ Pp.str "did not find a matching builtin for the constructor" in 
+          raise bedef
+      end
+  else 
+    let _ = debug_pp @@ Pp.str "unexpected function interior:" in
+    let _ = debug_pp @@ C.debug_print f in
+    raise bedef
 and pretty_tm (tm: C.t) : string = 
   let _ = debug_pp @@ Pp.str "extracting tm:" in
   let _ = debug_pp @@ (Constr.debug_print tm) in
@@ -665,13 +725,16 @@ let reg_builtin (l: EConstr.t) (r: EConstr.t) : unit =
     else if equal_ctor r' c_builtin_int_lit then
       add_builtin f Smt_int_lit
     else
+      let _ = Feedback.msg_warning (Pp.(++) (Pp.str ("Unrecognized construct: ")) @@ Constr.debug_print r') in
       raise bedef
   else
+    let _ = Feedback.msg_warning (Pp.(++) (Pp.str ("Expected construct and got: ")) @@ Constr.debug_print l') in
     raise bedef
 
 let conv_sort (e: C.t) : sort option = 
   if equal_ctor e (fun _ -> c_int_sort) then Some Smt_int 
   else if equal_ctor e (fun _ -> c_bool_sort) then Some Smt_bool
+  else if equal_ctor e (fun _ -> c_bv_sort) then Some (Smt_bv None)
   else None
 
 let reg_sort (l: EConstr.t) (r: EConstr.t) : unit = 

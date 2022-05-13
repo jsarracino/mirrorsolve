@@ -539,23 +539,27 @@ Register Snoc as p4a.core.csnoc.
 Register HList.HNil as p4a.core.hnil.
 Register HList.HCons as p4a.core.hcons.
 
+Require Import Coq.Lists.List.
 
 Section FMap.
   Variable (sigA sigB: signature).
   Variable (mA: model sigA).
   Variable (mB: model sigB).
+
+  Fixpoint fmap_arity {sigA sigB: signature} (fmap_srt : sigA.(sig_sorts) -> sigB.(sig_sorts)) (arr: arity sigA.(sig_sorts)) : arity sigB.(sig_sorts) :=
+    match arr with 
+    | nil => nil
+    | s :: arrs => fmap_srt s :: fmap_arity fmap_srt arrs
+    end.
   Record theory_functor {sigA sigB: signature} {mA: model sigA} {mB: model sigB} := {
    fmap_sorts : sigA.(sig_sorts) -> sigB.(sig_sorts);
-   fmap_arity : arity sigA.(sig_sorts) -> arity sigB.(sig_sorts);
-   fmap_funs : forall arr srt, sigA.(sig_funs) arr srt  -> sigB.(sig_funs) (fmap_arity arr) (fmap_sorts srt);
-   fmap_rels : forall arr, sigA.(sig_rels) arr -> sigB.(sig_rels) (fmap_arity arr);
+   fmap_funs : forall arr srt, sigA.(sig_funs) arr srt  -> sigB.(sig_funs) (fmap_arity fmap_sorts arr) (fmap_sorts srt);
+   fmap_rels : forall arr, sigA.(sig_rels) arr -> sigB.(sig_rels) (fmap_arity fmap_sorts arr);
    fmap_mv : forall srt, mod_sorts sigA mA srt -> mod_sorts sigB mB (fmap_sorts srt);
   }.
 
-  
   Variable (a2b: @theory_functor sigA sigB mA mB).
   
-
   Fixpoint fmap_ctx (c: ctx sigA) : ctx sigB := 
     match c with 
     | SLNil _ => SLNil _
@@ -576,7 +580,7 @@ Section FMap.
   Variable (fmap_fun_arrs: forall c arr srt, 
     sig_funs sigA arr srt -> 
     HList.t (fun srt' : sig_sorts sigA => tm sigB (fmap_ctx c) (a2b.(fmap_sorts) srt')) arr ->
-    HList.t (tm sigB (fmap_ctx c)) (a2b.(fmap_arity) arr)
+    HList.t (tm sigB (fmap_ctx c)) (fmap_arity (a2b.(fmap_sorts)) arr)
   ).
   
   Equations fmap_tm {c srt} (t: tm sigA c srt) : tm sigB (fmap_ctx c) (a2b.(fmap_sorts) srt) := 
@@ -595,7 +599,7 @@ Section FMap.
   Variable (fmap_rel_arrs: forall c arr, 
     sig_rels sigA arr -> 
     HList.t (fun srt' : sig_sorts sigA => tm sigB (fmap_ctx c) (a2b.(fmap_sorts) srt')) arr ->
-    HList.t (tm sigB (fmap_ctx c)) (a2b.(fmap_arity) arr)
+    HList.t (tm sigB (fmap_ctx c)) (fmap_arity a2b.(fmap_sorts) arr)
   ).
 
   Variable (fmap_fm_fforall_op : 
@@ -626,7 +630,7 @@ Section FMap.
     fmap_rel_equi:
       forall c v args r r_args,
         mod_rels sigA mA args r (interp_tms v r_args) <->
-        mod_rels sigB mB (a2b.(fmap_arity) args) (a2b.(fmap_rels) args r) (interp_tms (fmap_valu v) (fmap_rel_arrs c args r (fmap_tm_args r_args)));
+        mod_rels sigB mB (fmap_arity a2b.(fmap_sorts) args) (a2b.(fmap_rels) args r) (interp_tms (fmap_valu v) (fmap_rel_arrs c args r (fmap_tm_args r_args)));
     interp_fmap_forall_equi: 
       forall srt c v (f : fm sigA (Snoc _ c srt)),
         (forall vA,

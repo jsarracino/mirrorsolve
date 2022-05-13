@@ -12,8 +12,10 @@ Register SBitVector as p4a.core.smt_bv.
 Inductive smt_fun := 
   | F_sym : string -> smt_fun
   | BoolLit : unit -> smt_fun
-  | IntLit : unit -> smt_fun.
+  | IntLit : unit -> smt_fun 
+  | BVLit : unit -> smt_fun.
 
 Register F_sym as p4a.core.fun_sym.
 Register BoolLit as p4a.core.bool_lit.
 Register IntLit as p4a.core.int_lit.
+Register BVLit as p4a.core.bv_lit.

@@ -25,11 +25,7 @@ Section N2Z.
     | N.BS => BS
     end.
 
-  Fixpoint n2z_arr (na: arity N.sorts) : arity Z.sorts :=
-    match na with 
-    | nil => nil
-    | ns :: na' => n2z_sort ns :: (n2z_arr na')
-    end.
+  Definition n2z_arr := @fmap_arity N.sig Z.sig n2z_sort.
 
   Equations n2z_fun {arr : arity (sig_sorts N.sig)} {srt: sig_sorts N.sig} (nf: sig_funs N.sig arr srt) : sig_funs sig (n2z_arr arr) (n2z_sort srt) :=
   {
@@ -59,7 +55,6 @@ Section N2Z.
 
   Program Definition n2z_func : @theory_functor N.sig Z.sig N.fm_model Z.fm_model := {|
     fmap_sorts := n2z_sort;
-    fmap_arity := n2z_arr;
     fmap_funs := @n2z_fun;
     fmap_rels := @n2z_rel;
     fmap_mv := @n2z_mv;

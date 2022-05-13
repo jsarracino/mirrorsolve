@@ -24,7 +24,7 @@ val reg_sym : EConstr.constr -> string -> int -> unit
 val reg_builtin : EConstr.constr -> EConstr.constr -> unit
 
 type sort = 
-  | Bits of int
+  | Smt_bv of int option
   | Smt_int
   | Smt_bool 
 

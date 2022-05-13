@@ -16,9 +16,10 @@ Import BVList.BITVECTOR_LIST.
 Require Import Coq.Numbers.BinNums.
 Require Import Coq.NArith.BinNat.
 
+(* A definition of bitvectors using SMTCoq's BV representation  *)
+
 Section BVFOL.
   Inductive sorts: Set :=
-  | BS
   | BV: forall (width: N), sorts.
 
   Scheme Equality for sorts.
@@ -37,10 +38,8 @@ Section BVFOL.
 
   Inductive funs: arity sorts -> sorts -> Type :=
   | BVLit: forall (n: N) (bv: bitvector n), funs [] (BV n)
-  | BLit: forall (b: bool), funs [] BS
   | BVCat: forall (n m: N), funs [(BV n); (BV m)] (BV (n + m))
-  | BVExtr: forall (i n m: N), funs [BV m] (BV n).
-
+  | BVExtr: forall (n hi lo: N), funs [BV n] (BV (N.min (1 + hi) n - lo)).
 
   Inductive rels: arity sorts -> Type :=.
 
@@ -55,18 +54,17 @@ Section BVFOL.
   Definition mod_sorts (s: sig_sorts sig) : Type :=
     match s with
     | BV w => bitvector w
-    | BS => bool
     end.
 
-  Obligation Tactic := idtac.
+  Local Obligation Tactic := intros.
   Equations 
     mod_fns params ret (f: sig_funs sig params ret) (args: HList.t mod_sorts params) 
     : mod_sorts ret :=
     { mod_fns _ _ (BVLit w bv) _ := bv;
-      mod_fns _ _ (BLit b) _ := b;
       mod_fns _ _ (BVCat n m) (l ::: r ::: _) := bv_concat l r;
-      mod_fns _ _ (BVExtr i n m) (x ::: _) := bv_extr i n x;
+      mod_fns _ _ (BVExtr n hi lo) (x ::: _) := bv_extr hi _ x;
     }.
+
 
   Definition mod_rels params
     (args: sig_rels sig params)
@@ -81,3 +79,11 @@ Section BVFOL.
   |}.
 
 End BVFOL.
+
+Register BV as p4a.bv.s_bv.
+
+Register BVLit as p4a.bv.f_lit.
+Register BVCat as p4a.bv.f_cat.
+Register BVExtr as p4a.bv.f_extr.
+
+Register MkBitvector as p4a.bv.smt_bv_ctor.

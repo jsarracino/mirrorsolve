@@ -422,7 +422,7 @@ let format_args (es: C.t array) : Pp.t =
   let builder (i, e) = Pp.(++) (Pp.str (Format.sprintf "%n => " i)) (C.debug_print e) in
     Pp.pr_vertical_list builder (Array.to_list eis)
 
-let debug_flag = true
+let debug_flag = false
 
 (* let debug_print (f: unit -> unit) : unit = 
   if debug_flag then f () else () *)
@@ -505,7 +505,8 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
         if n = 0 then 
           fs
         else
-          Format.sprintf "(%s %s)" fs @@ String.concat " " (List.map pretty_tm args)
+          let pretty_args = if fs = "concat" then List.rev @@ (List.map pretty_tm args) else (List.map pretty_tm args) in 
+          Format.sprintf "(%s %s)" fs @@ String.concat " " pretty_args
       else
         raise bedef
     | None, Some b, Some n -> 
@@ -519,20 +520,28 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
     let _ = debug_pp @@ (C.debug_print f') in 
     let (f'', _) = C.destConstruct f' in
     let _ = debug_pp @@ Pp.str "found constructor" in 
-    if equal_ctor f' (fun _ -> c_bv_extr) && false then 
-      raise bedef
-      (* begin match args with 
-      | 
-      let _ = debug_pp @@ Pp.str "extracting slice" in
+    if equal_ctor f' (fun _ -> c_bv_extr) then 
+      let _ = debug_pp @@ Pp.str "extracting slice with args" in
+      let _ = debug_pp @@ format_args @@ Array.of_list args in
       (* n hi lo *)
-      let hi = c_nat_to_int es'.(Array.length es' - 2) in 
-      let lo = c_nat_to_int (a_last es') in 
-      Format.sprintf "((_ extract %n %n) %s)" hi lo (pretty_expr @@ List.hd fargs) *)
+      let hi = c_binnat_to_int @@ f_args.(Array.length f_args - 2) in 
+      let lo = c_binnat_to_int @@ a_last f_args in 
+      let inner = pretty_tm @@ List.nth args 0 in 
+        Format.sprintf "((_ extract %n %n) %s)" hi lo inner
     else 
-      begin match lookup_builtin f'', lookup_arity f'' with 
-      | Some sym, Some n -> pretty_builtin f_args sym n
-      | _, _ -> 
-        let _ = debug_pp @@ Pp.str "did not find a matching builtin for the constructor" in 
+      begin match lookup_symb f'', lookup_builtin f'', lookup_arity f'' with 
+      | None, Some sym, Some n -> pretty_builtin f_args sym n
+      | Some fs, None, Some n -> 
+        if n = List.length args then
+          if n = 0 then 
+            fs
+          else
+            let pretty_args = if fs = "concat" then List.rev @@ (List.map pretty_tm args) else (List.map pretty_tm args) in 
+            Format.sprintf "(%s %s)" fs @@ String.concat " " pretty_args
+        else
+          raise bedef
+      | _, _, _ -> 
+        let _ = debug_pp @@ Pp.str "did not find a matching symb/builtin for the constructor" in 
           raise bedef
       end
   else 

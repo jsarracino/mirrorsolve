@@ -56,15 +56,22 @@ Section BVFOL.
     | BV w => bitvector w
     end.
 
+  Definition comp_eq_N {m n: N} (opaque_eq: m = n) : m = n :=
+    match N.eq_dec m n with
+    | left transparent_eq => transparent_eq
+    | right _ => opaque_eq
+    end.
+
   Local Obligation Tactic := intros.
   Equations 
     mod_fns params ret (f: sig_funs sig params ret) (args: HList.t mod_sorts params) 
     : mod_sorts ret :=
     { mod_fns _ _ (BVLit w bv) _ := bv;
-      mod_fns _ _ (BVCat n m) (l ::: r ::: _) := bv_concat l r;
+      (* SMTLib flips concatenation, we use a transparent rewrite to avoid mucking up the term *)
+      mod_fns _ _ (BVCat n m) (l ::: r ::: _) := 
+        eq_rect_r _ (bv_concat r l) (comp_eq_N (N.add_comm n m));
       mod_fns _ _ (BVExtr n hi lo) (x ::: _) := bv_extr hi _ x;
     }.
-
 
   Definition mod_rels params
     (args: sig_rels sig params)

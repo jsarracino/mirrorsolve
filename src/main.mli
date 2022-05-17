@@ -22,11 +22,22 @@ val c_nat_to_int : Constr.t -> int
 val reg_sort : EConstr.constr -> EConstr.constr -> unit
 val reg_sym : EConstr.constr -> string -> int -> unit
 val reg_builtin : EConstr.constr -> EConstr.constr -> unit
+val reg_uf_decl : string -> EConstr.constr -> EConstr.constr list -> unit
 
 type sort = 
   | Smt_bv of int option
   | Smt_int
   | Smt_bool 
+
+type func_decl = {
+  arg_tys : sort list;
+  ret_ty : sort;
+  name: string;
+}
+
+val uf_sym_tbl : (string, func_decl) Hashtbl.t
+val lookup_uf : string -> func_decl option
+val add_uf : string -> func_decl -> unit
 
 type bop = Impl | And | Or | Eq 
 type uop = Neg
@@ -55,11 +66,13 @@ type query_opts =
     negate_toplevel : bool ;
   }
 
-val build_query : string list -> Constr.t -> query_opts -> string
-val dump_query : string list -> EConstr.t -> unit
+val build_query : Constr.t -> query_opts -> string
+val dump_query : EConstr.t -> unit
 val check_interp : Constr.t -> bool -> string
 val extract_ctx : Constr.t -> Constr.t list
 val pretty_sort : sort -> string
+
+val pretty_func_decl : func_decl -> string
 
 val print_bools : bool list -> Pp.t
 val c_n_tuple_to_bools : Constr.t -> bool list

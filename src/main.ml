@@ -95,7 +95,7 @@ let c_vhere () = get_coq "p4a.core.vhere"
 let c_vthere () = get_coq "p4a.core.vthere"
 let c_int_sort = get_coq "p4a.core.smt_int"
 let c_bool_sort = get_coq "p4a.core.smt_bool"
-let c_bv_sort = get_coq "p4a.bv.s_bv"
+let c_bv_sort () = get_coq "p4a.bv.s_bv"
 
 let c_bv_lit = get_coq "p4a.bv.f_lit"
 let c_bv_cat = get_coq "p4a.bv.f_cat"
@@ -201,13 +201,26 @@ type sort =
   | Smt_int
   | Smt_bool 
 
+type func_decl = {
+  arg_tys : sort list;
+  ret_ty : sort;
+  name: string;
+}
 
 let sort_tbl : (C.t, sort) Hashtbl.t = 
   Hashtbl.create 5 ;;
-  Hashtbl.add sort_tbl c_bv_sort (Smt_bv None)
+  begin try Hashtbl.add sort_tbl (c_bv_sort ()) (Smt_bv None) with 
+    | MissingGlobConst _ -> ()
+    | e -> raise e
+  end
 
 let lookup_sort (e: C.t) : sort option = Hashtbl.find_opt sort_tbl e
 let add_sort = Hashtbl.add sort_tbl
+
+
+let uf_sym_tbl : (string, func_decl) Hashtbl.t = Hashtbl.create 5
+let lookup_uf (n: string) = Hashtbl.find_opt uf_sym_tbl n
+let add_uf = Hashtbl.add uf_sym_tbl
 
 let extract_prim_sort (e: C.t) =
   begin match lookup_sort e with 
@@ -229,9 +242,15 @@ let extract_sort (e: C.t) =
     extract_prim_sort e
 
 let equal_ctor (l: C.t) (r: unit -> C.t) : bool = 
-  let (l', _) = C.destConstruct l in 
-  let (r', _) = C.destConstruct (r ()) in 
-    l' = r'
+  try 
+    let (l', _) = C.destConstruct l in 
+    let (r', _) = C.destConstruct (r ()) in 
+      l' = r'
+  with
+    | MissingGlobConst s -> 
+      let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "unbound constructor: %s" s) in 
+        false
+    | e -> raise e
 
 let valid_sort (s: sort) : bool = 
   begin match s with 
@@ -247,6 +266,11 @@ let pretty_sort (s: sort) : string =
   | Smt_int -> "Int"
   | Smt_bool -> "Bool"
   end
+let pretty_func_decl (fd: func_decl) : string = 
+  let prefix = Format.sprintf "(declare-fun %s (" fd.name in 
+  let args = String.concat " " @@ List.map pretty_sort fd.arg_tys in 
+  let suffix = Format.sprintf ") %s)" @@ pretty_sort fd.ret_ty in 
+    prefix ^ args ^ suffix
   
 type builtin_syms = 
   | Smt_int_lit
@@ -270,11 +294,12 @@ let builtin_arity (b: builtin_syms) =
 let fun_symb_tbl : (Names.constructor, string) Hashtbl.t = Hashtbl.create 100
 let fun_arity_tbl : (Names.constructor, int) Hashtbl.t = Hashtbl.create 100
 let fun_builtin_tbl : (Names.constructor, builtin_syms) Hashtbl.t = Hashtbl.create 5
-
+let fun_decl_tbl : (string, func_decl) Hashtbl.t = Hashtbl.create 5
 
 let lookup_symb = Hashtbl.find_opt fun_symb_tbl
 let lookup_arity = Hashtbl.find_opt fun_arity_tbl
 let lookup_builtin = Hashtbl.find_opt fun_builtin_tbl
+(* let lookup_fun_decl = Hashtbl.find_opt fun_decl_tbl *)
 
 let add_fun (f: Names.constructor) (symb: string) (arity: int) : unit = 
   Hashtbl.add fun_symb_tbl f symb;
@@ -283,6 +308,9 @@ let add_fun (f: Names.constructor) (symb: string) (arity: int) : unit =
 let add_builtin (f: Names.constructor) (b: builtin_syms) : unit = 
   Hashtbl.add fun_builtin_tbl f b;
   Hashtbl.add fun_arity_tbl f @@ builtin_arity b
+
+
+let add_fun_decl = Hashtbl.add fun_decl_tbl
 
 let init_concat (_: unit) =
   let (concat_symb, _) = C.destConstruct c_bv_cat in 
@@ -639,30 +667,24 @@ type query_opts =
     negate_toplevel : bool ;
   }
 
-let build_query (vars: string list) (e: C.t) (opts: query_opts) : string = 
+let get_decls () = 
+  Hashtbl.to_seq_values fun_decl_tbl
+
+let build_query (e: C.t) (opts: query_opts) : string = 
+  let decls = List.of_seq @@ get_decls () in 
+  let prefix = String.concat "\n" @@ List.map pretty_func_decl decls in 
   let q_str = if opts.refute_query then 
     Format.sprintf "(assert (not %s))" (pretty_fm e) 
   else
-    if opts.negate_toplevel then
-      Format.sprintf "(assert (not %s))" @@ Smt.gen_binders (List.length vars) (pretty_fm e)
-    else 
-      Format.sprintf "(assert %s)" @@ Smt.gen_binders (List.length vars) (pretty_fm e) in
-  Smt.gen_bv_query q_str 
+    Format.sprintf "(assert %s)" (pretty_fm e) in 
+  Smt.gen_bv_query (String.concat "\n" [prefix; q_str])
 
-let dump_query (vars: string list) (e: EConstr.t) : unit = 
+let dump_query (e: EConstr.t) : unit = 
   let env = Global.env () in
   let sigma = Evd.from_env env in
   let opts = { refute_query = true; negate_toplevel = false; } in
-  let query = build_query vars (EConstr.to_constr sigma e) opts in
+  let query = build_query (EConstr.to_constr sigma e) opts in
     Feedback.msg_info (Pp.str query)
-
-let rec extract_foralls (e: C.t) : string list * C.t = 
-  begin match C.kind e with
-  | C.Prod(nme, _, bod) -> 
-    let (nms, bod') = extract_foralls bod in 
-    Pp.string_of_ppcmds (Names.Name.print (Context.binder_name nme)) :: nms, bod'
-  | _ -> ([], e)
-  end
 
 let rec check_interp (e: C.t) (negate_toplevel: bool) : string = 
   if C.isApp e then 
@@ -675,23 +697,13 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
       if name = "MirrorSolve.FirstOrder.interp_fm" then
         let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
         let bod' = a_last es in
-          build_query [] bod' opts
+          build_query bod' opts
       else
         let _ = Feedback.msg_debug (Pp.str "unrecognized name: ") in 
         let _ = Feedback.msg_debug @@ Pp.str name in 
         raise @@ BadExpr "Expected negate or interp at interp toplevel"
   else
-    if not @@ C.isProd e then raise bedef else
-    let (vs, bod) = extract_foralls e in
-    let (f, es) = C.destApp bod in 
-    let (n, _) = C.destConst f in 
-    let name = Names.Constant.to_string n in 
-    if name = "MirrorSolve.FirstOrder.interp_fm" then
-      let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
-      let bod' = a_last es in
-        build_query vs bod' opts 
-    else
-      raise bedef
+    raise bedef
 
 
 
@@ -743,7 +755,7 @@ let reg_builtin (l: EConstr.t) (r: EConstr.t) : unit =
 let conv_sort (e: C.t) : sort option = 
   if equal_ctor e (fun _ -> c_int_sort) then Some Smt_int 
   else if equal_ctor e (fun _ -> c_bool_sort) then Some Smt_bool
-  else if equal_ctor e (fun _ -> c_bv_sort) then Some (Smt_bv None)
+  else if equal_ctor e c_bv_sort then Some (Smt_bv None)
   else None
 
 let reg_sort (l: EConstr.t) (r: EConstr.t) : unit = 
@@ -755,3 +767,28 @@ let reg_sort (l: EConstr.t) (r: EConstr.t) : unit =
     | Some x -> add_sort le x
     | None -> raise bedef
     end
+
+(* let rec all_some (xs: 'a option list) : 'a list option = 
+  begin match xs with 
+  | [] -> Some []
+  | Some x :: xs' -> 
+    begin match all_some xs with 
+    | Some xs'' -> Some (x :: xs'')
+    | None -> None
+    end
+  | None :: _ -> None
+  end *)
+
+let reg_uf_decl (name: string) (ret_e: EConstr.t) (args: EConstr.t list) : unit = 
+  let env = Global.env () in
+  let sigma = Evd.from_env env in
+  let force = EConstr.to_constr sigma in 
+  let r_e = force ret_e in 
+  let args_e = List.map force args in 
+  try 
+    let r_ty, args_ty = extract_sort r_e, List.map extract_sort args_e in  
+      add_fun_decl name {arg_tys = args_ty; ret_ty = r_ty; name = name}
+  with
+    | e -> 
+      let _ = Feedback.msg_warning (Pp.(++) (Pp.str ("Could not convert UF sorts in ")) @@ Constr.debug_print r_e) in
+      let _ = Feedback.msg_warning @@ format_args (Array.of_list args_e) in raise e

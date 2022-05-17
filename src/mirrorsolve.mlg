@@ -35,6 +35,12 @@ VERNAC COMMAND EXTEND RegisterFun CLASSIFIED AS QUERY
     let (_, r') = Constrintern.interp_constr_evars env sigma' r in 
       Main.reg_sort l' r'
   }
+| [ "RegisterSMTUF" string(nme) constr(ret) constr_list(args) ] -> {
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let force e = snd (Constrintern.interp_constr_evars env sigma e) in 
+      Main.reg_uf_decl nme (force ret) (List.map force args)
+  }
 END
 
 
@@ -49,12 +55,12 @@ END
 
 
 VERNAC COMMAND EXTEND ViewSMTQuery CLASSIFIED AS QUERY
-| [ "PrintSMT" constr(e) string_list(vs) ] -> { 
+| [ "PrintSMT" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
     let (sigma', e') = Constrintern.interp_constr_evars env sigma e in
       Feedback.msg_info (Pp.str "SMT QUERY:\n") ;
-      Main.dump_query vs e'
+      Main.dump_query e'
   }
 END
 
@@ -70,9 +76,9 @@ TACTIC EXTEND DebugTactic
 END
 
 TACTIC EXTEND ViewSMTTactic 
-| [ "print_smt" constr(e) string_list(vs) ] -> { 
+| [ "print_smt" constr(e) ] -> { 
     Feedback.msg_info (Pp.str "SMT QUERY:\n") ;
-    Main.dump_query vs e ;
+    Main.dump_query e ;
     Proofview.tclUNIT ()
   }
 | [ "check_interp_pos" constr(e) ] -> { 

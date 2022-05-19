@@ -107,6 +107,9 @@ let c_smt_bv_ctor = get_coq "p4a.bv.smt_bv_ctor"
 let c_builtin_bool_lit () = get_coq "p4a.core.bool_lit"
 let c_builtin_int_lit () = get_coq "p4a.core.int_lit"
 
+let c_ufun_ctor () = get_coq "ms.uf.ufun"
+let c_cfun_ctor () = get_coq "ms.uf.cfun"
+
 
 let find_add i tbl builder = 
   begin match Hashtbl.find_opt tbl i with 
@@ -200,6 +203,7 @@ type sort =
   | Smt_bv of int option
   | Smt_int
   | Smt_bool 
+  | Custom_sort of string
 
 type func_decl = {
   arg_tys : sort list;
@@ -207,29 +211,83 @@ type func_decl = {
   name: string;
 }
 
-let sort_tbl : (C.t, sort) Hashtbl.t = 
-  Hashtbl.create 5 ;;
+let valid_sort (s: sort) : bool = 
+  begin match s with 
+  | Smt_bv (Some n) -> n > 0
+  | Smt_bv None -> false
+  | Custom_sort s -> 
+    String.length s > 0 && s.[0] = Char.uppercase_ascii s.[0]
+  | Smt_int 
+  | Smt_bool -> true
+  end
+let pretty_sort (s: sort) : string = 
+  begin match s with 
+  | Smt_bv (Some n) -> Format.sprintf "(_ BitVec %n)" n
+  | Smt_bv None -> raise bedef
+  | Smt_int -> "Int"
+  | Smt_bool -> "Bool"
+  | Custom_sort s -> s
+  end
+
+
+
+
+let sort_tbl : (Names.constructor, sort) Hashtbl.t = 
+  Hashtbl.create 5 
+  (* ;;
   begin try Hashtbl.add sort_tbl (c_bv_sort ()) (Smt_bv None) with 
     | MissingGlobConst _ -> ()
     | e -> raise e
-  end
+  end *)
 
-let lookup_sort (e: C.t) : sort option = Hashtbl.find_opt sort_tbl e
-let add_sort = Hashtbl.add sort_tbl
+let lookup_sort (ctor: Names.constructor) : sort option = Hashtbl.find_opt sort_tbl ctor
+let add_sort (e: C.t) v = 
+  if C.isConstruct e then 
+    let (k, _) = C.destConstruct e in 
+    Hashtbl.add sort_tbl k v
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected construct for sort in add_sort and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise bedef
+
+let custom_sorts () : string list = 
+  let worker srt = 
+    begin match srt with 
+    | Custom_sort s -> Some s
+    | _ -> None
+    end in
+  let sorts = Hashtbl.to_seq_values sort_tbl in
+    List.filter_map worker (List.of_seq sorts)
+
 
 
 let uf_sym_tbl : (string, func_decl) Hashtbl.t = Hashtbl.create 5
 let lookup_uf (n: string) = Hashtbl.find_opt uf_sym_tbl n
 let add_uf = Hashtbl.add uf_sym_tbl
 
+let debug_tbl (tbl : ('a, 'b) Hashtbl.t) (printer: 'a -> 'b -> Pp.t) : Pp.t = 
+  Pp.pr_vertical_list (fun (x, y) -> printer x y) @@ List.of_seq @@ Hashtbl.to_seq tbl
+
+
 let extract_prim_sort (e: C.t) =
-  begin match lookup_sort e with 
-  | Some x -> x
-  | None ->
-    let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
+  if C.isConstruct e then 
+    let (ctor, _) = C.destConstruct e in 
+      begin match lookup_sort ctor with 
+      | Some x -> x
+      | None ->
+        let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
+        let _ = Feedback.msg_debug (Constr.debug_print e) in
+        let _ = Feedback.msg_debug @@ Pp.str "sorts:" in 
+        let _ = Feedback.msg_debug @@ debug_tbl sort_tbl @@ 
+          (fun k v -> 
+            Pp.(++) (Pp.(++) (C.debug_print e) (Pp.str " |-> ")) (Pp.str @@ pretty_sort v)
+          ) in 
+        raise @@ BadExpr "unexpected constructor for sorts (see debug)"   
+      end 
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected construct for sort and got:") in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
-    raise @@ BadExpr "unexpected constructor for sorts (see debug)"   
-  end   
+      raise bedef
 
 let extract_sort (e: C.t) =
   if C.isApp e then 
@@ -252,20 +310,6 @@ let equal_ctor (l: C.t) (r: unit -> C.t) : bool =
         false
     | e -> raise e
 
-let valid_sort (s: sort) : bool = 
-  begin match s with 
-  | Smt_bv (Some n) -> n > 0
-  | Smt_bv None -> false
-  | Smt_int 
-  | Smt_bool -> true
-  end
-let pretty_sort (s: sort) : string = 
-  begin match s with 
-  | Smt_bv (Some n) -> Format.sprintf "(_ BitVec %n)" n
-  | Smt_bv None -> raise bedef
-  | Smt_int -> "Int"
-  | Smt_bool -> "Bool"
-  end
 let pretty_func_decl (fd: func_decl) : string = 
   let prefix = Format.sprintf "(declare-fun %s (" fd.name in 
   let args = String.concat " " @@ List.map pretty_sort fd.arg_tys in 
@@ -450,7 +494,7 @@ let format_args (es: C.t array) : Pp.t =
   let builder (i, e) = Pp.(++) (Pp.str (Format.sprintf "%n => " i)) (C.debug_print e) in
     Pp.pr_vertical_list builder (Array.to_list eis)
 
-let debug_flag = false
+let debug_flag = true
 
 (* let debug_print (f: unit -> unit) : unit = 
   if debug_flag then f () else () *)
@@ -556,6 +600,12 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
       let lo = c_binnat_to_int @@ a_last f_args in 
       let inner = pretty_tm @@ List.nth args 0 in 
         Format.sprintf "((_ extract %n %n) %s)" hi lo inner
+    else if equal_ctor f' c_ufun_ctor then
+      (* handle uninterpreted fun *)
+      raise bedef
+    else if equal_ctor f' c_cfun_ctor then 
+      (* recurse on interior for concrete functions *)
+      pretty_fun (a_last f_args) args
     else 
       begin match lookup_symb f'', lookup_builtin f'', lookup_arity f'' with 
       | None, Some sym, Some n -> pretty_builtin f_args sym n
@@ -671,8 +721,9 @@ let get_decls () =
   Hashtbl.to_seq_values fun_decl_tbl
 
 let build_query (e: C.t) (opts: query_opts) : string = 
-  let decls = List.of_seq @@ get_decls () in 
-  let prefix = String.concat "\n" @@ List.map pretty_func_decl decls in 
+  let sort_decls = List.map (fun s -> Format.sprintf "(declare-sort %s 0)" s) @@ custom_sorts () in 
+  let fun_decls = List.map pretty_func_decl @@ List.of_seq @@ get_decls () in 
+  let prefix = String.concat "\n" @@ sort_decls @ fun_decls in 
   let q_str = if opts.refute_query then 
     Format.sprintf "(assert (not %s))" (pretty_fm e) 
   else
@@ -767,6 +818,13 @@ let reg_sort (l: EConstr.t) (r: EConstr.t) : unit =
     | Some x -> add_sort le x
     | None -> raise bedef
     end
+
+let reg_custom_sort (e: EConstr.t) (name: string) : unit = 
+  let env = Global.env () in
+  let sigma = Evd.from_env env in
+  let e' = EConstr.to_constr sigma e in 
+    add_sort e' (Custom_sort name)
+
 
 (* let rec all_some (xs: 'a option list) : 'a list option = 
   begin match xs with 

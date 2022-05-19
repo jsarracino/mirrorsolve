@@ -23,11 +23,14 @@ val reg_sort : EConstr.constr -> EConstr.constr -> unit
 val reg_sym : EConstr.constr -> string -> int -> unit
 val reg_builtin : EConstr.constr -> EConstr.constr -> unit
 val reg_uf_decl : string -> EConstr.constr -> EConstr.constr list -> unit
+val reg_custom_sort : EConstr.constr -> string -> unit
+
 
 type sort = 
   | Smt_bv of int option
   | Smt_int
   | Smt_bool 
+  | Custom_sort of string
 
 type func_decl = {
   arg_tys : sort list;

@@ -110,6 +110,11 @@ let c_builtin_int_lit () = get_coq "p4a.core.int_lit"
 let c_ufun_ctor () = get_coq "ms.uf.ufun"
 let c_cfun_ctor () = get_coq "ms.uf.cfun"
 
+let c_char_ctor = get_coq "core.ascii.ascii"
+
+let c_str_cons = get_coq "core.string.string"
+let c_str_nil = get_coq "core.string.empty"
+
 
 let find_add i tbl builder = 
   begin match Hashtbl.find_opt tbl i with 
@@ -229,8 +234,50 @@ let pretty_sort (s: sort) : string =
   | Custom_sort s -> s
   end
 
+let rec interp_digs (bs: bool list) : int = 
+  begin match bs with 
+  | [] -> 0
+  | d :: ds -> (if d then 1 else 0) + 2 * interp_digs ds
+  end
 
+let extract_char (e: C.t) : char = 
+  if C.isApp e then 
+    let (f, args) = C.destApp e in 
+    if f = c_char_ctor then 
+      let code = interp_digs @@ Array.to_list @@ Array.map c_bool_to_bool args in 
+        Char.chr code
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected char constructor and got") in
+      let _ = Feedback.msg_debug (Constr.debug_print f) in
+        raise bedef
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected app in char and got") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise bedef
 
+let rec extract_str_list (e: C.t) : char list = 
+  if C.isApp e then 
+    let (f, args) = C.destApp e in 
+    if f = c_str_cons then 
+      let nxt = extract_char @@ args.(Array.length args - 2) in 
+        nxt :: extract_str_list (a_last args)
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected str cons constructor and got") in
+      let _ = Feedback.msg_debug (Constr.debug_print f) in
+        raise bedef
+  else if C.isConstruct e then 
+    if e = c_str_nil then []
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected str nil constructor and got") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+        raise bedef
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected app/construct in str and got") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise bedef
+
+let extract_str (e: C.t) : string = 
+  String.of_seq @@ List.to_seq @@ extract_str_list e
 
 let sort_tbl : (Names.constructor, sort) Hashtbl.t = 
   Hashtbl.create 5 
@@ -261,9 +308,9 @@ let custom_sorts () : string list =
 
 
 
-let uf_sym_tbl : (string, func_decl) Hashtbl.t = Hashtbl.create 5
+(* let uf_sym_tbl : (string, func_decl) Hashtbl.t = Hashtbl.create 5
 let lookup_uf (n: string) = Hashtbl.find_opt uf_sym_tbl n
-let add_uf = Hashtbl.add uf_sym_tbl
+let add_uf = Hashtbl.add uf_sym_tbl *)
 
 let debug_tbl (tbl : ('a, 'b) Hashtbl.t) (printer: 'a -> 'b -> Pp.t) : Pp.t = 
   Pp.pr_vertical_list (fun (x, y) -> printer x y) @@ List.of_seq @@ Hashtbl.to_seq tbl
@@ -602,7 +649,22 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
         Format.sprintf "((_ extract %n %n) %s)" hi lo inner
     else if equal_ctor f' c_ufun_ctor then
       (* handle uninterpreted fun *)
-      raise bedef
+      let f_name = f_args.(Array.length f_args - 4) in 
+      let name = extract_str f_name in 
+      begin match Hashtbl.find_opt fun_decl_tbl name with 
+      | Some fdecl -> 
+        let arity = List.length fdecl.arg_tys in 
+        if arity = 0 then name else 
+          Format.sprintf "(%s %s)" name @@ String.concat " " @@ List.map pretty_tm args
+      | _ -> 
+        let _ = debug_pp @@ Pp.str @@ Format.sprintf "missing uf definition for %s" name in
+        let _ = Feedback.msg_debug @@ Pp.str "ufs:" in 
+        let _ = Feedback.msg_debug @@ debug_tbl fun_decl_tbl @@ 
+          (fun k v -> 
+            Pp.(++) (Pp.(++) (Pp.str k) (Pp.str " |-> ")) (Pp.str @@ pretty_func_decl v)
+          ) in 
+        raise bedef
+      end
     else if equal_ctor f' c_cfun_ctor then 
       (* recurse on interior for concrete functions *)
       pretty_fun (a_last f_args) args

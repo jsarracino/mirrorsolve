@@ -38,9 +38,9 @@ type func_decl = {
   name: string;
 }
 
-val uf_sym_tbl : (string, func_decl) Hashtbl.t
+(* val uf_sym_tbl : (string, func_decl) Hashtbl.t
 val lookup_uf : string -> func_decl option
-val add_uf : string -> func_decl -> unit
+val add_uf : string -> func_decl -> unit *)
 
 type bop = Impl | And | Or | Eq 
 type uop = Neg

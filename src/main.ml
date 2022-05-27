@@ -544,7 +544,7 @@ let format_args (es: C.t array) : Pp.t =
   let builder (i, e) = Pp.(++) (Pp.str (Format.sprintf "%n => " i)) (C.debug_print e) in
     Pp.pr_vertical_list builder (Array.to_list eis)
 
-let debug_flag = true
+let debug_flag = false
 
 (* let debug_print (f: unit -> unit) : unit = 
   if debug_flag then f () else () *)

@@ -56,13 +56,16 @@ Require Import MirrorSolve.BV.
 
 Local Declare ML Module "mirrorsolve".
 
+Require Import MirrorSolve.N.
 Require Import MirrorSolve.Z.
 Require Import MirrorSolve.N2Z.
 
-RegisterSMTSort ZS SInt.
-RegisterSMTSort BS SBool.
 
-RegisterSMTUF "power" ZS ZS BS.
+RegisterSMTSort ZS SInt.
+(* RegisterSMTSort BS SBool. *)
+RegisterCustomSort BS "BS".
+
+RegisterSMTUF "pow" ZS ZS BS.
 
 RegisterSMTBuiltin Z.ZLit IntLit.
 
@@ -77,30 +80,133 @@ Definition is_z_term (t: term) : bool :=
   | _ => eq_term t c_zzero
   end.
 
+Definition is_nat_term (t: term) : bool := 
+  match t with 
+  | tApp f _ => 
+    eq_term f c_nsucc
+  | _ => eq_term t c_nzero
+  end.
+
 Require Import Coq.ZArith.BinIntDef.
 
 Require Import Coq.Lists.List.
 
-Notation zlit := (tacLit sig fm_model z_lit).
+Require Import Coq.Strings.String.
+Require Import MirrorSolve.UF.
+Import ListNotations.
 
-Definition match_tacs : list ((term -> bool) * tac_syn sig fm_model) := [
-   (is_z_term, 
-    zlit 
-      (fun z => existT _ ZS z) 
-      (fun z _ => existT _ ZS (TFun sig (ZLit z) hnil)))
-  ].
+Notation sig := (N.sig).
 
-MetaCoq Quote Definition z_ind := (Z).
+Definition symbs : list (string * list (sig_sorts sig) * sig_sorts sig) := ([
+  ("pow", [NS; NS], NS)
+]%string).
 
-Definition match_inds : list (term * sorts) := [
-    (z_ind, ZS)
-  ].
-
-MetaCoq Quote Definition test_1 := (1 = 1)%Z.
-  
-Goal (1 = 1)%Z.
+Lemma symbs_contents : 
+  forall s args r, 
+    In (s, args, r) symbs <-> 
+    s = "pow"%string /\ args = [NS; NS] /\ r = NS.
 Proof.
-  reflect_goal Z.sig Z.fm_model Z.sorts_eq_dec match_tacs match_inds test_1.
+  intros.
+  unfold symbs.
+  split; intros.
+  - inversion H; subst.
+    + inversion H0; subst.
+      repeat econstructor.
+    + inversion H0.
+  - destruct H as [? [? ?]]; subst.
+    left; econstructor.
+Defined.
+
+Definition interp_syms (sym: string) (a: list (sig_sorts sig)) (r: sig_sorts sig) : 
+  In (sym, a, r) symbs -> HList.t (FirstOrder.mod_sorts sig N.fm_model) a -> FirstOrder.mod_sorts sig N.fm_model r.
+  intros.
+  pose proof symbs_contents sym a r.
+  destruct H0.
+  specialize (H0 H).
+  destruct H0 as [? [? ?]].
+  subst.
+  inversion X; subst.
+  inversion X1; subst.
+  simpl in *.
+  exact (pow X0 X2).
+Defined.
+
+Notation sig' := (UF.sig sig symbs).
+Definition uf_model := UF.fm_model sig N.fm_model symbs interp_syms.
+
+Lemma in_pow : 
+  In ("pow", [NS; NS], NS)%string symbs.
+Proof.
+  simpl.
+  left; trivial.
+Defined.
+
+Notation natlit := (tacLit sig' uf_model nat_lit).
+MetaCoq Quote Definition t_pow := (pow).
+
+Definition is_pow := eq_term t_pow.
+
+Program Definition match_tacs : list ((term -> bool) * tac_syn sig' uf_model) := [
+  ( is_pow, tacFun _ _ {| deep_f := UFun sig symbs in_pow |} ); 
+  ( is_nat_term, 
+    natlit 
+      (fun z => existT _ NS z) 
+      (fun z _ => existT _ NS (TFun _ (CFun _ symbs (NLit z)) hnil)))
+  ].
+
+MetaCoq Quote Definition n_ind := (nat).
+
+Definition match_inds : list (term * N.sorts) := [
+    (n_ind, NS)
+  ].
+
+MetaCoq Quote Definition test_1 := (pow 1 2 = 1).
+
+Ltac simpl_denote_tm :=
+  match goal with 
+  | |- denote_t2fm _ _ _ _ _ _ _ _ = Some _ => 
+    let x := fresh "x" in 
+    set (x := denote_t2fm _ _ _ _ _ _ _ _);
+    
+    simpl in x;
+    unfold eq_rect_r in x;
+    simpl in x; 
+    exact eq_refl
+  end.
+
+Ltac reflect_goal sig model srts_eq_dec mtacs minds t' := 
+  match goal with 
+  | |- ?G => 
+    eapply denote_extract_specialized with (s := sig) (m := model) (sorts_eq_dec := srts_eq_dec) (match_tacs := mtacs) (match_inds := minds) (p' := G) (t := t')
+  end; [
+    simpl_denote_tm |
+    simpl_extract_tm |
+    discharge_equiv_denote_orig; autorewrite with mod_fns; eauto | 
+    let v' := fresh "v" in 
+    let f' := fresh "f" in 
+    match goal with 
+    | |- interp_fm ?v ?f => 
+      set (v' := v);
+      set (f' := f)
+    end;
+    vm_compute in f';
+    subst v';
+    subst f'
+  ]. 
+  
+Goal (pow 1 2 = 1).
+Proof.
+  reflect_goal (UF.sig sig symbs) uf_model N.sorts_eq_dec match_tacs match_inds test_1.
+
+  simpl.
+  unfold eq_rect_r.
+  simpl eq_rect.
+  2: {
+    autorewrite with interp_fm.
+    autorewrite with interp_tm.
+    simpl.
+    vm_compute.
+  }
   match goal with 
   | |- ?G => check_interp_pos G
   end.

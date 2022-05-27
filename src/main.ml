@@ -281,11 +281,14 @@ let extract_str (e: C.t) : string =
 
 let sort_tbl : (Names.constructor, sort) Hashtbl.t = 
   Hashtbl.create 5 
-  (* ;;
-  begin try Hashtbl.add sort_tbl (c_bv_sort ()) (Smt_bv None) with 
+  ;;
+  let bv_sort = c_bv_sort() in 
+  begin try
+  let v, _ = C.destConstruct bv_sort in 
+  Hashtbl.add sort_tbl v (Smt_bv None) with 
     | MissingGlobConst _ -> ()
     | e -> raise e
-  end *)
+  end
 
 let lookup_sort (ctor: Names.constructor) : sort option = Hashtbl.find_opt sort_tbl ctor
 let add_sort (e: C.t) v = 
@@ -808,7 +811,7 @@ let rec check_interp (e: C.t) (negate_toplevel: bool) : string =
       let (n, _) = C.destConst f in 
       let name = Names.Constant.to_string n in 
       if name = "MirrorSolve.FirstOrder.interp_fm" then
-        let opts = { refute_query = false; negate_toplevel = negate_toplevel; } in
+        let opts = { refute_query = negate_toplevel; negate_toplevel = negate_toplevel; } in
         let bod' = a_last es in
           build_query bod' opts
       else

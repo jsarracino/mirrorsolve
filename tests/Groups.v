@@ -481,6 +481,32 @@ Notation sig' := (UF.sig sig symbs).
 Notation OP := (UFun sig symbs in_op).
 Notation INV := (UFun sig symbs in_inv).
 
+Definition f' := f.
+
+MetaCoq Quote Definition t_f := (f').
+
+Definition is_g_term (t: term) : bool := 
+  match t with 
+  | tApp f args => 
+    equal_term f 
+
+
+Program Definition match_tacs : list ((term -> bool) * tac_syn sig' group_uf_model) := [
+   (is_z_term, 
+    zlit 
+      (fun z => existT _ ZS z) 
+      (fun z _ => existT _ ZS (TFun sig (ZLit z) hnil)))
+  ].
+
+MetaCoq Quote Definition z_ind := (Z).
+
+Definition match_inds : list (term * sorts) := [
+    (z_ind, ZS)
+  ].
+
+
+
+
 Notation v_c := (VHere _ _ _). 
 Notation v_b := (VThere _ _ _ _ v_c).
 Notation v_a := (VThere _ _ _ _ v_b).  

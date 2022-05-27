@@ -22,7 +22,7 @@ Section ExtractFM.
   Variable (m: model s).
 
   Variable (extract_t2tm : forall c, term -> list (option ({srt & (tm s c srt)})) -> option ({srt & (tm s c srt)})).
-  Variable (extract_ind2srt : inductive -> option (sig_sorts s)).
+  Variable (extract_t2srt : term -> option (sig_sorts s)).
 
   Variable (sort_eq_dec: EquivDec.EqDec (sig_sorts s) eq).
 
@@ -110,21 +110,17 @@ Section ExtractFM.
           | _, _ => None
           end
         | nNamed _ => 
-          match pre with 
-          | tInd i _ => 
-            let srt := extract_ind2srt i in 
-            match srt with 
-            | Some srt => 
-              let c' := Snoc _ c srt in
-              let inner := extract_t2fm c' acc pst in 
-              match inner with 
-              | Some fm => Some (FForall _ fm)
-              | None => None
-              end
-              
+          let srt := extract_t2srt pre in 
+          match srt with 
+          | Some srt => 
+            let c' := Snoc _ c srt in
+            let inner := extract_t2fm c' acc pst in 
+            match inner with 
+            | Some fm => Some (FForall _ fm)
             | None => None
             end
-          | _ => None
+              
+          | None => None
           end
         end
       | _ => None
@@ -165,7 +161,7 @@ Section DenoteFM.
   Notation env_ty c := (valu s m c).
 
   Variable (denote_tm : term -> list res_ty -> res_ty).
-  Variable (reify_ind : inductive -> option (s.(sig_sorts))).
+  Variable (reify_srt : term -> option (s.(sig_sorts))).
 
   Fixpoint denote_var {c} (env: env_ty c) (n: nat) : res_ty :=
     match env, n with 
@@ -241,20 +237,16 @@ Section DenoteFM.
           | _, _ => None
           end
         | nNamed _ =>
-          match pre with 
-          | tInd i _ => 
-            let ty := reify_ind i in 
-            match ty with
-            | Some ty' => Some (
-              forall x: (s.(mod_sorts) m ty'), 
-              exists p',
-              let env' := VSnoc _ _ ty' c env x in
-                  denote_t2fm env' acc pst = Some p' /\
-                  p'
-              )
-            | None => None
-            end
-          | _ => None
+          let ty := reify_srt pre in 
+          match ty with
+          | Some ty' => Some (
+            forall x: (s.(mod_sorts) m ty'), 
+            exists p',
+            let env' := VSnoc _ _ ty' c env x in
+                denote_t2fm env' acc pst = Some p' /\
+                p'
+            )
+          | None => None
           end
         end
       | _ => None

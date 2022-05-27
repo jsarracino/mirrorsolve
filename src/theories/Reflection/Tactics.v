@@ -55,12 +55,14 @@ Section Tactics.
     deep_f: s.(sig_funs) args ret; 
   }.
 
-  Inductive tac_lits := | bool_lit | z_lit.
+  Inductive tac_lits := | bool_lit | z_lit | nat_lit | n_lit.
 
   Definition lit_ty (t: tac_lits) : Type := 
     match t with 
     | bool_lit => bool
     | z_lit => BinNums.Z
+    | nat_lit => nat
+    | n_lit => BinNums.N
     end.
 
   Inductive tac_syn :=
@@ -171,6 +173,8 @@ Section Tactics.
     match lit with 
     | bool_lit => denote_bool t
     | z_lit => denote_Z t
+    | n_lit => None (* TODO N *)
+    | nat_lit => denote_nat t
     end.
   
   Definition denote_tac (tac: tac_syn) (opt_args : list (option ({ty & mod_sorts ty}))) (t: term) : option ({ty & mod_sorts ty}) :=
@@ -279,13 +283,18 @@ Section Tactics.
     extract_t2tm mtacs t r_args := extract_mtacs c mtacs t r_args.
 
 
-  Fixpoint i2srt (minds: list (term * sorts)) (i: inductive) : option sorts :=
+  Fixpoint i2srt (minds: list (term * sorts)) (t: term) : option sorts :=
     match minds with 
     | nil => None
     | (tInd x _, srt) :: minds => 
-      if eq_inductive x i then Some srt
-      else i2srt minds i
-    | _ :: _ => None
+      match t with 
+      | tInd i _ => 
+        if eq_inductive x i then Some srt
+        else i2srt minds t
+      | _ => None
+      end
+    | (t', srt) :: minds => 
+      if eq_term t t' then Some srt else i2srt minds t
     end.
 
   Variable match_tacs : list ((term -> bool) * tac_syn).

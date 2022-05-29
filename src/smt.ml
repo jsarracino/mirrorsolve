@@ -1,11 +1,21 @@
-type solver_t = Z3 | CVC4 | Boolector
+type solver_t = Z3 | CVC4 | Boolector | CVC5
 let show_solver_t s = 
   begin match s with 
   | Z3 -> "z3"
   | CVC4 -> "cvc4"
   | Boolector -> "boolector"
+  | CVC5 -> "cvc5"
   end
-let solver = ref Z3
+
+let str_to_solver s = 
+  begin match s with 
+  | "z3" -> Some Z3
+  | "cvc4" -> Some CVC4
+  | "cvc5" -> Some CVC5
+  | "boolector" -> Some Boolector
+  | _ -> None
+  end
+let solver = ref CVC4
 let set_solver = (:=) solver
 let get_solver _ = !solver
 

@@ -125,8 +125,119 @@ Section Meta.
     | tFloat f17 => f16 f17
     end.
 
+  Lemma mk_denote_var : 
+    forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) (tm : tm s c x) (j i n : nat),
+  match mk_var s c (n - j) with
+  | Some s0 => let (srt, v0) := s0 in Some (srt; TVar v0)
+  | None => None
+  end = Some (x; tm) -> denote_var s m v (n - i) = Some (x; interp_tm v tm).
+  Admitted.
+
+  Inductive EquivEnvs {c} : 
+    list (option (∑ ty : sig_sorts s, mod_sorts s m ty)) -> 
+    list (option (∑ srt : sig_sorts s, tm s c srt)) -> 
+    Type := 
+    | equiv_nil   : EquivEnvs [] []
+    | equiv_cons  : 
+      forall el er, 
+      EquivEnvs el er -> 
+      forall ty v mv tm, 
+        mv = interp_tm v tm ->
+        EquivEnvs ((Some (ty; mv)) :: el) (Some (ty; tm) :: er).
+
+  Parameter (denote_tf : 
+    term ->
+    list
+      (option
+        (∑ ty : sig_sorts s,
+            mod_sorts s m ty)) ->
+    option
+      (∑ ty : sig_sorts s,
+        mod_sorts s m ty)).
+
+  Parameter (extract_tf : 
+    forall c : ctx s,
+    term ->
+    list (option (∑ srt : sig_sorts s, tm s c srt)) ->
+    option (∑ srt : sig_sorts s, tm s c srt)).
+
+  Parameter (denote_extract_tf_spec : 
+    forall c v t el er ty tm, 
+      EquivEnvs el er -> 
+      extract_tf c t er = Some (ty; tm) <-> denote_tf t el = Some (ty; interp_tm v tm)
+  ).
+
+  Parameter (denote_extract_app_spec: 
+  forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) 
+  (tm : tm s c x) (t : term) (args : list term) (j i : nat),
+Forall
+  (fun t0 : term =>
+   forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
+   extract_t2tm' s extract_tf c j t0 = Some (x0; tm0) ->
+   denote_tm' s m denote_tf v i t0 = Some (x0; interp_tm v tm0)) args ->
+(forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
+ extract_t2tm' s extract_tf c j t = Some (x0; tm0) ->
+ denote_tm' s m denote_tf v i t = Some (x0; interp_tm v tm0)) ->
+extract_tf c (tApp t args) (map (extract_t2tm' s extract_tf c j) args) =
+Some (x; tm) <->
+denote_tf (tApp t args) (map (denote_tm' s m denote_tf v i) args) =
+Some (x; interp_tm v tm)
+  ).
+
+  Require Import Coq.Program.Equality.
+
+  (* Lemma mk_var_recur:
+    forall c n v v', 
+      mk_var s c n = Some v -> 
+      mk_var s (Snoc (sig_sorts s) c v') n = Some v. *)
+
+  Lemma denote'_extract'_spec : 
+    forall {c v i j} t x tm, 
+      extract_t2tm' s extract_tf c j t = Some (x; tm) -> 
+      denote_tm' s m denote_tf v i t = Some (x; interp_tm v tm).
+  Proof.
+    induction t using term_ind'; intros; 
+    try (now 
+      eapply denote_extract_tf_spec;
+      eauto;
+      econstructor
+    ).
+    - eapply mk_denote_var.
+      eauto.
+
+    - simpl in *.
+      eapply denote_extract_app_spec; 
+      eauto.
+  Qed.
+
+    (* case n-i = n-j = 0
+    inversion H0; subst.
+    inversion H; subst.
+    assert (tm = TVar (VHere s c x)) by admit.
+    assert (m0 = mv) by admit.
+    erewrite H1.
+    autorewrite with interp_tm; autorewrite with find.
+    trivial.
+
+    autorewrite with 
+    inversion H; subst.
+    inversion H3; subst.
+    
+    - intuition congruence.
+    - induction (n-i); 
+      induction (n-j);
+      autorewrite with mk_var;
+      simpl.
+      * split; intros.
+        + inversion H; subst.
+          autorewrite with interp_tm.
+          autorewrite with find.
+          trivial.
+        + inversion H; subst.
+          do 2 f_equal. *)
+
   Theorem denote_extract:
-    forall t denote_tf extract_tf i2srt (p p': Prop) i j c (v: valu s _ c) fm,
+    forall t i2srt i j c (v: valu s _ c) fm,
       extract_t2fm s extract_tf i2srt sorts_eq_dec c j t = Some fm -> 
       (denote_t2fm s m sorts_eq_dec denote_tf i2srt v i t <-> interp_fm (m := m) v fm).
   Proof.
@@ -212,23 +323,23 @@ Section Meta.
     end.
 
     (* equality, \/, /\, and ~ *)
-    + admit.
+    + 
+      pose proof denote'_extract'_spec (j := j) (i := i) (v := v) t1 _ t3.
+      erewrite H; eauto.
+      clear H.
+      pose proof denote'_extract'_spec (j := j) (i := i) (v := v) t2 _ t4.
+      erewrite H; eauto.
+      clear H.
 
-      (* TODO: need soundness for denote_tm'
-      destruct (denote_tm' _ _ _ _ _ t1) eqn:?.
-      destruct (denote_tm' _ _ _ _ _ t2) eqn:?.
-      destruct s0.
-      destruct s1.
-      destruct (sorts_eq_dec x1 x2).
-
-      repeat match goal with 
+      match goal with
       | H: Equivalence.equiv _ _ |- _ => 
         cbv in H; subst
       end.
-      unfold eq_rect_r; simpl.
-      2: {
 
-      } *)
+      erewrite Heqs1.
+
+      unfold eq_rect_r in *; simpl.
+      eapply iff_refl.
       
     + split; intros.
       * match goal with 
@@ -269,7 +380,7 @@ Section Meta.
     end;
     autorewrite with interp_fm;
     eapply iff_refl.
-  Admitted. 
+  Qed. 
 
 
 End Meta.

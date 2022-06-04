@@ -126,8 +126,6 @@ Section ExtractFM.
       | _ => None
       end.
 
-  (* TODO: soundness lemma; forall c t fm, extract_t2fm c t = Some fm -> (forall v, interp_coq_tm v t <-> interp_fm v fm) *)
-
   (* Some light tests *)
   (* Variable (c: ctx s).
 
@@ -178,10 +176,10 @@ Section DenoteFM.
     end.
 
   Obligation Tactic := intros.
-  Equations denote_t2fm {c} (env: env_ty c) (anon_acc: nat) (t: term) : option Prop by struct t := 
+  Equations denote_t2fm {c} (env: env_ty c) (anon_acc: nat) (t: term) : Prop by struct t := 
     denote_t2fm env acc t := 
-      if eq_term t c_True then Some True else 
-      if eq_term t c_False then Some False else
+      if eq_term t c_True then True else 
+      if eq_term t c_False then False else
       match t with
       | tApp f es => 
         if eq_term f c_eq then 
@@ -193,63 +191,42 @@ Section DenoteFM.
               let (tr, er) := r in 
                 match sorts_eq_dec tl tr with 
                 | left HEq => 
-                  Some (el = (eq_rect_r _ er HEq))
-                | _ => None
+                  (el = (eq_rect_r _ er HEq))
+                | _ => False
                 end
-            | _, _ => None
+            | _, _ => False
             end
-          | _ => None
+          | _ => False
           end
         else if eq_term f c_or then 
           match es with 
-          | tl :: tr :: _ => 
-            match denote_t2fm env acc tl, denote_t2fm env acc tr with 
-            | Some l, Some r => Some (l \/ r)
-            | _, _ => None
-            end
-          | _ => None
+          | tl :: tr :: _ => denote_t2fm env acc tl \/ denote_t2fm env acc tr
+          | _ => False
           end
         else if eq_term f c_and then 
           match es with 
-          | tl :: tr :: _ => 
-            match denote_t2fm env acc tl, denote_t2fm env acc tr with 
-            | Some l, Some r => Some (l /\ r)
-            | _, _ => None
-            end
-          | _ => None
+          | tl :: tr :: _ => denote_t2fm env acc tl /\ denote_t2fm env acc tr
+          | _ => False
           end
         else if eq_term f c_not then 
           match es with 
-          | x :: _ => 
-            match denote_t2fm env acc x with 
-            | Some x' => Some (~ x')
-            | None => None
-            end
-          | _ => None
+          | x :: _ => ~ denote_t2fm env acc x
+          | _ => False
           end
         else
-          None
+          False
       | tProd ba_name pre pst => 
         match ba_name.(binder_name) with 
-        | nAnon =>
-          match denote_t2fm env acc pre, denote_t2fm env (S acc) pst with 
-          | Some el, Some er => Some (el -> er)
-          | _, _ => None
-          end
+        | nAnon => denote_t2fm env acc pre -> denote_t2fm env (S acc) pst
         | nNamed _ =>
-          let ty := reify_srt pre in 
-          match ty with
-          | Some ty' => Some (
+          match reify_srt pre with
+          | Some ty' => 
             forall x: (s.(mod_sorts) m ty'), 
-            exists p',
-            let env' := VSnoc _ _ ty' c env x in
-                denote_t2fm env' acc pst = Some p' /\
-                p'
-            )
-          | None => None
+              denote_t2fm (VSnoc _ _ ty' c env x) acc pst 
+          | None => False
           end
         end
-      | _ => None
+      | _ => False
       end.
 
   (* MetaCoq Quote Definition test_1 := (False -> True).
@@ -257,12 +234,12 @@ Section DenoteFM.
   MetaCoq Quote Definition test_3 := (~ ~ False).
   MetaCoq Quote Definition test_4 := (False /\ True).
   MetaCoq Quote Definition test_5 := (forall (x: unit), x = tt).
-  MetaCoq Quote Definition test_6 := (forall (x: unit), True \/ False \/ ~ True).
+  MetaCoq Quote Definition test_6 := (forall (x: unit), True \/ False \/ ~ True). *)
 
-  Eval vm_compute in denote_t2fm (SLNil _)  0 test_1.
-  Eval vm_compute in reify_t2fm (SLNil _)  0 test_2. 
-  Eval vm_compute in reify_t2fm (SLNil _)  0 test_3.
-  Eval vm_compute in reify_t2fm (SLNil _)  0 test_4.
-  Eval vm_compute in reify_t2fm (SLNil _)  0 test_5.
-  Eval vm_compute in reify_t2fm (SLNil _)  0 test_6. *)
+  (* Eval vm_compute in denote_t2fm (VEmp _ _)  0 test_1.
+  Eval vm_compute in denote_t2fm (VEmp _ _)  0 test_2. 
+  Eval vm_compute in denote_t2fm (VEmp _ _)  0 test_3.
+  Eval vm_compute in denote_t2fm (VEmp _ _)  0 test_4.
+  Eval vm_compute in denote_t2fm (VEmp _ _)  0 test_5.
+  Eval vm_compute in denote_t2fm (VEmp _ _)  0 test_6. *)
 End DenoteFM.

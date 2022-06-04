@@ -125,13 +125,10 @@ Section Meta.
     | tFloat f17 => f16 f17
     end.
 
-
   Theorem denote_extract:
     forall t denote_tf extract_tf i2srt (p p': Prop) i j c (v: valu s _ c) fm,
-      denote_t2fm s m sorts_eq_dec denote_tf i2srt v i t = Some p -> 
       extract_t2fm s extract_tf i2srt sorts_eq_dec c j t = Some fm -> 
-      (p <-> p') ->
-      (p' <-> interp_fm (m := m) v fm).
+      (denote_t2fm s m sorts_eq_dec denote_tf i2srt v i t <-> interp_fm (m := m) v fm).
   Proof.
 
   induction t using term_ind'; intros; try now (
@@ -139,12 +136,9 @@ Section Meta.
     inversion H
   ).
   -
-    simpl in H.
-    simpl in H0.
+    simpl in *.
     destruct (binder_name na) eqn:?.
-    + simpl in *.
-      erewrite <- H1 in *.
-
+    + 
       repeat match goal with 
       | H: (match ?X with | _ => _ end) = _ |- _ => 
         destruct X eqn:?; [| inversion H]
@@ -159,15 +153,13 @@ Section Meta.
       end.
       
       (* clear H1. *)
-      clear H0.
+      clear H.
 
       autorewrite with interp_fm.
       eapply iff_distribute.
       * eapply IHt1; eauto.
-        eapply iff_refl.
-      * eapply IHt2; eauto; eapply iff_refl.
+      * eapply IHt2; eauto.
     + 
-
       repeat match goal with 
       | H: (match ?X with | _ => _ end) = _ |- _ => 
         destruct X eqn:?; try now congruence
@@ -181,31 +173,8 @@ Section Meta.
       end.
 
       autorewrite with interp_fm.
-      simpl.
-
-      erewrite <- H1.
-
-      admit.
-
-      (*
-
-      split; intros.
-
-      * destruct H.
-        specialize (H val).
-        destruct H.
-        specialize (IHt2 match_tacs0 x x).
-        eapply IHt2; intuition eauto.
-      * simpl in *.
-        eexists.
-        intros.
-        specialize (H x).
-        split.
-        2: eapply H.
-        -- eapply IHt2.
-        exists p'.
-        exists H. *)
-
+      clear H.
+      split; intros; eapply IHt2; eauto.
 
   - 
     autorewrite with denote_t2fm in *.
@@ -236,45 +205,48 @@ Section Meta.
     | H: (match ?X with | _ => _ end) = _ |- _ => 
       destruct X eqn:?; try now congruence
     end;
-    erewrite <- H2;
-    unfold eq_rect_r in *; simpl in *;
+    (* unfold eq_rect_r in *; simpl in *; *)
     repeat match goal with 
     | H: Forall _ (_ :: _) |- _ => 
       inversion H; subst; clear H
     end.
+
     (* equality, \/, /\, and ~ *)
-    +
-      unfold eq_rect_r.
-      simpl.
-      (* Need a lemma for interp_tm and denote_tm'/extract_t2tm'.
-        Also, it should be the case that x0 = x2?
-      *)
-      admit.
+    + admit.
+
+      (* TODO: need soundness for denote_tm'
+      destruct (denote_tm' _ _ _ _ _ t1) eqn:?.
+      destruct (denote_tm' _ _ _ _ _ t2) eqn:?.
+      destruct s0.
+      destruct s1.
+      destruct (sorts_eq_dec x1 x2).
+
+      repeat match goal with 
+      | H: Equivalence.equiv _ _ |- _ => 
+        cbv in H; subst
+      end.
+      unfold eq_rect_r; simpl.
+      2: {
+
+      } *)
+      
     + split; intros.
       * match goal with 
         | H: _ \/ _ |- _ => 
           destruct H
         end; [left | right].
-        -- eapply H4 with (p := P) (p' := p'); intuition eauto.
-        -- eapply H3 with (p := P0) (p' := p'); intuition eauto.
+        -- eapply H3; eauto.
+        -- eapply H2; eauto.
       * 
         match goal with 
         | H: _ \/ _ |- _ => 
           destruct H
-        end. 
-        -- left; eapply H4 with (p := P) (p' := P); intuition eauto.
-        -- right; eapply H3 with (p := P0) (p' := P0); intuition eauto.
-    + intuition eauto.
-      * eapply H4 with (p := P) (p' := P); intuition eauto.
-      * eapply H3 with (p := P0) (p' := P0); intuition eauto.
-      * eapply H4 with (p := P) (p' := P); intuition eauto.
-      * eapply H3 with (p := P0) (p' := P0); intuition eauto.
-    + clear H5.
-      erewrite H4 with (p := P) (p' := P); intuition eauto.
-  - simpl in H.
-    simpl in H0.
-    erewrite <- H1.
-    clear H1.
+        end; [left; eapply H3 | right; eapply H2]; eauto.
+    + intuition.
+      eapply H3; eauto.
+    + erewrite H3; eauto.
+      eapply iff_refl.
+  - simpl in *.
     repeat (destruct (eq_term _ _)); 
     (try now congruence);
     repeat match goal with 
@@ -286,10 +258,7 @@ Section Meta.
     autorewrite with interp_fm;
     eapply iff_refl.
 
-  - simpl in H.
-    simpl in H0.
-    erewrite <- H1.
-    clear H1.
+  - simpl in *.
     repeat (destruct (eq_term _ _)); 
     (try now congruence);
     repeat match goal with 

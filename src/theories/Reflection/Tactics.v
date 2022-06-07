@@ -300,20 +300,104 @@ Section Tactics.
   Variable match_tacs : list ((term -> bool) * tac_syn).
   Variable match_inds : list (term * sorts).
 
+  Variable (match_tacs_sound_some: 
+    forall c v test t el er ty tm,  
+      EquivEnvs s m el er -> 
+      extract_mtac c test t er = Some (ty; tm) ->
+      denote_mtac test t el = Some (ty; interp_tm v tm)
+  ).
+
+  Variable (match_tacs_sound_none: 
+    forall c test t el er,  
+      extract_mtac c test t er = None ->
+      denote_mtac test t el = None
+  ).
+
+  Lemma equiv_envs_map:
+    forall c v acc tms,
+      EquivEnvs s m (map (denote_tm' (c := c) s m (denote_tm match_tacs) v acc) tms)
+      (map (extract_t2tm' s (fun c0 : ctx s => extract_t2tm match_tacs) c acc)
+        tms).
+  Proof.
+    induction tms.
+    - simpl.
+      econstructor.
+    - simpl.
+      destruct a;
+      eapply build_equiv_cons; eauto;
+      simpl;
+      autorewrite with denote_tm.
+
+  Admitted.
+
+  Lemma extract_denote_mtacs_some:
+    forall c v el er tests ty tm t,
+      EquivEnvs s m el er -> 
+      extract_mtacs c tests t er = Some (ty; tm) -> 
+      denote_mtacs tests t el = Some (ty; interp_tm v tm).
+  Proof.
+    destruct t;
+    induction tests;
+    intros;
+    simpl in *;
+    try congruence;
+    match goal with 
+    | H: match ?X with | Some _ => _ | None => _ end = _ |- _ => 
+      destruct X eqn:?
+    end;
+    repeat match goal with 
+    | H: extract_mtac _ _ _ _ = Some _ |- _ => 
+      erewrite match_tacs_sound_some; eauto
+    | H: extract_mtac _ _ _ _ = None |- _ => 
+      erewrite match_tacs_sound_none; eauto
+    end;
+    repeat match goal with
+    | X: ∑ _, _ |- _ => 
+      destruct X
+    | H: Some _ = Some _ |- _ => 
+      inversion H; subst; clear H; eauto
+    end.
+  Qed.
+
+  Lemma extract_denote_mtacs_none:
+    forall c el er tests t,
+      extract_mtacs c tests t er = None -> 
+      denote_mtacs tests t el = None.
+  Proof.
+    destruct t; induction tests;
+    simpl; intros; trivial;
+    match goal with 
+    | H : match ?X with | Some _ => _ | None => _ end = _ |- _ => 
+      destruct X eqn:?; try congruence
+    end;
+    erewrite match_tacs_sound_none; eauto.
+  Qed.
+
+
   Lemma denote_extract_specialized: 
-    forall t (p p': Prop) fm,
-      denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (i2srt match_inds) (VEmp _ _) 0 t = Some p -> 
+    forall t fm,
       extract_t2fm s (fun c => @extract_t2tm c match_tacs) (i2srt match_inds) sorts_eq_dec _ 0 t = Some fm -> 
-      (p <-> p') -> 
-      (p' <-> interp_fm (m := m) (VEmp _ _) fm).
+      (denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (i2srt match_inds) (VEmp _ _) 0 t <-> interp_fm (m := m) (VEmp _ _) fm).
   Proof.
     intros.
-    eapply denote_extract;
-    eauto.
+    eapply denote_extract with (extract_tf := (fun c => @extract_t2tm c match_tacs)); eauto.
+    intros.
+    induction t0 using term_ind'; 
+    autorewrite with denote_tm;
+    try (now eapply extract_denote_mtacs_some; eauto);
+    autorewrite with extract_t2tm in *.
+    destruct (extract_mtacs _ _ _ _) eqn:?.
+    + 
+      erewrite extract_denote_mtacs_some; eauto.
+      destruct s0.
+      inversion H0.
+      inversion Heqo; subst; trivial.
+    + erewrite extract_denote_mtacs_none; eauto.
+      eapply extract_denote_mtacs_some; eauto.
   Qed.
 
 End Tactics.
-
+(* 
 Transparent denote_tm.
 
 Ltac simpl_denote_tm :=
@@ -385,4 +469,4 @@ Ltac reflect_goal sig model srts_eq_dec mtacs minds t' :=
     vm_compute in f';
     subst v';
     subst f'
-  ].
+  ]. *)

@@ -17,6 +17,25 @@ MetaCoq Quote Definition c_not := @not.
 MetaCoq Quote Definition c_or := @or.
 MetaCoq Quote Definition c_and := @and.
 
+Fixpoint dec_vars (t: term) : term :=
+  match t with
+  | tRel n => tRel (n - 1)
+  | tCast from kind to => 
+    tCast (dec_vars from) kind (dec_vars to)
+  | tProd na ty body => 
+    tProd na (dec_vars ty) (dec_vars body)
+  | tLambda na ty body => 
+    tLambda na (dec_vars ty) (dec_vars body)
+  | tLetIn na def def_ty body =>
+    tLetIn na (dec_vars def) (dec_vars def_ty) (dec_vars body)
+  | tApp f args => 
+    tApp (dec_vars f) (map dec_vars args)
+  | tCase ind_nbparams_relevance type_info discr branches =>
+    tCase ind_nbparams_relevance (dec_vars type_info) (dec_vars discr) (List.map (fun '(n, t) => (n, dec_vars t)) branches)
+  | tProj proj t0 => tProj proj (dec_vars t0)
+  | _ => t
+  end.
+
 Section ExtractFM.
   Variable (s: signature).
   Variable (m: model s).

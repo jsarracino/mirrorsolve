@@ -126,11 +126,11 @@ Section Meta.
     end.
 
   Lemma mk_denote_var : 
-    forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) (tm : tm s c x) (j i n : nat),
-  match mk_var s c (n - j) with
+    forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) (tm : tm s c x) (acc n : nat),
+  match mk_var s c (n - acc) with
   | Some s0 => let (srt, v0) := s0 in Some (srt; TVar v0)
   | None => None
-  end = Some (x; tm) -> denote_var s m v (n - i) = Some (x; interp_tm v tm).
+  end = Some (x; tm) -> denote_var s m v (n - acc) = Some (x; interp_tm v tm).
   Admitted.
 
   Inductive EquivEnvs {c} : 
@@ -145,7 +145,21 @@ Section Meta.
         mv = interp_tm v tm ->
         EquivEnvs ((Some (ty; mv)) :: el) (Some (ty; tm) :: er).
 
-  Parameter (denote_tf : 
+  Lemma build_equiv_cons : 
+    forall c v el er  ty x y tm mv,
+      EquivEnvs (c := c) el er -> 
+      x = Some (ty; mv) -> 
+      y = Some (ty; tm) -> 
+      mv = interp_tm v tm ->
+      EquivEnvs (x :: el) (y :: er).
+  Proof.
+    intros.
+    subst.
+    econstructor; 
+    eauto.
+  Qed.
+
+  Variable (denote_tf : 
     term ->
     list
       (option
@@ -155,32 +169,32 @@ Section Meta.
       (∑ ty : sig_sorts s,
         mod_sorts s m ty)).
 
-  Parameter (extract_tf : 
+  Variable (extract_tf : 
     forall c : ctx s,
     term ->
     list (option (∑ srt : sig_sorts s, tm s c srt)) ->
     option (∑ srt : sig_sorts s, tm s c srt)).
 
-  Parameter (denote_extract_tf_spec : 
+  Variable (denote_extract_tf_spec : 
     forall c v t el er ty tm, 
       EquivEnvs el er -> 
-      extract_tf c t er = Some (ty; tm) <-> denote_tf t el = Some (ty; interp_tm v tm)
+      extract_tf c t er = Some (ty; tm) -> denote_tf t el = Some (ty; interp_tm v tm)
   ).
 
   Parameter (denote_extract_app_spec: 
   forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) 
-  (tm : tm s c x) (t : term) (args : list term) (j i : nat),
+  (tm : tm s c x) (t : term) (args : list term) (acc : nat),
 Forall
   (fun t0 : term =>
    forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
-   extract_t2tm' s extract_tf c j t0 = Some (x0; tm0) ->
-   denote_tm' s m denote_tf v i t0 = Some (x0; interp_tm v tm0)) args ->
+   extract_t2tm' s extract_tf c acc t0 = Some (x0; tm0) ->
+   denote_tm' s m denote_tf v acc t0 = Some (x0; interp_tm v tm0)) args ->
 (forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
- extract_t2tm' s extract_tf c j t = Some (x0; tm0) ->
- denote_tm' s m denote_tf v i t = Some (x0; interp_tm v tm0)) ->
-extract_tf c (tApp t args) (map (extract_t2tm' s extract_tf c j) args) =
-Some (x; tm) <->
-denote_tf (tApp t args) (map (denote_tm' s m denote_tf v i) args) =
+ extract_t2tm' s extract_tf c acc t = Some (x0; tm0) ->
+ denote_tm' s m denote_tf v acc t = Some (x0; interp_tm v tm0)) ->
+extract_tf c (tApp t args) (map (extract_t2tm' s extract_tf c acc) args) =
+Some (x; tm) ->
+denote_tf (tApp t args) (map (denote_tm' s m denote_tf v acc) args) =
 Some (x; interp_tm v tm)
   ).
 
@@ -192,9 +206,9 @@ Some (x; interp_tm v tm)
       mk_var s (Snoc (sig_sorts s) c v') n = Some v. *)
 
   Lemma denote'_extract'_spec : 
-    forall {c v i j} t x tm, 
-      extract_t2tm' s extract_tf c j t = Some (x; tm) -> 
-      denote_tm' s m denote_tf v i t = Some (x; interp_tm v tm).
+    forall {c v acc} t x tm, 
+      extract_t2tm' s extract_tf c acc t = Some (x; tm) -> 
+      denote_tm' s m denote_tf v acc t = Some (x; interp_tm v tm).
   Proof.
     induction t using term_ind'; intros; 
     try (now 
@@ -237,9 +251,9 @@ Some (x; interp_tm v tm)
           do 2 f_equal. *)
 
   Theorem denote_extract:
-    forall t i2srt i j c (v: valu s _ c) fm,
-      extract_t2fm s extract_tf i2srt sorts_eq_dec c j t = Some fm -> 
-      (denote_t2fm s m sorts_eq_dec denote_tf i2srt v i t <-> interp_fm (m := m) v fm).
+    forall (t : term) i2srt acc c (v: valu s _ c) fm,
+      extract_t2fm s extract_tf i2srt sorts_eq_dec c acc t = Some fm -> 
+      (denote_t2fm s m sorts_eq_dec denote_tf i2srt v acc t <-> interp_fm (m := m) v fm).
   Proof.
 
   induction t using term_ind'; intros; try now (
@@ -324,10 +338,10 @@ Some (x; interp_tm v tm)
 
     (* equality, \/, /\, and ~ *)
     + 
-      pose proof denote'_extract'_spec (j := j) (i := i) (v := v) t1 _ t3.
+      pose proof denote'_extract'_spec (acc := acc) (v := v) t1 _ t3.
       erewrite H; eauto.
       clear H.
-      pose proof denote'_extract'_spec (j := j) (i := i) (v := v) t2 _ t4.
+      pose proof denote'_extract'_spec (acc := acc) (v := v) t2 _ t4.
       erewrite H; eauto.
       clear H.
 

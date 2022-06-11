@@ -313,22 +313,6 @@ Section Tactics.
       denote_mtac test t el = None
   ).
 
-  Lemma equiv_envs_map:
-    forall c v acc tms,
-      EquivEnvs s m (map (denote_tm' (c := c) s m (denote_tm match_tacs) v acc) tms)
-      (map (extract_t2tm' s (fun c0 : ctx s => extract_t2tm match_tacs) c acc)
-        tms).
-  Proof.
-    induction tms.
-    - simpl.
-      econstructor.
-    - simpl.
-      destruct a;
-      eapply build_equiv_cons; eauto;
-      simpl;
-      autorewrite with denote_tm.
-
-  Admitted.
 
   Lemma extract_denote_mtacs_some:
     forall c v el er tests ty tm t,
@@ -387,8 +371,7 @@ Section Tactics.
     try (now eapply extract_denote_mtacs_some; eauto);
     autorewrite with extract_t2tm in *.
     destruct (extract_mtacs _ _ _ _) eqn:?.
-    + 
-      erewrite extract_denote_mtacs_some; eauto.
+    + erewrite extract_denote_mtacs_some; eauto.
       destruct s0.
       inversion H0.
       inversion Heqo; subst; trivial.

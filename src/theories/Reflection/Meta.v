@@ -12,6 +12,7 @@ Set Universe Polymorphism.
 Require Import MirrorSolve.HLists.
 
 Require Import MirrorSolve.Utils.
+Require Import Coq.Program.Equality.
 
 Section Meta.
   Set Universe Polymorphism.
@@ -125,13 +126,34 @@ Section Meta.
     | tFloat f17 => f16 f17
     end.
 
-  Lemma mk_denote_var : 
-    forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) (tm : tm s c x) (acc n : nat),
-  match mk_var s c (n - acc) with
+  (* Lemma mk_denote_var : 
+    forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) (tm : tm s c x) (n : nat),
+  match mk_var s c n with
   | Some s0 => let (srt, v0) := s0 in Some (srt; TVar v0)
   | None => None
-  end = Some (x; tm) -> denote_var s m v (n - acc) = Some (x; interp_tm v tm).
-  Admitted.
+  end = Some (x; tm) -> denote_var s m v n = Some (x; interp_tm v tm).
+  Proof.
+    intros.
+    induction c; 
+    dependent destruction v; 
+    simpl in *; autorewrite with mk_var in *; try congruence.
+    destruct (mk_var _ _ _) eqn:?; try congruence.
+    destruct s0.
+    inversion H; subst.
+
+    assert ()
+    destruct n.
+    - simpl. autorewrite with mk_var in *.
+    specialize (IHc v )
+    erewrite Heqo in IHc.
+
+    - inversion H.
+      f_equal.
+    -
+      destruct n.
+      + eapply IHn.
+
+  Admitted. *)
 
   Inductive EquivEnvs {c} : 
     list (option (∑ ty : sig_sorts s, mod_sorts s m ty)) -> 
@@ -181,34 +203,76 @@ Section Meta.
       extract_tf c t er = Some (ty; tm) -> denote_tf t el = Some (ty; interp_tm v tm)
   ).
 
-  Parameter (denote_extract_app_spec: 
+  Lemma equiv_envs_map:
+    forall c v tms,
+      EquivEnvs (map (denote_tm' (c := c) s m denote_tf v) tms)
+      (map (extract_t2tm' s extract_tf c)
+        tms).
+  Proof.
+    induction tms.
+    - simpl.
+      econstructor.
+    - simpl.
+  Admitted.
+
+  Lemma denote_extract_app_spec: 
   forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) 
-  (tm : tm s c x) (t : term) (args : list term) (acc : nat),
+  (tm : tm s c x) (t : term) (args : list term),
 Forall
   (fun t0 : term =>
    forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
-   extract_t2tm' s extract_tf c acc t0 = Some (x0; tm0) ->
-   denote_tm' s m denote_tf v acc t0 = Some (x0; interp_tm v tm0)) args ->
+   extract_t2tm' s extract_tf c t0 = Some (x0; tm0) ->
+   denote_tm' s m denote_tf v t0 = Some (x0; interp_tm v tm0)) args ->
 (forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
- extract_t2tm' s extract_tf c acc t = Some (x0; tm0) ->
- denote_tm' s m denote_tf v acc t = Some (x0; interp_tm v tm0)) ->
-extract_tf c (tApp t args) (map (extract_t2tm' s extract_tf c acc) args) =
+ extract_t2tm' s extract_tf c t = Some (x0; tm0) ->
+ denote_tm' s m denote_tf v t = Some (x0; interp_tm v tm0)) ->
+extract_tf c (tApp t args) (map (extract_t2tm' s extract_tf c) args) =
 Some (x; tm) ->
-denote_tf (tApp t args) (map (denote_tm' s m denote_tf v acc) args) =
-Some (x; interp_tm v tm)
-  ).
+denote_tf (tApp t args) (map (denote_tm' s m denote_tf v) args) =
+Some (x; interp_tm v tm).
+  Proof.
+    intros.
+    eapply denote_extract_tf_spec; eauto.
+  Admitted. 
 
-  Require Import Coq.Program.Equality.
 
-  (* Lemma mk_var_recur:
-    forall c n v v', 
-      mk_var s c n = Some v -> 
-      mk_var s (Snoc (sig_sorts s) c v') n = Some v. *)
+  Lemma interp_snoc_there: 
+    forall s m t c v ty mv v',
+      interp_tm (VSnoc s m t c v ty) (TVar (VThere s c t mv v')) = interp_tm v (TVar v').
+  Proof.
+    intros.
+    autorewrite with interp_tm.
+    autorewrite with find.
+    trivial.
+  Qed.
+
+  Lemma extract_denote_var : 
+    forall c v n ty var,
+      extract_var s c n = Some (ty; var) -> 
+      denote_var s m v n = Some (ty; interp_tm v (TVar var)).
+  Proof.
+    induction c;
+    dependent destruction v; 
+    simpl;
+    intros;
+    autorewrite with extract_var in *;
+    try congruence.
+    destruct n.
+    - autorewrite with extract_var in *.
+      inversion H; subst.
+      repeat f_equal.
+    - autorewrite with extract_var in H.
+      destruct (extract_var _ _ _) eqn:?; try congruence.
+      destruct s0.
+      inversion H.
+      erewrite interp_snoc_there.
+      eapply IHc; eauto.
+  Qed.
 
   Lemma denote'_extract'_spec : 
-    forall {c v acc} t x tm, 
-      extract_t2tm' s extract_tf c acc t = Some (x; tm) -> 
-      denote_tm' s m denote_tf v acc t = Some (x; interp_tm v tm).
+    forall {c v} t x tm, 
+      extract_t2tm' s extract_tf c t = Some (x; tm) -> 
+      denote_tm' s m denote_tf v t = Some (x; interp_tm v tm).
   Proof.
     induction t using term_ind'; intros; 
     try (now 
@@ -216,44 +280,21 @@ Some (x; interp_tm v tm)
       eauto;
       econstructor
     ).
-    - eapply mk_denote_var.
-      eauto.
+    - simpl in *.
+      destruct (extract_var _ _ _) eqn:?; try congruence.
+      destruct s0.
+      inversion H; subst.
+      erewrite extract_denote_var; repeat f_equal; eauto.
 
     - simpl in *.
       eapply denote_extract_app_spec; 
       eauto.
   Qed.
 
-    (* case n-i = n-j = 0
-    inversion H0; subst.
-    inversion H; subst.
-    assert (tm = TVar (VHere s c x)) by admit.
-    assert (m0 = mv) by admit.
-    erewrite H1.
-    autorewrite with interp_tm; autorewrite with find.
-    trivial.
-
-    autorewrite with 
-    inversion H; subst.
-    inversion H3; subst.
-    
-    - intuition congruence.
-    - induction (n-i); 
-      induction (n-j);
-      autorewrite with mk_var;
-      simpl.
-      * split; intros.
-        + inversion H; subst.
-          autorewrite with interp_tm.
-          autorewrite with find.
-          trivial.
-        + inversion H; subst.
-          do 2 f_equal. *)
-
-  Theorem denote_extract:
-    forall (t : term) i2srt acc c (v: valu s _ c) fm,
-      extract_t2fm s extract_tf i2srt sorts_eq_dec c acc t = Some fm -> 
-      (denote_t2fm s m sorts_eq_dec denote_tf i2srt v acc t <-> interp_fm (m := m) v fm).
+  Theorem denote_extract_general:
+    forall (t : term) i2srt c (v: valu s _ c) fm,
+      extract_t2fm s extract_tf i2srt sorts_eq_dec c t = Some fm -> 
+      (denote_t2fm s m sorts_eq_dec denote_tf i2srt v t <-> interp_fm (m := m) v fm).
   Proof.
 
   induction t using term_ind'; intros; try now (
@@ -338,10 +379,10 @@ Some (x; interp_tm v tm)
 
     (* equality, \/, /\, and ~ *)
     + 
-      pose proof denote'_extract'_spec (acc := acc) (v := v) t1 _ t3.
+      pose proof denote'_extract'_spec (v := v) t1 _ t3.
       erewrite H; eauto.
       clear H.
-      pose proof denote'_extract'_spec (acc := acc) (v := v) t2 _ t4.
+      pose proof denote'_extract'_spec (v := v) t2 _ t4.
       erewrite H; eauto.
       clear H.
 
@@ -395,6 +436,17 @@ Some (x; interp_tm v tm)
     autorewrite with interp_fm;
     eapply iff_refl.
   Qed. 
+
+
+  Theorem denote_extract : 
+    forall t fm i2srt, 
+      extract_fm s extract_tf i2srt sorts_eq_dec t = Some fm -> 
+      (denote_fm s m sorts_eq_dec denote_tf i2srt t <-> interp_fm (VEmp _ m) fm).
+  Proof.
+    intros.
+    unfold denote_fm.
+    unfold extract_fm in H.
+  Admitted.
 
 
 End Meta.

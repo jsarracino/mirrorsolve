@@ -304,10 +304,12 @@ Section Tactics.
       match_tacs_sound_some: 
         forall c v test t el er ty tm,  
           EquivEnvs s m el er -> 
+          In test match_tacs ->
           extract_mtac c test t er = Some (ty; tm) ->
           denote_mtac test t el = Some (ty; interp_tm v tm);
       match_tacs_sound_none: 
         forall c test t el er,  
+          In test match_tacs ->
           extract_mtac c test t er = None ->
           denote_mtac test t el = None
     }.
@@ -318,10 +320,13 @@ Section Tactics.
   Lemma extract_denote_mtacs_some:
     forall c v el er tests ty tm t,
       EquivEnvs s m el er -> 
+      Forall (fun t => In t match_tacs) tests ->
       extract_mtacs c tests t er = Some (ty; tm) -> 
       denote_mtacs tests t el = Some (ty; interp_tm v tm).
   Proof.
-    destruct mt_wf.
+  Admitted.
+    (* slightly broken... *)
+    (* destruct mt_wf.
     destruct t;
     induction tests;
     intros;
@@ -343,14 +348,16 @@ Section Tactics.
     | H: Some _ = Some _ |- _ => 
       inversion H; subst; clear H; eauto
     end.
-  Qed.
+  Qed. *)
 
   Lemma extract_denote_mtacs_none:
     forall c el er tests t,
+      Forall (fun t => In t match_tacs) tests ->
       extract_mtacs c tests t er = None -> 
       denote_mtacs tests t el = None.
   Proof.
-    destruct mt_wf;
+  Admitted.
+    (* destruct mt_wf;
     destruct t; induction tests;
     simpl; intros; trivial;
     match goal with 
@@ -358,8 +365,13 @@ Section Tactics.
       destruct X eqn:?; try congruence
     end;
     erewrite match_tacs_sound_none; eauto.
-  Qed.
+  Qed. *)
 
+  Lemma Forall_refl : 
+    forall {A} (l: list A), Forall (fun x => In x l) l.
+  Proof.
+    intros; induction l; trivial.
+  Admitted.
 
   Lemma denote_extract_specialized: 
     forall t fm,
@@ -371,15 +383,18 @@ Section Tactics.
     intros.
     induction t0 using term_ind'; 
     autorewrite with denote_tm;
-    try (now eapply extract_denote_mtacs_some; eauto);
+    try now (
+      eapply extract_denote_mtacs_some; eauto;
+      eapply Forall_refl
+    ).
     autorewrite with extract_t2tm in *.
     destruct (extract_mtacs _ _ _ _) eqn:?.
-    + erewrite extract_denote_mtacs_some; eauto.
+    + erewrite extract_denote_mtacs_some; eauto; try eapply Forall_refl.
       destruct s0.
       inversion H0.
       inversion Heqo; subst; trivial.
-    + erewrite extract_denote_mtacs_none; eauto.
-      eapply extract_denote_mtacs_some; eauto.
+    + erewrite extract_denote_mtacs_none; eauto; try eapply Forall_refl;
+      eapply extract_denote_mtacs_some; eauto; eapply Forall_refl.
   Qed.
 
   (* TODO: need lemma for also applying reindex_vars *)

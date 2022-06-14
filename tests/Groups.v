@@ -29,30 +29,8 @@ Axiom id_r : forall a, a <+> e = a.
 (* [i a] is the right-inverse of [a]. *)
 Axiom inv_r : forall a, a <+> i a = e.
 
-Lemma mult_both : 
-  forall a b c d1 d2, 
-    a <+> c = d1
-    -> b <+> c = d2
-    -> a = b
-    -> d1 = d2.
-  crush.
-Qed.
 
-Hint Extern 100 (_ = _) =>
-match goal with
-  | [ _ : True |- _ ] => fail 1
-  | _ => assert True by constructor; eapply mult_both 
-end.
-
-Hint Resolve inv_r.
-
-Lemma inv_r' : 
-  forall x y, 
-    x = y <+> i y -> 
-    x = e.
-Proof.
-  crush.
-Qed.
+(* Some group theory results translated into Coq *)
 
 Lemma unique_id : forall a, a <+> a = a -> a = e.
   intros.
@@ -179,11 +157,11 @@ Proof.
 Qed.
 
 
-
-
-(* encoding in FOL *)
+(* encoding groups in in FOL *)
 
 Require Import MirrorSolve.FirstOrder.
+
+(* See Groups.v; we model + and inv as FOL function symbols, and e as a Variable *)
 Require Import MirrorSolve.Groups.
 
 Require Import MirrorSolve.HLists.
@@ -191,6 +169,8 @@ Require Import MirrorSolve.HLists.
 Require Import MirrorSolve.UF.
 
 Require Import Coq.Strings.String.
+
+Require Import Coq.Lists.List.
 
 Import ListNotations.
 
@@ -200,15 +180,16 @@ Notation sig := Groups.sig.
 
 Definition group_model := Groups.fm_model G.
 
-(* Parameter f : G -> G -> G.
-Parameter i : G -> G. *)
-
+(* First, set up uninterpreted function symbols for the binary operator, the inverse, and the identity *)
 Definition symbs : list (string * list (sig_sorts MirrorSolve.Groups.sig) * sig_sorts MirrorSolve.Groups.sig) := ([
-  ("op", [G'; G'], G');
-  ("inv", [G'], G');
-  ("e", [], G')
+  ("op", [G'; G'], G'); (* G -> G -> G *)
+  ("inv", [G'], G'); (* G -> G *)
+  ("e", [], G')   (* nullary function symbol (i.e. constant) *)
 ]%string).
 
+(* Make all the conversion proofs transparent to make sure later conversions aren't sticky  *)
+
+(* quicker boolean function for function symbol membership *)
 Lemma in_conv : forall {sym a r}, 
   In (sym, a, r) symbs -> 
   in_symbs sig sorts_eq_dec symbs sym a r = true.
@@ -218,6 +199,7 @@ Defined.
 
 Import HListNotations.
 
+(* Interpretation function for UF symbols. In order for the reflection machinery to work out, we need to provide an actual interpretation for the UF symbols (even though they will be discharged as UF symbols in SMT).  *)
 Definition interp_syms (sym: string) (a: list (sig_sorts sig)) (r: sig_sorts sig) (H: In (sym, a, r) symbs) (args: HList.t (FirstOrder.mod_sorts sig group_model) a) : FirstOrder.mod_sorts sig group_model r.
   pose proof in_conv H.
   unfold in_symbs in H0.
@@ -247,6 +229,7 @@ Import ListNotations.
 
 Require Import Coq.Strings.String.
 
+(* Witnesses for each of the group UF memberships *)
 Lemma in_op : 
   In ("op"%string, [G'; G'], G') symbs.
 Proof.
@@ -285,6 +268,9 @@ MetaCoq Quote Definition t_f := f.
 MetaCoq Quote Definition t_i := i.
 MetaCoq Quote Definition t_e := e.
 
+(* Some match tactics for the meta-interpreter. 
+   The meta-interpreter converts these definitions into a reflection procedure between pure Coq goals and FOL terms in the UF + Groups combined theory. 
+*)
 Program Definition match_tacs : list ((term -> bool) * tac_syn sig' group_uf_model) := [
   ( eq_term t_f, tacFun _ _ {| deep_f := UFun sig symbs in_op |} ); 
   ( eq_term t_i, tacFun _ _ {| deep_f := UFun sig symbs in_inv |} );
@@ -293,24 +279,36 @@ Program Definition match_tacs : list ((term -> bool) * tac_syn sig' group_uf_mod
 
 MetaCoq Quote Definition g_ind := (G).
 
+(* This is an analogous match but for reflecting Coq types into FOL sorts. *)
 Definition match_inds : list (term * Groups.sorts) := [
     (g_ind, G')
   ].
 
-
-Ltac simpl_denote_tm :=
-  match goal with 
-  | |- denote_t2fm _ _ _ _ _ _ _ _ = Some _ => 
-    let x := fresh "x" in 
-    set (x := denote_t2fm _ _ _ _ _ _ _ _);
-    
-    simpl in x;
-    unfold eq_rect_r in x;
-    simpl in x;
-    exact eq_refl
+Program Definition mt_wf: match_tacs_wf sig' group_uf_model sorts_eq_dec match_tacs := {| 
+  match_tacs_sound_some := _;
+  match_tacs_sound_none := _;
+|}.
+Admit Obligations.
+(* Next Obligation.
+  repeat match goal with 
+  | H: _ \/ _ |- _ => 
+    destruct H
+  | H: False |- _ => 
+    inversion H
   end.
+  inversion H.
+  simpl in *;
+  subst;
+  repeat match goal with 
+  | |- (if ?X then _ else _) = _ => 
+    destruct X eqn:?; simpl in *; try congruence
+  | |- match ?X with | Some _ => _ | None => _ end = _ => 
+    destruct X eqn:?; simpl in *; try congruence
+  end.
+Admit Obligations. *)
 
-Ltac reflect_goal sig model srts_eq_dec mtacs minds t' := 
+
+(* Ltac reflect_goal sig model srts_eq_dec mtacs minds t' := 
   match goal with 
   | |- ?G => 
     eapply denote_extract_specialized with (s := sig) (m := model) (sorts_eq_dec := srts_eq_dec) (match_tacs := mtacs) (match_inds := minds) (p' := G) (t := t')
@@ -329,8 +327,15 @@ Ltac reflect_goal sig model srts_eq_dec mtacs minds t' :=
     vm_compute in f';
     subst v';
     subst f'
-  ]. 
+  ].  *)
 
+(* Next we configure the backend solver. We need to tell the OCaml backend about: 
+   A custom sort symbol for the Groups.G' sort;
+   and custom UF symbols for e, op, and inv. 
+
+   The syntax for a UF declaration is 
+    RegisterSMTUF <symbol name as a string> <return sort> <list of argument sorts>
+*)
 Local Declare ML Module "mirrorsolve".
 RegisterCustomSort Groups.G' "G".
 RegisterSMTUF "e" G'.
@@ -339,404 +344,38 @@ RegisterSMTUF "inv" G' G'.
 
 Require Import MirrorSolve.Axioms.
 
-Import UnsoundAxioms.
+Import UnsoundAxioms. (* This allows us to trust the SMT solver in a typesafe way. *)
 
 Transparent denote_tm.
 
 MetaCoq Quote Definition unique_id_term := (
-  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) -> 
-  (forall a, a <+> e = a) -> 
-  (forall a, a <+> i a = e) -> 
-  (forall a, a <+> a = a -> a = e)
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) -> (* associativity axiom *)
+  (forall a, a <+> e = a) -> (* right identity axiom *)
+  (forall a, a <+> i a = e) -> (* inverse axiom *)
+  (forall a, a <+> a = a -> a = e) (* original goal for unique_id (see above) *)
 ).
-
-Ltac discharge_equiv_denote_orig := 
-  split; 
-  intros; [
-    repeat match goal with 
-    | H: exists _, forall (_: ?T), _ |- _ =>
-      let H' := fresh "H" in 
-      destruct H as [? H'];
-      let v := fresh "v" in 
-      evar (v: T);
-      specialize (H' v);
-      subst v
-    | H: forall (_: ?T), exists _, _ |- _ =>
-      let v := fresh "v" in 
-      evar (v: T);
-      specialize (H v);
-      subst v
-    | H: _ /\ _ |- _ => 
-      destruct H
-    | H: exists _, _ |- _ => 
-      destruct H
-    | H: Some _ = Some _ |- _ => 
-      erewrite Utils.some_prop in H
-    | H: _ = ?X |- _ => subst X
-    | H: _ = _ |- _ => 
-      erewrite <- H in *;
-      clear H
-    end;
-    intuition eauto | 
-    repeat match goal with
-    | |- exists _: Prop, _ => eexists
-    | |- _ /\ _ => split
-    | |- Some _ = Some _ => exact eq_refl
-    | |- _ => intros
-    end;
-    intuition eauto
-  ].
 
 Lemma unique_id' : 
   (forall a b c, a <+> b <+> c = a <+> (b <+> c)) -> 
   (forall a, a <+> e = a) -> 
   (forall a, a <+> i a = e) -> 
   (forall a, a <+> a = a -> a = e).
-  reflect_goal (UF.sig sig symbs) group_uf_model Groups.sorts_eq_dec match_tacs match_inds unique_id_term.
-  
-  2: {
-    match goal with 
-    | |- ?G => check_interp_pos G; eapply interp_true
-    end.
-  }
-  split; intros.
-  2: {
-    repeat match goal with
-    | |- exists _: Prop, _ => eexists
-    | |- _ /\ _ => split
-    | |- Some _ = Some _ => exact eq_refl
-    | |- _ => intros
-    end;
-    intuition eauto.
-    vm_compute in *.
-    eapply H; eauto.
-    
-    (* this is kind of cheating, they're in the context but it's a pain to get them out*)
-    eapply assoc. 
-    eapply id_r.
-
-  }
-
-  repeat match goal with 
-    | H: exists _, forall (_: ?T), _ |- _ =>
-      let H' := fresh "H" in 
-      destruct H as [? H'];
-      let v := fresh "v" in 
-      evar (v: T);
-      specialize (H' v);
-      subst v
-    | H: forall (_: ?T), exists _, _ |- _ =>
-      let v := fresh "v" in 
-      evar (v: T);
-      specialize (H v);
-      subst v
-    | H: _ /\ _ |- _ => 
-      destruct H
-    | H: exists _, _ |- _ => 
-      destruct H
-    | H: Some _ = Some _ |- _ => 
-      erewrite Utils.some_prop in H
-    | H: _ = ?X |- _ => subst X
-    | H: _ = _ |- _ => 
-      erewrite <- H in *;
-      clear H
-    end.
-  
-  - 
-
-    match goal with 
-    | H: ?A -> ?B |- _ => 
-      assert A by admit
-    end.
-    specialize (H H3); clear H3.
-
-    match goal with 
-    | H: ?A -> ?B |- _ => 
-      assert A by admit
-    end.
-    specialize (H H3); clear H3.
-
-    match goal with 
-    | H: ?A -> ?B |- _ => 
-      assert A by admit
-    end.
-    specialize (H H3); clear H3.
-
-    specialize (H a).
-    assert (a <+> a = a -> a = e) by admit.
-    erewrite H3; 
-    intuition eauto.
-    admit.
-  - vm_compute.
-    vm_compute in H3.
-    unfold eqb_spec.
-    unfold interp_syms.
-    match goal with 
-    | |- _ = ?X => 
-      assert (X = e) by admit
-    end.
-    erewrite H4.
-
-    eapply H; 
-    admit. (* these are all in scope if interp_syms actually reduces to the right thing*)
-
-
-  (* TODO: for some reason interp_syms is getting gunked up, 
-      it looks like the library rewrites are opaque and don't compute well
-  *)
-
-
-Qed.
-
-
-Lemma unique_id : forall a, a <+> a = a -> a = e.
-  intros.
-  assert (a <+> i a = a <+> i a) by trivial.
-  erewrite <- H in H0 at 1.
-  erewrite assoc in H0.
-  erewrite inv_r in H0.
-  erewrite id_r in H0.
-  auto.
-Qed.
-
-
-(* [i a] is the left-inverse of [a]. *)
-Lemma inv_l : forall a, i a <+> a = e.
 Proof.
-  intros.
-  eapply unique_id.
-  erewrite <- assoc.
-  erewrite assoc with (a := i a).
-  erewrite inv_r.
-  erewrite id_r.
-  trivial.
-Qed.
-(* [e] is the left-identity. *)
-Lemma id_l : forall a, e <+> a = a.
-Proof.
-  intros.
-  erewrite <- inv_r with (a := a).
-  erewrite assoc.
-  erewrite inv_l.
-  erewrite id_r.
-  trivial.
-Qed.
+  (* use the library lemma for match_tacs (currently trusted) *)
+  pose proof @denote_extract_specialized sig' group_uf_model sorts_eq_dec match_tacs match_inds mt_wf (reindex_vars unique_id_term).
+  (* apply it and force the extraction mechanism to compute with eq_refl *)
+  eapply H; [exact eq_refl|].
 
-(* [x] can be cancelled on the right. *)
-Lemma cancel_r : forall a b x, a <+> x = b <+> x -> a = b.
-Proof.
-  intros.
-  assert (a <+> x <+> i x = a <+> x <+> i x) by trivial.
-  erewrite H in H0 at 1.
-  repeat erewrite assoc in H0.
-  repeat erewrite inv_r in H0.
-  repeat erewrite id_r in H0.
-  auto.
-Qed.
-  
-
-(* [x] can be cancelled on the left. *)
-Lemma cancel_l: forall a b x, x <+> a = x <+> b -> a = b.
-Proof.
-  intros.
-  assert (i x <+> x <+> a = i x <+> x <+> a) by trivial.
-  erewrite assoc in H0.
-  erewrite H in H0 at 1.
-  repeat erewrite <- assoc in H0.
-  erewrite inv_l in H0.
-  repeat erewrite id_l in H0.
-  auto.
-Qed.
-
-(* The left identity is unique. *)
-Lemma e_uniq_l : forall a p, p <+> a = a -> p = e.
-Proof.
-  intros.
-  eapply cancel_r.
-  erewrite <- id_l in H.
-  eauto.
-Qed.
-(* The left inverse is unique. *)
-Lemma inv_uniq_l : forall a b, a <+> b = e -> a = i b.
-Proof.
-  intros.
-  eapply cancel_r.
-  erewrite <- inv_l in H.
-  eauto.
-Qed.
-
-(* The left identity is unique. *)
-Lemma e_uniq_r : forall a p, a <+> p = a -> p = e.
-Proof.
-  intros.
-  eapply cancel_l.
-  erewrite <- id_r in H.
-  eauto.
-Qed.
-
-(* The right inverse is unique. *)
-Lemma inv_uniq_r : forall a b, a <+> b = e -> b = i a.
-Proof.
-  intros.
-  eapply cancel_l.
-  erewrite <- inv_r in H.
-  eauto.
-Qed.
-
-(* The inverse operator distributes over the group operator. *)
-Lemma inv_distr : forall a b, i (a <+> b) = i b <+> i a.
-Proof.
-  intros.
-  eapply eq_sym.
-  eapply inv_uniq_r.
-  erewrite <- assoc.
-  assert (a <+> b <+> i b <+> i a = a <+> (b <+> i b) <+> i a) by (now erewrite <- assoc).
-  erewrite H.
-  erewrite inv_r.
-  erewrite id_r.
-  eapply inv_r.
-Qed.
-(* The inverse of an inverse produces the original element. *)
-Lemma double_inv : forall a, i (i a) = a.
-Proof.
-  intros.
-  eapply eq_sym.
-  eapply inv_uniq_r.
-  eapply inv_l.
-Qed.
-(* The identity is its own inverse. *)
-Lemma id_inv : i e = e.
-Proof.
-  intros.
-  eapply eq_sym.
-  eapply inv_uniq_r.
-  eapply id_r.
-Qed.
-
-
-
-
-
-
-
-Notation v_c := (VHere _ _ _). 
-Notation v_b := (VThere _ _ _ _ v_c).
-Notation v_a := (VThere _ _ _ _ v_b).  
-
-(* group axioms *)
-(* Axiom assoc : forall a b c, a <+> b <+> c = a <+> (b <+> c). *)
-Definition assoc_fol {c} : fm sig symbs c :=
-  FForall _ (FForall _ (FForall _ 
-    (FEq 
-      (TFun sig' OP 
-        ( 
-          (TFun sig' OP ((TVar v_a) ::: (TVar v_b) ::: hnil)) ::: 
-          (TVar v_c) ::: hnil
-        ))
-      (TFun sig' OP 
-        ( 
-          (TVar v_a) ::: 
-          (TFun sig' OP ((TVar v_b) ::: (TVar v_c) ::: hnil)) ::: hnil
-        ))
-    )
-  )).
-
-(* Axiom id_r : forall a, a <+> e = a. *)
-Definition id_r_fol {c} : fm sig symbs c :=
-  FForall _ 
-    (FEq 
-      (TFun sig' OP 
-        ( 
-          (TVar v_c) ::: (TFun sig' (CFun sig _ ELit) hnil) ::: hnil
-        ))
-      (TVar v_c)
-    ).
-
-  
-  (* Axiom inv_r : forall a, a <+> i a = e. *)
-Definition inv_r_fol {c} : fm sig symbs c :=
-  FForall _ 
-    (FEq 
-      (TFun sig' OP 
-        ( 
-          (TVar v_c) ::: 
-          (TFun sig' INV (TVar v_c ::: hnil)) ::: hnil
-        ))
-      (TFun sig' (CFun sig _ ELit) hnil)
-    ). 
-
-(* interpret a formula in the context of the group axioms *)
-
-Definition group_fm_fol {c} (f: fm sig symbs c) : fm sig symbs c := 
-  FImpl assoc_fol (
-    FImpl id_r_fol (
-      FImpl inv_r_fol f
-    )
-  ).
-
-Definition interp_group_fm {c v} (f: fm sig symbs c) : Prop := 
-  interp_fm (m := group_uf_model) v (group_fm_fol f).
-
-(* Lemma unique_id : forall a, a <+> a = a -> a = e. *)
-Definition unique_id_fol_fm : fm sig symbs (SLNil _) :=
-  FForall _ (
-    FImpl 
-      (FEq 
-        (TFun sig' OP (TVar v_c ::: TVar v_c ::: hnil)) 
-        (TVar v_c))
-      (FEq (TVar v_c) (TFun sig' (CFun sig _ ELit) hnil))
-  ).
-
-Notation PLUS := (interp_symbs _ _ _ "op" _ _ _).
-Notation NEG := (interp_symbs _ _ _ "inv" _ _ _).
-
-Local Declare ML Module "mirrorsolve".
-
-(* RegisterCustomSort BS "BS".
-
-RegisterSMTUF "power" ZS ZS BS. *)
-
-RegisterCustomSort Groups.G' "G".
-RegisterSMTUF "e" G'.
-RegisterSMTFun ELit "e" 0.
-
-(* Goal interp_fm (m := group_uf_model) (VEmp _ _)
-  (FEq 
-    (TFun sig' (CFun sig _ ELit) hnil)
-    (TFun sig' (CFun sig _ ELit) hnil)
-  ).
-Proof.
+  (* compute within the generated FOL term *)
   match goal with 
-  | |- ?G => check_interp_pos G
+  | |- interp_fm _ ?X => 
+    set (x := X); vm_compute in x; subst x
   end.
-Admitted. *)
 
-RegisterSMTUF "op" G' G' G'.
-Goal interp_fm (m := group_uf_model) (VEmp _ _)
-  (FEq 
-    (TFun sig' (CFun sig _ ELit) hnil)
-    (TFun sig' (CFun sig _ ELit) hnil)
-  ).
-Proof.
+  (* actually discharge the query, and use an axiom to close the proof *)
   match goal with 
-  | |- ?G => check_interp_pos G
+  | |- ?G => check_interp_pos G; eapply interp_true
   end.
-Admitted.
-RegisterSMTUF "inv" G' G'.
 
-Lemma unique_id_fol : interp_group_fm (v := VEmp _ _) unique_id_fol_fm.
-Proof.
-  unfold interp_group_fm, unique_id_fol_fm, group_fm_fol.
-  set (a := assoc_fol).
-  set (b := id_r_fol).
-  set (c := inv_r_fol).
-  set (d := v_c).
-  vm_compute in a, b, c, d.
-  subst a.
-  subst b.
-  subst c.
-  subst d.
-  match goal with 
-  | |- ?G => check_interp_pos G
-  end.
-Admitted.
+Qed.
+

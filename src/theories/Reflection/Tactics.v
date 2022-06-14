@@ -300,18 +300,19 @@ Section Tactics.
   Variable match_tacs : list ((term -> bool) * tac_syn).
   Variable match_inds : list (term * sorts).
 
-  Variable (match_tacs_sound_some: 
-    forall c v test t el er ty tm,  
-      EquivEnvs s m el er -> 
-      extract_mtac c test t er = Some (ty; tm) ->
-      denote_mtac test t el = Some (ty; interp_tm v tm)
-  ).
+  Record match_tacs_wf := {
+      match_tacs_sound_some: 
+        forall c v test t el er ty tm,  
+          EquivEnvs s m el er -> 
+          extract_mtac c test t er = Some (ty; tm) ->
+          denote_mtac test t el = Some (ty; interp_tm v tm);
+      match_tacs_sound_none: 
+        forall c test t el er,  
+          extract_mtac c test t er = None ->
+          denote_mtac test t el = None
+    }.
 
-  Variable (match_tacs_sound_none: 
-    forall c test t el er,  
-      extract_mtac c test t er = None ->
-      denote_mtac test t el = None
-  ).
+  Variable (mt_wf: match_tacs_wf).
 
 
   Lemma extract_denote_mtacs_some:
@@ -320,6 +321,7 @@ Section Tactics.
       extract_mtacs c tests t er = Some (ty; tm) -> 
       denote_mtacs tests t el = Some (ty; interp_tm v tm).
   Proof.
+    destruct mt_wf.
     destruct t;
     induction tests;
     intros;
@@ -348,6 +350,7 @@ Section Tactics.
       extract_mtacs c tests t er = None -> 
       denote_mtacs tests t el = None.
   Proof.
+    destruct mt_wf;
     destruct t; induction tests;
     simpl; intros; trivial;
     match goal with 
@@ -360,11 +363,11 @@ Section Tactics.
 
   Lemma denote_extract_specialized: 
     forall t fm,
-      extract_t2fm s (fun c => @extract_t2tm c match_tacs) (i2srt match_inds) sorts_eq_dec _ 0 t = Some fm -> 
-      (denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (i2srt match_inds) (VEmp _ _) 0 t <-> interp_fm (m := m) (VEmp _ _) fm).
+      extract_t2fm s (fun c => @extract_t2tm c match_tacs) (i2srt match_inds) sorts_eq_dec _ t = Some fm -> 
+      (denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (i2srt match_inds) (VEmp _ _) t <-> interp_fm (m := m) (VEmp _ _) fm).
   Proof.
     intros.
-    eapply denote_extract with (extract_tf := (fun c => @extract_t2tm c match_tacs)); eauto.
+    eapply denote_extract_general with (extract_tf := (fun c => @extract_t2tm c match_tacs)); eauto.
     intros.
     induction t0 using term_ind'; 
     autorewrite with denote_tm;
@@ -379,6 +382,7 @@ Section Tactics.
       eapply extract_denote_mtacs_some; eauto.
   Qed.
 
+  (* TODO: need lemma for also applying reindex_vars *)
 End Tactics.
 (* 
 Transparent denote_tm.

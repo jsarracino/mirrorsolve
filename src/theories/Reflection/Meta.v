@@ -444,9 +444,8 @@ Some (x; interp_tm v tm).
       (denote_fm s m sorts_eq_dec denote_tf i2srt t <-> interp_fm (VEmp _ m) fm).
   Proof.
     intros.
-    unfold denote_fm.
-    unfold extract_fm in H.
-  Admitted.
-
+    eapply denote_extract_general.
+    eapply H.
+  Qed.
 
 End Meta.

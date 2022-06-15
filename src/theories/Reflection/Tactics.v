@@ -57,6 +57,7 @@ Section Tactics.
 
   Inductive tac_lits := | bool_lit | z_lit | nat_lit | n_lit.
 
+
   Definition lit_ty (t: tac_lits) : Type := 
     match t with 
     | bool_lit => bool
@@ -115,6 +116,18 @@ Section Tactics.
 
   MetaCoq Quote Definition c_nzero := 0%nat.
   MetaCoq Quote Definition c_nsucc := S%nat.
+
+  Definition is_nat_term (t: term) : bool := 
+    match t with 
+    | tApp f _ => 
+      eq_term f c_nsucc
+    | _ => eq_term t c_nzero
+    end.
+
+  Definition is_bool_term (t: term) : bool := 
+    orb (eq_term t c_tru) (eq_term t c_fls).
+
+    
 
   Fixpoint denote_nat (t: term) : option nat := 
     if eq_term t c_nzero then Some 0

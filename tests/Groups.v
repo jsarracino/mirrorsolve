@@ -256,9 +256,6 @@ Defined.
 
 
 Notation sig' := (UF.sig sig symbs).
-Notation OP := (UFun sig symbs in_op).
-Notation INV := (UFun sig symbs in_inv).
-Notation E := (UFun sig symbs in_e).
 
 Require Import MirrorSolve.Reflection.Core.
 Require Import MirrorSolve.Reflection.FM.
@@ -307,27 +304,6 @@ Admit Obligations.
   end.
 Admit Obligations. *)
 
-
-(* Ltac reflect_goal sig model srts_eq_dec mtacs minds t' := 
-  match goal with 
-  | |- ?G => 
-    eapply denote_extract_specialized with (s := sig) (m := model) (sorts_eq_dec := srts_eq_dec) (match_tacs := mtacs) (match_inds := minds) (p' := G) (t := t')
-  end; [
-    simpl_denote_tm |
-    simpl_extract_tm |
-    (* discharge_equiv_denote_orig; autorewrite with mod_fns; eauto |  *)
-    |
-    let v' := fresh "v" in 
-    let f' := fresh "f" in 
-    match goal with 
-    | |- interp_fm ?v ?f => 
-      set (v' := v);
-      set (f' := f)
-    end;
-    vm_compute in f';
-    subst v';
-    subst f'
-  ].  *)
 
 (* Next we configure the backend solver. We need to tell the OCaml backend about: 
    A custom sort symbol for the Groups.G' sort;

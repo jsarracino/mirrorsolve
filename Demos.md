@@ -14,6 +14,8 @@ The interpretation of terms/formulas (the `interp_fm` function) is parameterized
 While the syntax and semantics of FOL terms are a bit mysterious, they are best explained by example. Next we consider two uses of FOL terms to handle Coq goals.
 The general formula is to first define a FOL signature, and then make use of MirrorSolve's metaprogramming to reflect and discharge Coq Props.
 
+One caveat: before running the following code, make sure that you have built and installed MirrorSolve using `dune build` and `dune install`. 
+ 
 # Groups
 Our first example is drawn from abstract algebra, specifically group theory. 
 For the inspiration for this example, please see Arjun Guha's [interesting assignment here](https://people.cs.umass.edu/~arjun/courses/cs691pl-spring2014/assignments/groups.html) (which is itself inspired by Adam Chlipala's book on Certified Programming with Dependent Types, CPDT).

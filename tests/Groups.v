@@ -199,7 +199,8 @@ Defined.
 
 Import HListNotations.
 
-(* Interpretation function for UF symbols. In order for the reflection machinery to work out, we need to provide an actual interpretation for the UF symbols (even though they will be discharged as UF symbols in SMT).  *)
+(* Interpretation function for UF symbols. 
+   In order for the reflection machinery to work out, we need to provide an actual interpretation for the UF symbols (even though they will be discharged as UF symbols in SMT).  *)
 Definition interp_syms (sym: string) (a: list (sig_sorts sig)) (r: sig_sorts sig) (H: In (sym, a, r) symbs) (args: HList.t (FirstOrder.mod_sorts sig group_model) a) : FirstOrder.mod_sorts sig group_model r.
   pose proof in_conv H.
   unfold in_symbs in H0.

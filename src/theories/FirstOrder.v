@@ -8,6 +8,11 @@ Set Universe Polymorphism.
 
 Definition arity sorts := list sorts.
 
+(* a FOL signature is a: 
+   1) set of sorts (e.g. Z, B, BV(n)), 
+   2) function symbols indexed by argument sorts and return sort (e.g. plus: Z -> Z -> Z)
+   3) relation symbols indexed by argument sorts 
+*)
 Record signature: Type :=
   { sig_sorts: Type;
     sig_funs: arity sig_sorts -> sig_sorts -> Type;
@@ -16,7 +21,7 @@ Record signature: Type :=
 Section FOL.
   Variable sig: signature.
 
-  (* Variable context. *)
+  (* de Bruijn variable context (i.e. sorts for variables) *)
   Definition ctx := snoc_list sig.(sig_sorts).
 
   Notation CSnoc := (Snoc sig.(sig_sorts)).
@@ -24,41 +29,36 @@ Section FOL.
 
   Import HListNotations.
 
-  Ltac solve_existT :=
-    repeat match goal with
-           | H: ?X = ?X |- _ => clear H
-           | H: existT _ _ _ = existT _ _ _ |- _ =>
-             eapply Eqdep.EqdepTheory.inj_pair2 in H; subst
-           end.
-
-  
+  (* de Bruijn variables. *)
 
   Inductive var: ctx -> sig.(sig_sorts) -> Type :=
   | VHere:
-      forall ctx s,
-        var (CSnoc ctx s) s
+    forall ctx s,
+      var (CSnoc ctx s) s
   | VThere:
-      forall ctx s s',
-        var ctx s' ->
-        var (CSnoc ctx s) s'.
+    forall ctx s s',
+      var ctx s' ->
+      var (CSnoc ctx s) s'.
   Derive Signature NoConfusion for var.
 
-  (* First-order terms. *)
+  (* First-order terms (either functions or variables). *)
   Inductive tm: ctx -> sig.(sig_sorts) -> Type :=
-  | TVar: forall c s,
+  | TVar: 
+    forall c s,
       var c s ->
       tm c s
   | TFun:
-      forall c args ret,
-        sig.(sig_funs) args ret ->
-        HList.t (tm c) args ->
-        tm c ret.
+    forall c args ret,
+      sig.(sig_funs) args ret ->
+      HList.t (tm c) args ->
+      tm c ret.
   Derive Signature for tm.
 
   Section Tm_Ind.
 
     Variable (P: forall (c: ctx) (srt: sig_sorts sig), tm c srt -> Prop).
 
+    (* custom induction principle that processes the arguments of functions *)
     Definition tm_ind'
       (PV : forall c s v, P c s (TVar c s v))
       (PF: forall c args ret srt (hl : HList.t (tm c) args),
@@ -81,52 +81,69 @@ Section FOL.
 
   (* First-order formulas. *)
   Inductive fm: ctx -> Type :=
+  (* True and False *)
   | FTrue: forall c, fm c
   | FFalse: forall c, fm c
-  | FEq: forall c s,
+  (* Equality *)
+  | FEq: 
+    forall c s,
       tm c s ->
       tm c s ->
       fm c
+  (* A relation (with arguments) *)
   | FRel:
       forall c args,
         sig.(sig_rels) args ->
         HList.t (tm c) args ->
         fm c
+  (* Negation, disjunction, conjunction, and implication *)
   | FNeg: forall c, fm c -> fm c
   | FOr: forall c, fm c -> fm c -> fm c
   | FAnd: forall c, fm c -> fm c -> fm c
   | FImpl: forall c, fm c -> fm c -> fm c
+  (* Quantification *)
   | FForall:
-      forall c s,
-        fm (CSnoc c s) ->
-        fm c.
+    forall c s,
+      fm (CSnoc c s) ->
+      fm c.
   Derive Signature for fm.
 
+  (* A model defines how to *interpret* the sorts, function symbols, and the relation symbols. *)
   Record model :=
     { mod_sorts: sig.(sig_sorts) -> Type;
-      mod_fns: forall args ret,
+      mod_fns: 
+        forall args ret,
           sig.(sig_funs) args ret ->
           HList.t mod_sorts args ->
           mod_sorts ret;
-      mod_rels: forall args,
+      mod_rels: 
+        forall args,
           sig.(sig_rels) args ->
           HList.t mod_sorts args ->
-          Prop }.
+          Prop 
+    }.
 
   Section Interp.
     Variable (m: model).
 
+    (* Variable environments, indexed by a typing context *)
+
     Inductive valu : ctx -> Type :=
     | VEmp: valu CEmp
-    | VSnoc: forall s c,
+    | VSnoc: 
+      forall s c,
         valu c ->
         m.(mod_sorts) s ->
         valu (CSnoc c s).
     Derive Signature for valu.
 
+    (* Variable evaluation. Because variables are type-indexed by their context, we can implement a total function. *)
+
     Equations find {c s} (x: var c s) (v: valu c) : m.(mod_sorts) s :=
       { find (VHere _ _) (VSnoc _ _ _ val) := val;
         find (VThere _ _ _ x') (VSnoc _ _ v' _) := find x' v' }.
+
+    (* term evaluation *)
 
     Equations interp_tm (c: ctx) (s: sig_sorts sig) (v: valu c) (t: tm c s) : m.(mod_sorts) s
       by struct t :=
@@ -139,6 +156,8 @@ Section FOL.
       { interp_tms _ _ _ hnil := hnil;
         interp_tms _ _ _ (tm ::: args') :=
           interp_tm _ _ v tm ::: interp_tms _ _ v args' }.
+
+    (* formula evaluation as a Prop *)
 
     Equations interp_fm (c: ctx) (v: valu c) (f: fm c) : Prop
       by struct f :=
@@ -540,6 +559,8 @@ Register HList.HNil as p4a.core.hnil.
 Register HList.HCons as p4a.core.hcons.
 
 Require Import Coq.Lists.List.
+
+(* a functor view of FOL, mapping between different sets of sorts and function/relation symbols *)
 
 Section FMap.
   Variable (sigA sigB: signature).

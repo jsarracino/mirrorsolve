@@ -17,22 +17,22 @@ MetaCoq Quote Definition c_not := @not.
 MetaCoq Quote Definition c_or := @or.
 MetaCoq Quote Definition c_and := @and.
 
-Fixpoint dec_vars (t: term) : term :=
+Fixpoint dec_vars (d: nat) (t: term) : term :=
   match t with
-  | tRel n => tRel (n - 1)
+  | tRel n => if (Nat.ltb d n) then tRel (n - 1) else tRel n
   | tCast from kind to => 
-    tCast (dec_vars from) kind (dec_vars to)
+    tCast (dec_vars d from) kind (dec_vars d to)
   | tProd na ty body => 
-    tProd na (dec_vars ty) (dec_vars body)
+    tProd na (dec_vars d ty) (dec_vars (S d) body)
   | tLambda na ty body => 
-    tLambda na (dec_vars ty) (dec_vars body)
+    tLambda na (dec_vars d ty) (dec_vars (S d) body)
   | tLetIn na def def_ty body =>
-    tLetIn na (dec_vars def) (dec_vars def_ty) (dec_vars body)
+    tLetIn na (dec_vars d def) (dec_vars d def_ty) (dec_vars (S d) body)
   | tApp f args => 
-    tApp (dec_vars f) (map dec_vars args)
+    tApp (dec_vars d f) (map (dec_vars d) args)
   | tCase ind_nbparams_relevance type_info discr branches =>
-    tCase ind_nbparams_relevance (dec_vars type_info) (dec_vars discr) (List.map (fun '(n, t) => (n, dec_vars t)) branches)
-  | tProj proj t0 => tProj proj (dec_vars t0)
+    tCase ind_nbparams_relevance (dec_vars d type_info) (dec_vars d discr) (List.map (fun '(n, t) => (n, dec_vars d t)) branches)
+  | tProj proj t0 => tProj proj (dec_vars d t0)
   | _ => t
   end.
 
@@ -44,7 +44,7 @@ Fixpoint reindex_vars (t: term) : term :=
     let bod' := reindex_vars body in 
     let bod'' := 
       match na.(binder_name) with 
-      | nAnon => dec_vars bod'
+      | nAnon => dec_vars 0 bod'
       | _ => bod'
       end in
     tProd na (reindex_vars ty) bod''

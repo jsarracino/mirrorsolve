@@ -341,3 +341,175 @@ Proof.
   reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf unique_id_term.
   check_goal.
 Qed.
+
+MetaCoq Quote Definition inv_l_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a, i a <+> a = e)
+).
+
+Lemma inv_l' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a, i a <+> a = e).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf inv_l_term.
+  check_goal.
+Qed.
+
+MetaCoq Quote Definition id_l_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a, e <+> a = a)
+).
+
+Lemma id_l' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a, e <+> a = a).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf id_l_term.
+  check_goal.
+Qed.
+
+MetaCoq Quote Definition cancel_r_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a b x, a <+> x = b <+> x -> a = b)
+).
+
+
+Lemma cancel_r' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a b x, a <+> x = b <+> x -> a = b).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf cancel_r_term.
+  check_goal.
+Qed.
+  
+MetaCoq Quote Definition cancel_l_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a b x, x <+> a = x <+> b -> a = b)
+).
+
+Lemma cancel_l' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a b x, x <+> a = x <+> b -> a = b).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf cancel_l_term.
+  check_goal.
+Qed.
+
+MetaCoq Quote Definition eq_uniq_l_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a p, p <+> a = a -> p = e)
+).
+
+Lemma eq_uniq_l' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a p, p <+> a = a -> p = e).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf eq_uniq_l_term.
+  check_goal.
+Qed.
+
+MetaCoq Quote Definition inv_uniq_l_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a b, a <+> b = e -> a = i b)
+).
+
+Lemma inv_uniq_l' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a b, a <+> b = e -> a = i b).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf inv_uniq_l_term.
+  check_goal.
+Qed.
+
+MetaCoq Quote Definition inv_uniq_r_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a p, a <+> p = a -> p = e)
+).
+
+Lemma inv_uniq_r' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a p, a <+> p = a -> p = e).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf inv_uniq_r_term.
+  check_goal.
+Qed.
+
+MetaCoq Quote Definition inv_distr_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a b, i (a <+> b) = i b <+> i a)
+).
+
+Lemma inv_distr' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a b, i (a <+> b) = i b <+> i a).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf inv_distr_term.
+  check_goal.
+Qed.
+
+MetaCoq Quote Definition double_inv_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a, i (i a) = a)
+).
+
+Lemma double_inv' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  (forall a, i (i a) = a).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf double_inv_term.
+  check_goal.
+Qed.
+
+
+MetaCoq Quote Definition id_inv_term := (
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  ( i e = e)
+).
+
+Lemma id_inv' : 
+  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a, a <+> e = a) ->
+  (forall a, a <+> i a = e) ->
+  ( i e = e).
+Proof.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf id_inv_term.
+  check_goal.
+Qed.

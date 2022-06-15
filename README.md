@@ -3,7 +3,7 @@
 MirrorSolve is a Coq plugin and library for SMT-powered Coq proof automation. 
 It enables:
    * verified compilation of domain-specific verification conditions to SMTLib and using an off-the-shelve solver to discharge the VCs (see [leapfrog](https://github.com/verified-network-toolchain/leapfrog) and [BV.v](src/theories/BV.v));
-   * reflecting a library into SMT and using SMT solvers to directly discharge Coq goals (see the Groups portion of [Demos.md](Demos.md));
+   * reflecting a library into SMTLib and using SMT solvers to directly discharge Coq goals (see the Groups portion of [Demos.md](Demos.md));
    * reflecting a library into first-order terms, and then applying further Gallina tranformations to reach an SMTLib theory (see the Nats portion of [Demos.md](Demos.md)).
 
 It currently does not directly translate inductive types, or perform proof reconstruction (so you have to trust the SMT solver output), but those are on the docket for future developments.

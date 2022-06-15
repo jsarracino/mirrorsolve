@@ -194,10 +194,11 @@ Section ExtractFM.
   MetaCoq Quote Definition test_2 := (True = False -> False).
   MetaCoq Quote Definition test_3 := (~ ~ False).
   MetaCoq Quote Definition test_4 := (False /\ True).
-  MetaCoq Quote Definition test_5 := (forall (x: unit), True -> True).
+  MetaCoq Quote Definition test_5 := (forall (x y: unit), x = y -> y = x).
   MetaCoq Quote Definition test_6 := (forall (x: unit), True \/ False \/ ~ True).
 
-  (* Eval vm_compute in extract_fm test_1.
+  (*
+  Eval vm_compute in extract_fm test_1.
   Eval vm_compute in extract_fm test_2.
   Eval vm_compute in extract_fm test_3.
   Eval vm_compute in extract_fm test_4.

@@ -412,6 +412,30 @@ Section Tactics.
 
   (* TODO: need lemma for also applying reindex_vars *)
 End Tactics.
+
+
+Ltac reflect_goal s m sed mt mi wf t := 
+  let H := fresh "H" in 
+  pose proof (@denote_extract_specialized s m sed mt mi wf (reindex_vars t)) as H;
+  let f := fresh "fm" in 
+  evar (f: FirstOrder.fm s (SLNil _));
+  specialize (H f);
+  destruct H; [
+    subst f; exact eq_refl |
+  ];
+  let H' := fresh "H'" in
+  match goal with 
+  | H: interp_fm _ _ -> ?X |- ?G => 
+    assert (H': X = G) by exact eq_refl
+  end;
+  erewrite H' in *;
+  match goal with 
+  | H: _ -> ?X |- _ => 
+    eapply H
+  end;
+  vm_compute in f;
+  subst f.
+
 (* 
 Transparent denote_tm.
 

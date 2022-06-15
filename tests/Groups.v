@@ -160,8 +160,6 @@ Qed.
 (* encoding groups in in FOL *)
 
 Require Import MirrorSolve.FirstOrder.
-
-(* See Groups.v; we model + and inv as FOL function symbols, and e as a Variable *)
 Require Import MirrorSolve.Groups.
 
 Require Import MirrorSolve.HLists.
@@ -255,7 +253,6 @@ Proof.
   left; trivial.
 Defined.
 
-
 Notation sig' := (UF.sig sig symbs).
 
 Require Import MirrorSolve.Reflection.Core.
@@ -319,11 +316,14 @@ RegisterSMTUF "e" G'.
 RegisterSMTUF "op" G' G' G'.
 RegisterSMTUF "inv" G' G'.
 
-Require Import MirrorSolve.Axioms.
-
-Import UnsoundAxioms. (* This allows us to trust the SMT solver in a typesafe way. *)
-
 Transparent denote_tm.
+
+Require Import MirrorSolve.Axioms. (* trust the SMT solver in a typesafe way *)
+
+Ltac check_goal := 
+  match goal with 
+  | |- ?G => check_interp_pos G; eapply UnsoundAxioms.interp_true
+  end.
 
 MetaCoq Quote Definition unique_id_term := (
   (forall a b c, a <+> b <+> c = a <+> (b <+> c)) -> (* associativity axiom *)
@@ -338,21 +338,6 @@ Lemma unique_id' :
   (forall a, a <+> i a = e) -> 
   (forall a, a <+> a = a -> a = e).
 Proof.
-  (* use the library lemma for match_tacs (currently trusted) *)
-  pose proof @denote_extract_specialized sig' group_uf_model sorts_eq_dec match_tacs match_inds mt_wf (reindex_vars unique_id_term).
-  (* apply it and force the extraction mechanism to compute with eq_refl *)
-  eapply H; [exact eq_refl|].
-
-  (* compute within the generated FOL term *)
-  match goal with 
-  | |- interp_fm _ ?X => 
-    set (x := X); vm_compute in x; subst x
-  end.
-
-  (* actually discharge the query, and use an axiom to close the proof *)
-  match goal with 
-  | |- ?G => check_interp_pos G; eapply interp_true
-  end.
-
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf unique_id_term.
+  check_goal.
 Qed.
-

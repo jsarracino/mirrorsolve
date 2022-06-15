@@ -80,21 +80,5 @@ Section ZFOL.
     FirstOrder.mod_rels := mod_rels;
   |}.
 
-  (* use SMT to prove this, from the std library: 
-    forall (n m : Z), - (n + m) = -n + -m
-  *)
-
-  Lemma opp_add_distr : 
-    interp_fm (sig := sig) (VEmp _ fm_model) (FForall (sig := sig) ZS (FForall (sig := sig) ZS (FEq 
-      (TFun sig Neg 
-        ((TFun sig Plus ((TVar (VHere _ _ _) ::: (TVar (VThere _ _ _ _ (VHere _ _ _)) ::: hnil)))) ::: hnil)
-      )
-      (TFun sig Plus (
-        (TFun sig Neg ((TVar (VHere _ _ _)) ::: hnil)) ::: (TFun sig Neg ((TVar (VThere _ _ _ _ (VHere _ _ _))) ::: hnil) ::: hnil))
-      )
-    ))).
-  Proof.
-  Admitted.
-
 
 End ZFOL.

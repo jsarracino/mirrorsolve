@@ -72,5 +72,33 @@ We will use two proof steps;
   2. discharge the FOL term to an off-the-shelf SMT solver and trust the result. This is done in a type-safe way (vs using `admit`) by the `check_interp_pos` tactic and the `interp_true` axiom. In this case, `check_interp_pos G` is a primitive exposed by the OCaml plugin portion of MirrorSolve. It behaves like `idtac` if the goal `G` is checked by a solver to SAT, and otherwise fails.
   There is a corresponding `check_interp_neg` for checking whether a goals is UNSAT or not.
 
-  # Nats
+# Nats
   
+Another interesting (and useful) SMT theory is an automated theory for Coq `nats`. 
+For this example, defined in [tests/Nats.v](tests/Nats.v), we use MirrorSolve to discharge a tricky lemma useful for proving the irrationality of sqrt(2).
+
+This property, which is `lem_0` in [CoqHammer's examples](https://github.com/lukaszcz/coqhammer/blob/coq8.15/examples/sqrt2_irrational.v), is the following: 
+
+```Coq
+forall n m: nat, 
+  n <> 0 -> 
+  m * m = 2 * n * n -> 
+  Nat.ltb m (2 * n) = true
+```
+
+MirrorSolve includes theories for [natural numbers](src/theories/N.v) and [integers](src/theories/Z.v), as well as a [conversion functor between them called N2Z](src/theories/N2Z.v). We will make use of all three of these theories (notice that nats do not have a corresponding SMTLib theory, so we do the standard trick of translating to Z).
+
+## Reflection configuration
+Similar to the groups example, we again generate denotation and extraction functions using match tactics on lines 33-44. A slight wrinkle is that we also generate denote/extract for constants (the `natLit` and `boolLit` notations). 
+
+## Backend configuration
+We also configure the SMT backend to map MirrorSolve's Z theory to corresponding portions of SMTLib's Z theory, on lines 65-72.
+
+## Proof
+The final proof, on line 86, again starts by reflecting the goal to a corresponding FOL formula.
+However, at this point, the FOL formula is in the theory of N. 
+To convert to a proper SMTLib theory, Z, we use the N2Z functor;
+in particular, the `n2z_corr` lemma translates the formula.
+
+Finally, we compute the translation functions induced by `n2z_corr` (which constrain quantified Z variables to be strictly nonnegative and map between function symbols), and again discharge to SMT.
+

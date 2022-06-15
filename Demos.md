@@ -24,9 +24,9 @@ Group theory studies a group G, equipped with:
   3. a binary operator `op`. 
 
 Groups also come equipped with three axioms:
-  1. the operator is associative, i.e. forall a b c, op (op a b) c = op a (op b c).
-  2. `e` is a right-identity with respect to the operator, i.e. forall x, op x e = x.
-  3. `inv x` is a right-inverse for x, i.e. forall x, op x (inv x) = e.
+  1. the operator is associative, i.e. `forall a b c, op (op a b) c = op a (op b c)`.
+  2. `e` is a right-identity with respect to the operator, i.e. `forall x, op x e = x`.
+  3. `inv x` is a right-inverse for `x`, i.e. `forall x, op x (inv x) = e`.
 
 We model these straightforwardly in Coq using parameters and axioms in [tests/Groups.v](tests/Groups.v), lines 9-30. We also solve several group theory examples from Arjun's assignment using plain Ltac (through line 160). 
 While these proofs are not terribly difficult,

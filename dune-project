@@ -18,5 +18,4 @@
  (authors      "John Sarracino" "Ryan Doenges" "Tobias Kappé")
  (homepage     "https://github.com/jsarracino/mirrorsolve")
  (bug_reports  "https://github.com/jsarracino/mirrorsolve")
- (license      "GPL 3")
 )

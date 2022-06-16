@@ -40,7 +40,7 @@ The first step is to model groups in FOL, in [src/theories/Groups.v](src/theorie
 The definition is pretty bare (no function or relation symbols); 
 the most significant development is an inductive type `sorts` with a single constructor `G'` for the sort of G.
 
-In fact, we will model all three of the group elements (`e`, `inv`, and `op`) as uninterpreted functions.
+In fact, we will model all three of the group elements (`e`, `inv`, and `op`) as uninterpreted functions. So for now, we return to the (other) groups file, [tests/Groups.v](tests/Groups.v).
 
 ## Uninterpreted functions
 For uninterpreted functions, the end-user specifies a list of string symbols, as well as their intended interpretation as Coq terms. This interpretation is necessary for MirrorSolve's reflective machinery to convert from normal Coq goals into an equivalent FOL term.

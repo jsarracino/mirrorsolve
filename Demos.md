@@ -76,6 +76,7 @@ We will use two proof steps;
   There is a corresponding `check_interp_neg` for checking whether a goals is UNSAT or not.
 
 We also discharge the remaining group theory problems in a similar way in the rest of the file.
+
 # Nats
   
 Another interesting (and useful) SMT theory is an automated theory for Coq `nats`. 

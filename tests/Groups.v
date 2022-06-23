@@ -228,31 +228,6 @@ Import ListNotations.
 
 Require Import Coq.Strings.String.
 
-(* Witnesses for each of the group UF memberships *)
-Lemma in_op : 
-  In ("op"%string, [G'; G'], G') symbs.
-Proof.
-  simpl.
-  left; trivial.
-Defined.
-
-Lemma in_inv : 
-  In ("inv"%string, [G'], G') symbs.
-Proof.
-  simpl.
-  right.
-  left; trivial.
-Defined.
-
-Lemma in_e : 
-  In ("e"%string, [], G') symbs.
-Proof.
-  simpl.
-  right.
-  right.
-  left; trivial.
-Defined.
-
 Notation sig' := (UF.sig sig symbs).
 
 Require Import MirrorSolve.Reflection.Core.
@@ -266,10 +241,13 @@ MetaCoq Quote Definition t_e := e.
 (* Some match tactics for the meta-interpreter. 
    The meta-interpreter converts these definitions into a reflection procedure between pure Coq goals and FOL terms in the UF + Groups combined theory. 
 *)
+
+Local Obligation Tactic := solve_uf_membership.
+
 Program Definition match_tacs : list ((term -> bool) * tac_syn sig' group_uf_model) := [
-  ( eq_term t_f, tacFun _ _ {| deep_f := UFun sig symbs in_op |} ); 
-  ( eq_term t_i, tacFun _ _ {| deep_f := UFun sig symbs in_inv |} );
-  ( eq_term t_e, tacFun _ _ {| deep_f := UFun sig symbs in_e |} )
+  ( eq_term t_f, tacFun _ _ {| deep_f := UFun (s := "op") sig symbs _ |} ); 
+  ( eq_term t_i, tacFun _ _ {| deep_f := UFun (s := "inv") sig symbs _ |} );
+  ( eq_term t_e, tacFun _ _ {| deep_f := UFun (s := "e") sig symbs _ |} )
   ].
 
 MetaCoq Quote Definition g_ind := (G).

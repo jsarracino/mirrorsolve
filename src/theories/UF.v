@@ -157,6 +157,18 @@ Section UF.
 
 End UF.
 
+(* solves goals of the form 
+  In symb_def symbs 
+*)
+Ltac solve_uf_membership := 
+  simpl; repeat match goal with 
+  | |- ?L = ?R \/ _ => 
+    try (now left; exact eq_refl); right
+  end. 
+
+
+
+
 Register CFun as ms.uf.cfun.
 Register UFun as ms.uf.ufun.
 (* 

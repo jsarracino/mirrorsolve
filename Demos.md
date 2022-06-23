@@ -61,19 +61,21 @@ This soundness proof relies on a well-formedness specification for the end-user 
 
 ## SMT backend
 
-Finally on lines 313-317 we configure the SMT backend, by adding a custom SMT sort for G, 
+Finally on lines 291-295 we configure the SMT backend, by adding a custom SMT sort for G, 
 as well as uninterpreted function symbols for `e`, `inv`, and `op`. 
 
-## Final proof
+## Final proofs
 
-Finally we will discharge a proof (namely `unique_id`) using MirrorSolve. First, we quote the proof into a MetaCoq term using MetaCoq's definition on lines 328-333. Notice that the group axioms are encoded using quantified arms of an implication.
-Next, we start an alternate proof of `unique_id`, `unique_id'` on lines 335-340.
+Finally we will discharge a proof (namely `unique_id`) using MirrorSolve. First, we quote the proof into a MetaCoq term in the MetaCoq Definition `unique_id_term`. 
+Notice that the group axioms are encoded using quantified arms of an implication.
+Next, we start an alternate proof of `unique_id` called `unique_id'`.
 
 We will use two proof steps;
   1. translate to a corresponding FOL formula using MirrorSolve's tactics. This is done by calling the `reflect_goal` tactic with a bunch of problem specific arguments (in this case, a bunch of information about the UF+Groups theory, as well as the particular MetaCoq term for dual reflection and extraction). After this tactic, the new goal is now an interpretation of a corresponding FOL formula.
-  2. discharge the FOL term to an off-the-shelf SMT solver and trust the result. This is done in a type-safe way (vs using `admit`) by the `check_interp_pos` tactic and the `interp_true` axiom. In this case, `check_interp_pos G` is a primitive exposed by the OCaml plugin portion of MirrorSolve. It behaves like `idtac` if the goal `G` is checked by a solver to SAT, and otherwise fails.
+  2. discharge the FOL term to an off-the-shelf SMT solver and trust the result. This is done in a type-safe way (vs using `admit`) by the `check_interp_pos` tactic and the `interp_true` axiom (wrapped in the `check_goal` tactic). In this case, `check_interp_pos G` is a primitive exposed by the OCaml plugin portion of MirrorSolve. It behaves like `idtac` if the goal `G` is checked by a solver to SAT, and otherwise fails.
   There is a corresponding `check_interp_neg` for checking whether a goals is UNSAT or not.
 
+We also discharge the remaining group theory problems in a similar way in the rest of the file.
 # Nats
   
 Another interesting (and useful) SMT theory is an automated theory for Coq `nats`. 

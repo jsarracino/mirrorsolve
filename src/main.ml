@@ -36,15 +36,15 @@ let get_coq ref : C.t =
       | Some (_, x) -> raise @@ MissingGlobConst ("polymorphic global: " ^ ref)
       | None -> raise @@ MissingGlobConst ("unregistered global: " ^ ref)
       end
-let c_eq () = get_coq "p4a.core.eq"
-let c_impl () = get_coq "p4a.core.impl"
-let c_and () = get_coq "p4a.core.and"
-let c_or () = get_coq "p4a.core.or"
-let c_not () = get_coq "p4a.core.neg"
+let c_eq () = get_coq "ms.core.eq"
+let c_impl () = get_coq "ms.core.impl"
+let c_and () = get_coq "ms.core.and"
+let c_or () = get_coq "ms.core.or"
+let c_not () = get_coq "ms.core.neg"
 
-let c_tt () = get_coq "p4a.core.tt"
-let c_ff () = get_coq "p4a.core.ff"
-let c_fun () = get_coq "p4a.core.fun"
+let c_tt () = get_coq "ms.core.tt"
+let c_ff () = get_coq "ms.core.ff"
+let c_fun () = get_coq "ms.core.fun"
 
 
 (* Register nil as core.list.nil.
@@ -52,22 +52,22 @@ Register cons as core.list.cons. *)
 let c_nil () = get_coq "core.list.nil"
 let c_cons () = get_coq "core.list.cons"
 
-let c_hnil () = get_coq "p4a.core.hnil"
-let c_hcons () = get_coq "p4a.core.hcons"
+let c_hnil () = get_coq "ms.core.hnil"
+let c_hcons () = get_coq "ms.core.hcons"
 let c_inl () = get_coq "core.sum.inl"
 let c_inr () = get_coq "core.sum.inr"
 
 let c_true () = get_coq "core.bool.true"
 let c_false () = get_coq "core.bool.false"
 let c_pair () = get_coq "core.prod.intro"
-let c_forall () = get_coq "p4a.core.forall"
-let c_var () = get_coq "p4a.core.var"
+let c_forall () = get_coq "ms.core.forall"
+let c_var () = get_coq "ms.core.var"
 
-let c_cnil () = get_coq "p4a.core.cnil"
-let c_snoc () = get_coq "p4a.core.csnoc"
+let c_cnil () = get_coq "ms.core.cnil"
+let c_snoc () = get_coq "ms.core.csnoc"
 
-let c_bits () = get_coq "p4a.sorts.bits"
-let c_store () = get_coq "p4a.sorts.store"
+let c_bits () = get_coq "ms.sorts.bits"
+let c_store () = get_coq "ms.sorts.store"
 let c_zero () = get_coq "num.nat.O"
 let c_succ () = get_coq "num.nat.S"
 
@@ -84,28 +84,32 @@ let c_n_pos () = get_coq "num.N.Npos"
 
 let c_prop_not () = get_coq "core.not.type"
 
-let c_bits_lit () = get_coq "p4a.funs.bitslit"
-let c_concat () = get_coq "p4a.funs.concat"
-let c_slice () = get_coq "p4a.funs.slice"
-let c_lookup () = get_coq "p4a.funs.lookup"
+let c_bits_lit () = get_coq "ms.funs.bitslit"
+let c_concat () = get_coq "ms.funs.concat"
+let c_slice () = get_coq "ms.funs.slice"
+let c_lookup () = get_coq "ms.funs.lookup"
 
 let c_unit () = get_coq "core.unit.tt"
 
-let c_vhere () = get_coq "p4a.core.vhere"
-let c_vthere () = get_coq "p4a.core.vthere"
-let c_int_sort = get_coq "p4a.core.smt_int"
-let c_bool_sort = get_coq "p4a.core.smt_bool"
-let c_bv_sort () = get_coq "p4a.bv.s_bv"
+let c_vhere () = get_coq "ms.core.vhere"
+let c_vthere () = get_coq "ms.core.vthere"
+let c_int_sort = get_coq "ms.core.smt_int"
+let c_bool_sort = get_coq "ms.core.smt_bool"
+let c_bv_sort () = get_coq "ms.bv.s_bv"
 
-let c_bv_lit = get_coq "p4a.bv.f_lit"
-let c_bv_cat = get_coq "p4a.bv.f_cat"
-let c_bv_extr = get_coq "p4a.bv.f_extr"
+let c_si_rec = get_coq "ms.core.smt_ind_rec"
+let c_si_sort = get_coq "ms.core.smt_ind_sort"
+let c_si_cases = get_coq "ms.core.smt_ind_cases"
 
-let c_smt_bv_ctor = get_coq "p4a.bv.smt_bv_ctor"
+let c_bv_lit = get_coq "ms.bv.f_lit"
+let c_bv_cat = get_coq "ms.bv.f_cat"
+let c_bv_extr = get_coq "ms.bv.f_extr"
+
+let c_smt_bv_ctor = get_coq "ms.bv.smt_bv_ctor"
 
 
-let c_builtin_bool_lit () = get_coq "p4a.core.bool_lit"
-let c_builtin_int_lit () = get_coq "p4a.core.int_lit"
+let c_builtin_bool_lit () = get_coq "ms.core.bool_lit"
+let c_builtin_int_lit () = get_coq "ms.core.int_lit"
 
 let c_ufun_ctor () = get_coq "ms.uf.ufun"
 let c_cfun_ctor () = get_coq "ms.uf.cfun"
@@ -115,6 +119,17 @@ let c_char_ctor = get_coq "core.ascii.ascii"
 let c_str_cons = get_coq "core.string.string"
 let c_str_nil = get_coq "core.string.empty"
 
+
+let equal_ctor (l: C.t) (r: unit -> C.t) : bool = 
+  try 
+    let (l', _) = C.destConstruct l in 
+    let (r', _) = C.destConstruct (r ()) in 
+      l' = r'
+  with
+    | MissingGlobConst s -> 
+      let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "unbound constructor: %s" s) in 
+        false
+    | e -> raise e
 
 let find_add i tbl builder = 
   begin match Hashtbl.find_opt tbl i with 
@@ -234,6 +249,12 @@ let pretty_sort (s: sort) : string =
   | Custom_sort s -> s
   end
 
+  let conv_sort (e: C.t) : sort option = 
+    if equal_ctor e (fun _ -> c_int_sort) then Some Smt_int 
+    else if equal_ctor e (fun _ -> c_bool_sort) then Some Smt_bool
+    else if equal_ctor e c_bv_sort then Some (Smt_bv None)
+    else None
+
 let rec interp_digs (bs: bool list) : int = 
   begin match bs with 
   | [] -> 0
@@ -309,11 +330,22 @@ let custom_sorts () : string list =
   let sorts = Hashtbl.to_seq_values sort_tbl in
     List.filter_map worker (List.of_seq sorts)
 
+type ind_decl = Ind_decl of (string * sort list) list
+let ind_tbl : (string, ind_decl) Hashtbl.t = Hashtbl.create 5
 
+let add_ind (name: string) (ctor: C.t) (decl: ind_decl) = 
+  add_sort ctor (Custom_sort name) ;
+  Hashtbl.add ind_tbl name decl
 
-(* let uf_sym_tbl : (string, func_decl) Hashtbl.t = Hashtbl.create 5
-let lookup_uf (n: string) = Hashtbl.find_opt uf_sym_tbl n
-let add_uf = Hashtbl.add uf_sym_tbl *)
+let pretty_ind_decl (name: string) (decl: ind_decl) = 
+  let Ind_decl decls = decl in 
+  let worker ctor i s : string = Format.sprintf "( proj_%s_%i %s )" ctor i (pretty_sort s) in 
+  let arms = List.map 
+    (fun (ctor, args) -> Format.sprintf "( %s %s)" ctor 
+      (String.concat "" @@ List.mapi (worker ctor) args)
+    ) 
+    decls in 
+  Format.sprintf "( declare-datatype %s ( %s ) )" name (String.concat "\n" arms)
 
 let debug_tbl (tbl : ('a, 'b) Hashtbl.t) (printer: 'a -> 'b -> Pp.t) : Pp.t = 
   Pp.pr_vertical_list (fun (x, y) -> printer x y) @@ List.of_seq @@ Hashtbl.to_seq tbl
@@ -348,17 +380,6 @@ let extract_sort (e: C.t) =
       end
   else
     extract_prim_sort e
-
-let equal_ctor (l: C.t) (r: unit -> C.t) : bool = 
-  try 
-    let (l', _) = C.destConstruct l in 
-    let (r', _) = C.destConstruct (r ()) in 
-      l' = r'
-  with
-    | MissingGlobConst s -> 
-      let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "unbound constructor: %s" s) in 
-        false
-    | e -> raise e
 
 let pretty_func_decl (fd: func_decl) : string = 
   let prefix = Format.sprintf "(declare-fun %s (" fd.name in 
@@ -503,6 +524,46 @@ let rec extract_list (inner: C.t -> 'a) (e: C.t) : 'a list =
     raise @@ BadExpr "expected nil/cons in extract_list"
 
 
+
+let extract_ind_base (base: sort) (e: C.t) = 
+  let _ = debug "extracting ind base..." in 
+  if C.isApp e then 
+    (* SISort <sort> *)
+    let _, es = C.destApp e in 
+    begin match conv_sort @@ a_last es with 
+    | Some s -> s
+    | None -> raise bedef
+    end
+  else
+    if e = c_si_rec then base else
+      let _ = Feedback.msg_debug (Pp.str "Expected smt_ind_base and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+        raise bedef
+
+let extract_ind_case (base: sort) (e: C.t) : string * sort list =
+    (* the overall structure is string * list sort *)
+  let _ = debug "extracting ind case..." in 
+  if C.isApp e then 
+    let _, es = C.destApp e in 
+    let args = extract_list (extract_ind_base base) (a_last es) in 
+    let cname = extract_str (es.(Array.length es - 2)) in 
+      cname, args
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected app in ind_case and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise bedef
+
+let extract_ind_decl (base: sort) (e: C.t) = 
+  let _ = debug "extracting ind decl..." in 
+  if C.isApp e then 
+    (* SICases <cases> *)
+    let _, es = C.destApp e in 
+    Ind_decl (extract_list (extract_ind_case base) (a_last es))
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected app in extract_ind_decl and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise bedef
+
 let rec c_n_tuple_to_bools (e: C.t) : bool list =
   if e = c_unit () then []
   
@@ -544,13 +605,18 @@ let format_args (es: C.t array) : Pp.t =
   let builder (i, e) = Pp.(++) (Pp.str (Format.sprintf "%n => " i)) (C.debug_print e) in
     Pp.pr_vertical_list builder (Array.to_list eis)
 
-let debug_flag = false
+
+let debug_flag =
+  Goptions.declare_bool_option_and_ref
+    ~depr:false
+    ~key:["MirrorSolve";"Debug"]
+    ~value:false
 
 (* let debug_print (f: unit -> unit) : unit = 
   if debug_flag then f () else () *)
 
 let debug_pp (msg: Pp.t) : unit = 
-  if debug_flag then Feedback.msg_debug msg else ()
+  if debug_flag () then Feedback.msg_debug msg else ()
 
 let rec extract_expr (e: C.t) : bexpr = 
   if equal_ctor e c_eq then
@@ -630,10 +696,23 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
           let pretty_args = if fs = "concat" then List.rev @@ (List.map pretty_tm args) else (List.map pretty_tm args) in 
           Format.sprintf "(%s %s)" fs @@ String.concat " " pretty_args
       else
+        let _ = Feedback.msg_debug @@ Pp.str "mismatch in declared and actual arities for:" in 
+        let _ = Feedback.msg_debug @@ Pp.str @@ Format.sprintf "%s : %i vs %i" fs n (List.length args) in 
         raise bedef
     | None, Some b, Some n -> 
       pretty_builtin [||] b n
-    | _, _, _ -> raise bedef
+    | None, None, _ -> 
+      let _ = Feedback.msg_debug @@ Pp.str "missing fun symbol:" in 
+      let _ = Feedback.msg_debug @@ Constr.debug_print f in 
+      raise bedef
+    (* | None, Some name, None -> *)
+    | Some name, _, None -> 
+        let _ = Feedback.msg_debug @@ Pp.str (Format.sprintf "missing arity for %s" name) in 
+        raise bedef
+    | _, _, _ -> 
+        let _ = Feedback.msg_debug @@ Pp.str "odd case:" in 
+        let _ = Feedback.msg_debug @@ Constr.debug_print f in 
+        raise bedef
     end
   else if C.isApp f then
     let _ = debug_pp @@ Pp.str "extracting builtin" in 
@@ -700,6 +779,8 @@ and pretty_tm (tm: C.t) : string =
         let _ = debug_pp @@ Pp.str "extracting fun with args:" in
         let _ = debug_pp @@ format_args es in
         let fargs = extract_h_list (a_last es) in
+        let _ = debug_pp @@ Pp.str "extracted args to:" in 
+        let _ = debug_pp @@ format_args (Array.of_list fargs) in 
         let fe = es.(Array.length es - 2) in 
         pretty_fun fe fargs
       else if equal_ctor f c_var then 
@@ -785,10 +866,18 @@ type query_opts =
 let get_decls () = 
   Hashtbl.to_seq_values fun_decl_tbl
 
+let in_map mp k = 
+  begin match Hashtbl.find_opt mp k with 
+  | Some _ -> true
+  | None -> false
+  end
+
 let build_query (e: C.t) (opts: query_opts) : string = 
-  let sort_decls = List.map (fun s -> Format.sprintf "(declare-sort %s 0)" s) @@ custom_sorts () in 
+  let ind_sorts, us_sorts = List.partition (in_map ind_tbl) @@ custom_sorts () in 
+  let us_decls = List.map (fun s -> Format.sprintf "(declare-sort %s 0)" s) us_sorts in 
+  let ind_decls = List.map (fun s -> pretty_ind_decl s (Hashtbl.find ind_tbl s)) ind_sorts in 
   let fun_decls = List.map pretty_func_decl @@ List.of_seq @@ get_decls () in 
-  let prefix = String.concat "\n" @@ sort_decls @ fun_decls in 
+  let prefix = String.concat "\n" @@ us_decls @ ind_decls @ fun_decls in 
   let q_str = if opts.refute_query then 
     Format.sprintf "(assert (not %s))" (pretty_fm e) 
   else
@@ -860,12 +949,6 @@ let reg_builtin (l: EConstr.t) (r: EConstr.t) : unit =
     let _ = Feedback.msg_warning (Pp.(++) (Pp.str ("Expected construct and got: ")) @@ Constr.debug_print l') in
     raise bedef
 
-let conv_sort (e: C.t) : sort option = 
-  if equal_ctor e (fun _ -> c_int_sort) then Some Smt_int 
-  else if equal_ctor e (fun _ -> c_bool_sort) then Some Smt_bool
-  else if equal_ctor e c_bv_sort then Some (Smt_bv None)
-  else None
-
 let reg_sort (l: EConstr.t) (r: EConstr.t) : unit = 
   let env = Global.env () in
   let sigma = Evd.from_env env in
@@ -907,3 +990,11 @@ let reg_uf_decl (name: string) (ret_e: EConstr.t) (args: EConstr.t list) : unit 
     | e -> 
       let _ = Feedback.msg_warning (Pp.(++) (Pp.str ("Could not convert UF sorts in ")) @@ Constr.debug_print r_e) in
       let _ = Feedback.msg_warning @@ format_args (Array.of_list args_e) in raise e
+
+let reg_ind_decl (name: string) (ctor_e: EConstr.t) (ind_decl_e : EConstr.t) : unit = 
+  let env = Global.env () in
+  let sigma = Evd.from_env env in
+  let ind_e = EConstr.to_constr sigma ind_decl_e in 
+  let ctor = EConstr.to_constr sigma ctor_e in 
+  let decl = extract_ind_decl (Custom_sort name) ind_e in 
+  add_ind name ctor decl

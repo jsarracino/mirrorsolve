@@ -57,15 +57,18 @@ Program Definition mt_wf: match_tacs_wf N.sig N.fm_model N.sorts_eq_dec match_ta
 |}.
 Admit Obligations.
 
+Require Import MirrorSolve.UF.
 Require Import MirrorSolve.SMT.
 Require Import MirrorSolve.BV.
 
 Local Declare ML Module "mirrorsolve".
 
 RegisterSMTSort ZS SInt.
+RegisterSMTSort BS SBool.
 
 RegisterSMTFun Z.Plus "+" 2.
 RegisterSMTFun Z.Lt "<" 2.
+RegisterSMTFun Z.Gte ">=" 2.
 RegisterSMTFun Z.Mul "*" 2.
 
 RegisterSMTBuiltin Z.ZLit IntLit.

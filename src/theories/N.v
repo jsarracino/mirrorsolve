@@ -21,7 +21,7 @@ Section NFOL.
   Inductive funs: arity sorts -> sorts -> Type :=
   | NLit: forall (n: nat), funs [] NS
   | BLit: forall (b: bool), funs [] BS
-  | Sub: funs [NS; NS] NS
+  (* | Sub: funs [NS; NS] NS *)
   | Plus: funs [NS; NS] NS
   | Mul: funs [NS; NS] NS
   | Div: funs [NS; NS] NS
@@ -53,7 +53,7 @@ Section NFOL.
     : mod_sorts ret :=
     { mod_fns _ _ (BLit b) _ := b;
       mod_fns _ _ (NLit n) _ := n;
-      mod_fns _ _ Sub (l ::: r ::: _) := Nat.sub l r;
+      (* mod_fns _ _ Sub (l ::: r ::: _) := Nat.sub l r; *)
       mod_fns _ _ Plus (l ::: r ::: _) := Nat.add l r;
       mod_fns _ _ Mul (l ::: r ::: _) := Nat.mul l r;
       mod_fns _ _ Div (l ::: r ::: _) := Nat.div l r;

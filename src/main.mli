@@ -19,6 +19,10 @@ val c_lookup : unit -> Constr.t
 
 val c_nat_to_int : Constr.t -> int
 
+
+val c_si_sort : Constr.t
+val c_si_cases : Constr.t
+
 val reg_sort : EConstr.constr -> EConstr.constr -> unit
 val reg_sym : EConstr.constr -> string -> int -> unit
 val reg_builtin : EConstr.constr -> EConstr.constr -> unit
@@ -31,6 +35,9 @@ type sort =
   | Smt_int
   | Smt_bool 
   | Custom_sort of string
+
+(* sum of constructor names and sort products *)
+type ind_decl = Ind_decl of (string * sort list) list
 
 type func_decl = {
   arg_tys : sort list;
@@ -82,3 +89,5 @@ val c_n_tuple_to_bools : Constr.t -> bool list
 val format_args : Constr.t array -> Pp.t
 
 val set_backend_solver : string -> unit
+
+val reg_ind_decl : string -> EConstr.t -> EConstr.t -> unit

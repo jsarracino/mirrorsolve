@@ -31,7 +31,7 @@ Section N2Z.
   {
     n2z_fun (NLit n) := ZLit (Z.of_nat n);
     n2z_fun (N.BLit b) := BLit b;
-    n2z_fun N.Sub := Z.Sub;
+    (* n2z_fun N.Sub := Z.Sub; *)
     n2z_fun N.Plus := Z.Plus;
     n2z_fun N.Mul := Z.Mul;
     n2z_fun N.Div := Z.Div;
@@ -71,7 +71,7 @@ Section N2Z.
   {
     n2z_fun_arrs (NLit n) _ := hnil;
     n2z_fun_arrs (N.BLit b) _ := hnil;
-    n2z_fun_arrs N.Sub (x ::: y ::: _) := _;
+    (* n2z_fun_arrs N.Sub (x ::: y ::: _) := _; *)
     n2z_fun_arrs N.Plus (x ::: y ::: _) := _;
     n2z_fun_arrs N.Mul (x ::: y ::: _) := _;
     n2z_fun_arrs N.Div (x ::: y ::: _) := _;
@@ -91,7 +91,7 @@ Section N2Z.
   Next Obligation. exact (x ::: y ::: hnil). Defined.
   Next Obligation. exact (x ::: y ::: hnil). Defined.
   Next Obligation. exact (x ::: y ::: hnil). Defined.
-  Next Obligation. exact (x ::: y ::: hnil). Defined.
+  (* Next Obligation. exact (x ::: y ::: hnil). Defined. *)
 
   Definition n2z_rel_arrs {c arr} (rel: N.rels arr) (args: HList.t (fun srt' : N.sorts => FirstOrder.tm sig (fmap_ctx' c) (n2z_sort srt')) arr) 
     : HList.t (FirstOrder.tm sig (fmap_ctx' c)) (n2z_arr arr) := 

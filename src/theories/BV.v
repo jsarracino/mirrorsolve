@@ -87,10 +87,10 @@ Section BVFOL.
 
 End BVFOL.
 
-Register BV as p4a.bv.s_bv.
+Register BV as ms.bv.s_bv.
 
-Register BVLit as p4a.bv.f_lit.
-Register BVCat as p4a.bv.f_cat.
-Register BVExtr as p4a.bv.f_extr.
+Register BVLit as ms.bv.f_lit.
+Register BVCat as ms.bv.f_cat.
+Register BVExtr as ms.bv.f_extr.
 
-Register MkBitvector as p4a.bv.smt_bv_ctor.
+Register MkBitvector as ms.bv.smt_bv_ctor.

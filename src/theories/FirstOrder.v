@@ -534,29 +534,29 @@ Arguments weaken_tm {sig sort c1} c2 t.
 
 
 
-Register TVar as p4a.core.var.
-Register TFun as p4a.core.fun.
+Register TVar as ms.core.var.
+Register TFun as ms.core.fun.
 
-Register VHere as p4a.core.vhere.
-Register VThere as p4a.core.vthere.
+Register VHere as ms.core.vhere.
+Register VThere as ms.core.vthere.
 
 
-Register FEq as p4a.core.eq.
-Register FTrue as p4a.core.tt.
-Register FFalse as p4a.core.ff.
-Register FRel as p4a.core.rel.
-Register FNeg as p4a.core.neg.
-Register FOr as p4a.core.or.
-Register FAnd as p4a.core.and.
-Register FForall as p4a.core.forall.
+Register FEq as ms.core.eq.
+Register FTrue as ms.core.tt.
+Register FFalse as ms.core.ff.
+Register FRel as ms.core.rel.
+Register FNeg as ms.core.neg.
+Register FOr as ms.core.or.
+Register FAnd as ms.core.and.
+Register FForall as ms.core.forall.
 
-Register FImpl as p4a.core.impl.
+Register FImpl as ms.core.impl.
 
-Register SLNil as p4a.core.cnil.
-Register Snoc as p4a.core.csnoc.
+Register SLNil as ms.core.cnil.
+Register Snoc as ms.core.csnoc.
 
-Register HList.HNil as p4a.core.hnil.
-Register HList.HCons as p4a.core.hcons.
+Register HList.HNil as ms.core.hnil.
+Register HList.HCons as ms.core.hcons.
 
 Require Import Coq.Lists.List.
 

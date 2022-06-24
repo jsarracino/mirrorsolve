@@ -17,9 +17,10 @@ MetaCoq Quote Definition c_not := @not.
 MetaCoq Quote Definition c_or := @or.
 MetaCoq Quote Definition c_and := @and.
 
+
 Fixpoint dec_vars (d: nat) (t: term) : term :=
   match t with
-  | tRel n => if (Nat.ltb d n) then tRel (n - 1) else tRel n
+  | tRel n => if (Nat.leb d n) then tRel (n - 1) else tRel n
   | tCast from kind to => 
     tCast (dec_vars d from) kind (dec_vars d to)
   | tProd na ty body => 

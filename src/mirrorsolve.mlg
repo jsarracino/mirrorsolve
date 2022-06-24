@@ -41,6 +41,13 @@ VERNAC COMMAND EXTEND RegisterFun CLASSIFIED AS QUERY
     let (_, e') = Constrintern.interp_constr_evars env sigma e in 
       Main.reg_custom_sort e' s 
   }
+| [ "RegisterSMTInd" constr(c_e) constr(decl_e) string(s) ] -> {
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let _, c_e' = Constrintern.interp_constr_evars env sigma c_e in 
+    let _, decl_e' = Constrintern.interp_constr_evars env sigma decl_e in 
+      Main.reg_ind_decl s c_e' decl_e'
+  }
 | [ "RegisterSMTUF" string(nme) constr(ret) constr_list(args) ] -> {
     let env = Global.env () in
     let sigma = Evd.from_env env in

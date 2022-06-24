@@ -8,6 +8,21 @@ exception UnboundPrimitive
 
 let bedef = BadExpr "bad expression"
 
+let debug_flag =
+  Goptions.declare_bool_option_and_ref
+    ~depr:false
+    ~key:["MirrorSolve";"Debug"]
+    ~value:false
+
+let debug_pp (msg: Pp.t) : unit = 
+  if debug_flag () then Feedback.msg_debug msg else ()
+let format_args (es: C.t array) : Pp.t = 
+  let eis = Array.mapi (fun i e -> (i, e)) es in
+  let builder (i, e) = Pp.(++) (Pp.str (Format.sprintf "%n => " i)) (C.debug_print e) in
+    Pp.pr_vertical_list builder (Array.to_list eis)
+
+    
+
 exception MissingGlobConst of string
 
 type ('a, 'b) sum = Inl of 'a | Inr of 'b
@@ -129,7 +144,11 @@ let equal_ctor (l: C.t) (r: unit -> C.t) : bool =
     | MissingGlobConst s -> 
       let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "unbound constructor: %s" s) in 
         false
-    | e -> raise e
+    | e -> 
+      let _ = Feedback.msg_debug (Pp.str @@ Format.sprintf "couldn't compare these terms (probably one is not a constructor):") in
+      let _ = Feedback.msg_debug @@ Constr.debug_print l in 
+      let _ = Feedback.msg_debug @@ Constr.debug_print (r ()) in  
+        raise e
 
 let find_add i tbl builder = 
   begin match Hashtbl.find_opt tbl i with 
@@ -188,7 +207,7 @@ let rec c_pos_to_int (e: C.t) : int =
 
   let c_int_to_int (e: C.t) : int =
     if e = c_int_zero () then 
-      let _ = Feedback.msg_debug (Pp.str "returning 0") in
+      let _ = debug_pp @@ Pp.str "returning 0" in
       0 
     else if C.isApp e then 
       let (f, es) = C.destApp e in 
@@ -345,7 +364,7 @@ let pretty_ind_decl (name: string) (decl: ind_decl) =
       (String.concat "" @@ List.mapi (worker ctor) args)
     ) 
     decls in 
-  Format.sprintf "( declare-datatype %s ( %s ) )" name (String.concat "\n" arms)
+  Format.sprintf "( declare-datatype %s ( \n\t\t%s \n\t) \n)" name (String.concat "\n\t\t" arms)
 
 let debug_tbl (tbl : ('a, 'b) Hashtbl.t) (printer: 'a -> 'b -> Pp.t) : Pp.t = 
   Pp.pr_vertical_list (fun (x, y) -> printer x y) @@ List.of_seq @@ Hashtbl.to_seq tbl
@@ -526,13 +545,18 @@ let rec extract_list (inner: C.t -> 'a) (e: C.t) : 'a list =
 
 
 let extract_ind_base (base: sort) (e: C.t) = 
-  let _ = debug "extracting ind base..." in 
+  let _ = debug_pp @@ Pp.str "extracting ind base from:" in
+  let _ = debug_pp @@ Constr.debug_print e in  
   if C.isApp e then 
     (* SISort <sort> *)
-    let _, es = C.destApp e in 
-    begin match conv_sort @@ a_last es with 
+    let f, es = C.destApp e in 
+    let ctor, _ = C.destApp @@ a_last es in 
+    begin match conv_sort @@ ctor with 
     | Some s -> s
-    | None -> raise bedef
+    | None -> 
+      let _ = Feedback.msg_debug @@ Pp.str "couldn't convert sort for:" in 
+      let _ = Feedback.msg_debug @@ Constr.debug_print @@ a_last es in 
+      raise bedef
     end
   else
     if e = c_si_rec then base else
@@ -542,7 +566,7 @@ let extract_ind_base (base: sort) (e: C.t) =
 
 let extract_ind_case (base: sort) (e: C.t) : string * sort list =
     (* the overall structure is string * list sort *)
-  let _ = debug "extracting ind case..." in 
+  let _ = debug_pp @@ Pp.str "extracting ind case..." in 
   if C.isApp e then 
     let _, es = C.destApp e in 
     let args = extract_list (extract_ind_base base) (a_last es) in 
@@ -554,7 +578,7 @@ let extract_ind_case (base: sort) (e: C.t) : string * sort list =
       raise bedef
 
 let extract_ind_decl (base: sort) (e: C.t) = 
-  let _ = debug "extracting ind decl..." in 
+  let _ = debug_pp @@ Pp.str "extracting ind decl..." in 
   if C.isApp e then 
     (* SICases <cases> *)
     let _, es = C.destApp e in 
@@ -599,24 +623,6 @@ let rec debruijn_idx (e: C.t) : int =
     let _ = Feedback.msg_debug (Pp.str "Unexpected constructor in debruijn variable:") in
     let _ = Feedback.msg_debug (C.debug_print e) in
       raise bedef
-
-let format_args (es: C.t array) : Pp.t = 
-  let eis = Array.mapi (fun i e -> (i, e)) es in
-  let builder (i, e) = Pp.(++) (Pp.str (Format.sprintf "%n => " i)) (C.debug_print e) in
-    Pp.pr_vertical_list builder (Array.to_list eis)
-
-
-let debug_flag =
-  Goptions.declare_bool_option_and_ref
-    ~depr:false
-    ~key:["MirrorSolve";"Debug"]
-    ~value:false
-
-(* let debug_print (f: unit -> unit) : unit = 
-  if debug_flag then f () else () *)
-
-let debug_pp (msg: Pp.t) : unit = 
-  if debug_flag () then Feedback.msg_debug msg else ()
 
 let rec extract_expr (e: C.t) : bexpr = 
   if equal_ctor e c_eq then
@@ -996,5 +1002,6 @@ let reg_ind_decl (name: string) (ctor_e: EConstr.t) (ind_decl_e : EConstr.t) : u
   let sigma = Evd.from_env env in
   let ind_e = EConstr.to_constr sigma ind_decl_e in 
   let ctor = EConstr.to_constr sigma ctor_e in 
+  let _ = debug_pp @@ Pp.str "extracting decl now" in 
   let decl = extract_ind_decl (Custom_sort name) ind_e in 
   add_ind name ctor decl

@@ -79,7 +79,7 @@ Section ListFuncs.
     intros; exact eq_refl.
   Qed.
   
-  Definition my_app l r := tail_app r (rev l).
+  Definition my_app l r := tail_app r (my_rev l).
 
   From Hammer Require Import Hammer.
 
@@ -275,14 +275,62 @@ forall (a : A) (r : list A), app (app [] [a]) r = app [] (a :: r)
       check_goal_unsat.
   Qed.
 
+  MetaCoq Quote Definition app_nil_r_nil := (
+    (forall xs : list A, app [] xs = xs) ->
+(forall (x : A) (xs ys : list A), app (x :: xs) ys = x :: app xs ys) ->
+app [] [] = []
+  ).
+
+  MetaCoq Quote Definition app_nil_r_cons := (
+    (forall xs : list A, app [] xs = xs) ->
+    (forall (x : A) (xs ys : list A), app (x :: xs) ys = x :: app xs ys) ->
+    forall (a : A) (l : list A), app l [] = l -> app (a :: l) [] = a :: l
+  ).
 
   Lemma app_nil_r : 
     forall l, app l [] = l.
-  Admitted.
+  Proof.
+    pose proof app_nil.
+    pose proof app_cons.
+    induction l; revert_all.
+    - 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_nil_r_nil. 
+      check_goal_unsat.
+    - 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_nil_r_cons. 
+      check_goal_unsat.
+  Qed.
+
+  MetaCoq Quote Definition app_assoc_nil := (
+    (forall xs : list A, app [] xs = xs) ->
+(forall (x : A) (xs ys : list A), app (x :: xs) ys = x :: app xs ys) ->
+(forall l : list A, app l [] = l) ->
+forall ys zs : list A, app (app [] ys) zs = app [] (app ys zs)
+  ).
+
+  MetaCoq Quote Definition app_assoc_cons := (
+    (forall xs : list A, app [] xs = xs) ->
+    (forall (x : A) (xs ys : list A), app (x :: xs) ys = x :: app xs ys) ->
+    (forall l : list A, app l [] = l) ->
+    forall (a : A) (xs : list A),
+    (forall ys zs : list A, app (app xs ys) zs = app xs (app ys zs)) ->
+    forall ys zs : list A, app (app (a :: xs) ys) zs = app (a :: xs) (app ys zs)
+  ).
 
   Lemma app_assoc : 
     forall xs ys zs, app (app xs ys) zs = app xs (app ys zs).
-  Admitted.
+  Proof.
+    pose proof app_nil.
+    pose proof app_cons.
+    pose proof app_nil_r.
+    induction xs; revert_all.
+    - 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_assoc_nil. 
+      check_goal_unsat.
+    - 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_assoc_cons. 
+      check_goal_unsat.
+  Qed.
 
   MetaCoq Quote Definition rev_app_nil := (
     (forall l : list A, app l [] = l) ->
@@ -424,3 +472,37 @@ my_rev (my_rev []) = []
       reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf tail_app_rev_cons.
       check_goal_unsat.
   Qed.
+
+  MetaCoq Quote Definition my_app_sound_term := (
+    (forall acc : list A, tail_app acc [] = acc) ->
+    (forall (acc : list A) (x : A) (xs : list A),
+     tail_app acc (x :: xs) = tail_app (x :: acc) xs) ->
+    my_rev [] = [] ->
+    (forall (x : A) (xs : list A), my_rev (x :: xs) = app (my_rev xs) [x]) ->
+    (forall xs : list A, app [] xs = xs) ->
+    (forall (x : A) (xs ys : list A), app (x :: xs) ys = x :: app xs ys) ->
+    (forall l : list A, my_rev (my_rev l) = l) ->
+    (forall l acc : list A, tail_app acc l = app (my_rev l) acc) ->
+    forall l r : list A, tail_app r (my_rev l) = app l r
+  ).
+
+  Theorem my_app_sound:
+    forall l r,
+      my_app l r = app l r.
+  Proof.
+    pose proof tail_app_nil.
+    pose proof tail_app_cons.
+    pose proof my_rev_nil.
+    pose proof my_rev_cons.
+    pose proof app_nil.
+    pose proof app_cons.
+    pose proof rev_rev.
+    pose proof tail_app_rev.
+    revert_all.
+    unfold my_app.
+    reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf my_app_sound_term.
+    check_goal_unsat.
+  Qed.
+
+End ListFuncs.
+  

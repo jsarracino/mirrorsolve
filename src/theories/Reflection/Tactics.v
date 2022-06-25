@@ -18,6 +18,12 @@ Require Import MirrorSolve.Utils.
 
 Set Universe Polymorphism.
 
+Fixpoint trim_prefix {A} (l: list (option A)) : list (option A) := 
+  match l with 
+  | None :: l => trim_prefix l
+  | _ => l
+  end.
+
 Section Tactics.
   Variable (s: signature).
   Variable (m: model s).
@@ -49,7 +55,7 @@ Section Tactics.
     | t :: ts => fun _ '(args, arg) f => apply_denote_func ts args (f arg)
     end.
 
-  Record fun_sym := {
+  Record fun_sym := Mk_fun_sym {
     args: list sorts;
     ret: sorts;
     deep_f: s.(sig_funs) args ret; 
@@ -193,7 +199,7 @@ Section Tactics.
   Definition denote_tac (tac: tac_syn) (opt_args : list (option ({ty & mod_sorts ty}))) (t: term) : option ({ty & mod_sorts ty}) :=
     match tac with 
     | tacFun fs => 
-      match denote_tac_args (fs.(args)) opt_args with 
+      match denote_tac_args (fs.(args)) (trim_prefix opt_args) with 
       | Some wrapped_args => Some (existT _ fs.(ret) (apply_denote_func _ wrapped_args (conv_fun (s.(mod_fns) _ _ _ fs.(deep_f)))))
       | None => None
       end
@@ -227,6 +233,7 @@ Section Tactics.
       end;
     denote_tm mtacs t r_args := denote_mtacs mtacs t r_args.
 
+
   Fixpoint extract_args {c: ctx s} (arg_tys : list sorts) (r_args: list (option ({srt & tm s c srt}))) : option (HList.t (tm s c) arg_tys) :=
     match arg_tys with 
     | nil => 
@@ -255,7 +262,7 @@ Section Tactics.
     end.
 
   Definition extract_fun {c: ctx s} (fs: fun_sym) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) :=
-    match extract_args fs.(args) r_args with 
+    match extract_args fs.(args) (trim_prefix r_args) with 
     | Some fargs => Some (existT _ _ (TFun s fs.(deep_f) fargs))
     | None => None
     end.
@@ -414,15 +421,22 @@ Section Tactics.
 End Tactics.
 
 
-Ltac reflect_goal s m sed mt mi wf t := 
+Ltac extract_goal s m sed mt mi wf t := 
   let H := fresh "H" in 
   pose proof (@denote_extract_specialized s m sed mt mi wf (reindex_vars t)) as H;
   let f := fresh "fm" in 
   evar (f: FirstOrder.fm s (SLNil _));
   specialize (H f);
   destruct H; [
-    subst f; exact eq_refl |
-  ];
+    subst f; try exact eq_refl |
+  ]; try (
+    vm_compute in f;
+    subst f
+  ).
+
+Ltac reflect_goal s m sed mt mi wf t := 
+  extract_goal s m sed mt mi wf t;
+  let n:= numgoals in guard n<2;
   let H' := fresh "H'" in
   match goal with 
   | H: interp_fm _ _ -> ?X |- ?G => 
@@ -432,9 +446,7 @@ Ltac reflect_goal s m sed mt mi wf t :=
   match goal with 
   | H: _ -> ?X |- _ => 
     eapply H
-  end;
-  vm_compute in f;
-  subst f.
+  end.
 
 (* 
 Transparent denote_tm.

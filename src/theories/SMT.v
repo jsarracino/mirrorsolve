@@ -3,11 +3,13 @@ Require Import Coq.Strings.String.
 Inductive smt_sort := 
   | SInt : unit -> smt_sort
   | SBool : unit -> smt_sort
-  | SBitVector : unit -> smt_sort.
+  | SBitVector : unit -> smt_sort
+  | SCustom : string -> smt_sort.
 
 Register SInt as ms.core.smt_int.
 Register SBool as ms.core.smt_bool.
 Register SBitVector as ms.core.smt_bv.  
+Register SCustom as ms.core.smt_custom.  
 
 Inductive smt_ind_base := 
   | SIRec 

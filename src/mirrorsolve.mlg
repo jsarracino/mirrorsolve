@@ -120,6 +120,30 @@ TACTIC EXTEND ViewSMTTactic
     | Other msg -> fail ("Broken query: " ^ msg)
     end
   }
+| [ "check_unsat_pos" constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let fail s = Tacticals.New.tclFAIL 0 (Pp.str s) in
+    let query = Main.check_interp (EConstr.to_constr sigma e) false in
+
+    begin match Smt.run_smt query with 
+    | SAT -> fail "SAT smt query"
+    | UNSAT -> Proofview.tclUNIT ()
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
+  }
+| [ "check_unsat_neg" constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let fail s = Tacticals.New.tclFAIL 0 (Pp.str s) in
+    let query = Main.check_interp (EConstr.to_constr sigma e) true in
+
+    begin match Smt.run_smt query with 
+    | SAT -> fail "SAT smt query"
+    | UNSAT -> Proofview.tclUNIT ()
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
+  }
 END
 
 

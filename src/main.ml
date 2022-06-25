@@ -110,7 +110,8 @@ let c_vhere () = get_coq "ms.core.vhere"
 let c_vthere () = get_coq "ms.core.vthere"
 let c_int_sort = get_coq "ms.core.smt_int"
 let c_bool_sort = get_coq "ms.core.smt_bool"
-let c_bv_sort () = get_coq "ms.bv.s_bv"
+let c_bv_sort () = get_coq "ms.bv.smt_bv"
+let c_cust_sort () = get_coq "ms.core.smt_custom"
 
 let c_si_rec = get_coq "ms.core.smt_ind_rec"
 let c_si_sort = get_coq "ms.core.smt_ind_sort"
@@ -238,41 +239,6 @@ let c_binnat_to_int (e: C.t) : int =
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected 0 or pos in binnat_to_int"
 
-type sort = 
-  | Smt_bv of int option
-  | Smt_int
-  | Smt_bool 
-  | Custom_sort of string
-
-type func_decl = {
-  arg_tys : sort list;
-  ret_ty : sort;
-  name: string;
-}
-
-let valid_sort (s: sort) : bool = 
-  begin match s with 
-  | Smt_bv (Some n) -> n > 0
-  | Smt_bv None -> false
-  | Custom_sort s -> 
-    String.length s > 0 && s.[0] = Char.uppercase_ascii s.[0]
-  | Smt_int 
-  | Smt_bool -> true
-  end
-let pretty_sort (s: sort) : string = 
-  begin match s with 
-  | Smt_bv (Some n) -> Format.sprintf "(_ BitVec %n)" n
-  | Smt_bv None -> raise bedef
-  | Smt_int -> "Int"
-  | Smt_bool -> "Bool"
-  | Custom_sort s -> s
-  end
-
-  let conv_sort (e: C.t) : sort option = 
-    if equal_ctor e (fun _ -> c_int_sort) then Some Smt_int 
-    else if equal_ctor e (fun _ -> c_bool_sort) then Some Smt_bool
-    else if equal_ctor e c_bv_sort then Some (Smt_bv None)
-    else None
 
 let rec interp_digs (bs: bool list) : int = 
   begin match bs with 
@@ -318,6 +284,46 @@ let rec extract_str_list (e: C.t) : char list =
 
 let extract_str (e: C.t) : string = 
   String.of_seq @@ List.to_seq @@ extract_str_list e
+
+type sort = 
+  | Smt_bv of int option
+  | Smt_int
+  | Smt_bool 
+  | Custom_sort of string
+
+type func_decl = {
+  arg_tys : sort list;
+  ret_ty : sort;
+  name: string;
+}
+
+let valid_sort (s: sort) : bool = 
+  begin match s with 
+  | Smt_bv (Some n) -> n > 0
+  | Smt_bv None -> false
+  | Custom_sort s -> 
+    String.length s > 0 && s.[0] = Char.uppercase_ascii s.[0]
+  | Smt_int 
+  | Smt_bool -> true
+  end
+let pretty_sort (s: sort) : string = 
+  begin match s with 
+  | Smt_bv (Some n) -> Format.sprintf "(_ BitVec %n)" n
+  | Smt_bv None -> raise bedef
+  | Smt_int -> "Int"
+  | Smt_bool -> "Bool"
+  | Custom_sort s -> s
+  end
+
+  let conv_sort (e: C.t) (args: C.t Array.t) : sort option = 
+    if equal_ctor e c_cust_sort then Some (Custom_sort (extract_str @@ a_last args))
+    else if equal_ctor e (fun _ -> c_int_sort) then Some Smt_int 
+    else if equal_ctor e (fun _ -> c_bool_sort) then Some Smt_bool
+    else if equal_ctor e c_bv_sort then Some (Smt_bv None)
+    else 
+      let _ = Feedback.msg_debug @@ Pp.str "unhanded case for:" in 
+      let _ = Feedback.msg_debug @@ Constr.debug_print e in 
+      None
 
 let sort_tbl : (Names.constructor, sort) Hashtbl.t = 
   Hashtbl.create 5 
@@ -550,8 +556,8 @@ let extract_ind_base (base: sort) (e: C.t) =
   if C.isApp e then 
     (* SISort <sort> *)
     let f, es = C.destApp e in 
-    let ctor, _ = C.destApp @@ a_last es in 
-    begin match conv_sort @@ ctor with 
+    let ctor, args = C.destApp @@ a_last es in 
+    begin match conv_sort ctor args with 
     | Some s -> s
     | None -> 
       let _ = Feedback.msg_debug @@ Pp.str "couldn't convert sort for:" in 
@@ -960,7 +966,7 @@ let reg_sort (l: EConstr.t) (r: EConstr.t) : unit =
   let sigma = Evd.from_env env in
   let le = EConstr.to_constr sigma l in 
   let re = EConstr.to_constr sigma r in 
-    begin match conv_sort re with 
+    begin match conv_sort re [||] with 
     | Some x -> add_sort le x
     | None -> raise bedef
     end

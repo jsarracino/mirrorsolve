@@ -87,7 +87,7 @@ Section BVFOL.
 
 End BVFOL.
 
-Register BV as ms.bv.s_bv.
+Register BV as ms.bv.smt_bv.
 
 Register BVLit as ms.bv.f_lit.
 Register BVCat as ms.bv.f_cat.

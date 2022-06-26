@@ -244,42 +244,20 @@ MetaCoq Quote Definition t_e := e.
 
 Local Obligation Tactic := solve_uf_membership.
 
-Program Definition match_tacs : list ((term -> bool) * tac_syn sig' group_uf_model) := [
-  ( eq_term t_f, tacFun _ _ {| deep_f := UFun (s := "op") sig symbs _ |} ); 
-  ( eq_term t_i, tacFun _ _ {| deep_f := UFun (s := "inv") sig symbs _ |} );
-  ( eq_term t_e, tacFun _ _ {| deep_f := UFun (s := "e") sig symbs _ |} )
+Notation uf op := (tacFun _ _ (Mk_fun_sym sig' _ _ (UFun (s := op) sig symbs ltac:(solve_uf_membership)))).
+
+Definition match_tacs : list ((term -> bool) * tac_syn sig' group_uf_model) := [
+    ( eq_term t_f, uf "op")
+  ; ( eq_term t_i, uf "inv" )
+  ; ( eq_term t_e, uf "e")
   ].
 
 MetaCoq Quote Definition g_ind := (G).
 
 (* This is an analogous match but for reflecting Coq types into FOL sorts. *)
-Definition match_inds : list (term * Groups.sorts) := [
-    (g_ind, G')
+Definition match_inds : list ((term -> bool) * Groups.sorts) := [
+    (eq_term g_ind, G')
   ].
-
-Program Definition mt_wf: match_tacs_wf sig' group_uf_model sorts_eq_dec match_tacs := {| 
-  match_tacs_sound_some := _;
-  match_tacs_sound_none := _;
-|}.
-Admit Obligations.
-(* Next Obligation.
-  repeat match goal with 
-  | H: _ \/ _ |- _ => 
-    destruct H
-  | H: False |- _ => 
-    inversion H
-  end.
-  inversion H.
-  simpl in *;
-  subst;
-  repeat match goal with 
-  | |- (if ?X then _ else _) = _ => 
-    destruct X eqn:?; simpl in *; try congruence
-  | |- match ?X with | Some _ => _ | None => _ end = _ => 
-    destruct X eqn:?; simpl in *; try congruence
-  end.
-Admit Obligations. *)
-
 
 (* Next we configure the backend solver. We need to tell the OCaml backend about: 
    A custom sort symbol for the Groups.G' sort;
@@ -298,10 +276,14 @@ Transparent denote_tm.
 
 Require Import MirrorSolve.Axioms. (* trust the SMT solver in a typesafe way *)
 
+
 Ltac check_goal := 
   match goal with 
-  | |- ?G => check_interp_pos G; eapply UnsoundAxioms.interp_true
+  | |- ?G => check_unsat_neg G; eapply UnsoundAxioms.interp_true
   end.
+
+SetSMTSolver "z3".
+
 
 MetaCoq Quote Definition unique_id_term := (
   (forall a b c, a <+> b <+> c = a <+> (b <+> c)) -> (* associativity axiom *)
@@ -316,15 +298,17 @@ Lemma unique_id' :
   (forall a, a <+> i a = e) -> 
   (forall a, a <+> a = a -> a = e).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf unique_id_term.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds unique_id_term.
   check_goal.
 Qed.
 
 MetaCoq Quote Definition inv_l_term := (
-  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
-  (forall a, a <+> e = a) ->
-  (forall a, a <+> i a = e) ->
-  (forall a, i a <+> a = e)
+  ((forall a b c : G, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a : G, a <+> e = a) ->
+  (forall a : G, a <+> i a = e) -> forall a : G, a <+> a = a -> a = e) ->
+ (forall a b c : G, a <+> b <+> c = a <+> (b <+> c)) ->
+ (forall a : G, a <+> e = a) ->
+ (forall a : G, a <+> i a = e) -> forall a : G, i a <+> a = e
 ).
 
 Lemma inv_l' : 
@@ -333,15 +317,20 @@ Lemma inv_l' :
   (forall a, a <+> i a = e) ->
   (forall a, i a <+> a = e).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf inv_l_term.
+  pose proof unique_id'.
+  Utils.revert_all.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds inv_l_term.
+  
   check_goal.
 Qed.
 
 MetaCoq Quote Definition id_l_term := (
-  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
-  (forall a, a <+> e = a) ->
-  (forall a, a <+> i a = e) ->
-  (forall a, e <+> a = a)
+  ((forall a b c : G, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a : G, a <+> e = a) ->
+  (forall a : G, a <+> i a = e) -> forall a : G, i a <+> a = e) ->
+ (forall a b c : G, a <+> b <+> c = a <+> (b <+> c)) ->
+ (forall a : G, a <+> e = a) ->
+ (forall a : G, a <+> i a = e) -> forall a : G, e <+> a = a
 ).
 
 Lemma id_l' : 
@@ -350,17 +339,21 @@ Lemma id_l' :
   (forall a, a <+> i a = e) ->
   (forall a, e <+> a = a).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf id_l_term.
+  pose proof inv_l'.
+  Utils.revert_all.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds id_l_term.
   check_goal.
 Qed.
 
 MetaCoq Quote Definition cancel_r_term := (
-  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
-  (forall a, a <+> e = a) ->
-  (forall a, a <+> i a = e) ->
-  (forall a b x, a <+> x = b <+> x -> a = b)
+  ((forall a b c : G, a <+> b <+> c = a <+> (b <+> c)) ->
+  (forall a : G, a <+> e = a) ->
+  (forall a : G, a <+> i a = e) -> forall a : G, i a <+> a = e) ->
+ (forall a b c : G, a <+> b <+> c = a <+> (b <+> c)) ->
+ (forall a : G, a <+> e = a) ->
+ (forall a : G, a <+> i a = e) ->
+ forall a b x : G, a <+> x = b <+> x -> a = b
 ).
-
 
 Lemma cancel_r' : 
   (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
@@ -368,15 +361,23 @@ Lemma cancel_r' :
   (forall a, a <+> i a = e) ->
   (forall a b x, a <+> x = b <+> x -> a = b).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf cancel_r_term.
+  pose proof inv_l'; Utils.revert_all.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds cancel_r_term.
   check_goal.
 Qed.
   
 MetaCoq Quote Definition cancel_l_term := (
-  (forall a b c, a <+> b <+> c = a <+> (b <+> c)) ->
-  (forall a, a <+> e = a) ->
-  (forall a, a <+> i a = e) ->
-  (forall a b x, x <+> a = x <+> b -> a = b)
+  ((forall a b c : G, a <+> b <+> c = a <+> (b <+> c)) ->
+ (forall a : G, a <+> e = a) ->
+ (forall a : G, a <+> i a = e) -> forall a : G, i a <+> a = e) ->
+((forall a b c : G, a <+> b <+> c = a <+> (b <+> c)) ->
+ (forall a : G, a <+> e = a) ->
+ (forall a : G, a <+> i a = e) ->
+ forall a b x : G, a <+> x = b <+> x -> a = b) ->
+(forall a b c : G, a <+> b <+> c = a <+> (b <+> c)) ->
+(forall a : G, a <+> e = a) ->
+(forall a : G, a <+> i a = e) ->
+forall a b x : G, x <+> a = x <+> b -> a = b
 ).
 
 Lemma cancel_l' : 
@@ -385,7 +386,10 @@ Lemma cancel_l' :
   (forall a, a <+> i a = e) ->
   (forall a b x, x <+> a = x <+> b -> a = b).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf cancel_l_term.
+  pose proof inv_l'; 
+  pose proof cancel_r';
+  Utils.revert_all.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds cancel_l_term.
   check_goal.
 Qed.
 
@@ -402,7 +406,7 @@ Lemma eq_uniq_l' :
   (forall a, a <+> i a = e) ->
   (forall a p, p <+> a = a -> p = e).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf eq_uniq_l_term.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds eq_uniq_l_term.
   check_goal.
 Qed.
 
@@ -419,7 +423,7 @@ Lemma inv_uniq_l' :
   (forall a, a <+> i a = e) ->
   (forall a b, a <+> b = e -> a = i b).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf inv_uniq_l_term.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds inv_uniq_l_term.
   check_goal.
 Qed.
 
@@ -436,7 +440,7 @@ Lemma inv_uniq_r' :
   (forall a, a <+> i a = e) ->
   (forall a p, a <+> p = a -> p = e).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf inv_uniq_r_term.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds inv_uniq_r_term.
   check_goal.
 Qed.
 
@@ -453,7 +457,7 @@ Lemma inv_distr' :
   (forall a, a <+> i a = e) ->
   (forall a b, i (a <+> b) = i b <+> i a).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf inv_distr_term.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds inv_distr_term.
   check_goal.
 Qed.
 
@@ -470,7 +474,7 @@ Lemma double_inv' :
   (forall a, a <+> i a = e) ->
   (forall a, i (i a) = a).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf double_inv_term.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds double_inv_term.
   check_goal.
 Qed.
 
@@ -488,6 +492,6 @@ Lemma id_inv' :
   (forall a, a <+> i a = e) ->
   ( i e = e).
 Proof.
-  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds mt_wf id_inv_term.
+  reflect_goal (UF.sig sig symbs) group_uf_model sorts_eq_dec match_tacs match_inds id_inv_term.
   check_goal.
 Qed.

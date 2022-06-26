@@ -195,16 +195,10 @@ Section ListFuncs.
   MetaCoq Quote Definition list_sort := (list A).
 
   (* This is an analogous match but for reflecting Coq types into FOL sorts. *)
-  Definition match_inds : list (term * FOList.sorts) := [
-      (t_sort, TS)
-    ; (list_sort, LS)
+  Definition match_inds : list ((term -> bool) * FOList.sorts) := [
+      (eq_term t_sort, TS)
+    ; (eq_term list_sort, LS)
   ].
-
-  Program Definition mt_wf: match_tacs_wf sig' list_uf_model sorts_eq_dec match_tacs := {| 
-    match_tacs_sound_some := _;
-    match_tacs_sound_none := _;
-  |}.
-  Admit Obligations.
 
 
   Local Declare ML Module "mirrorsolve".
@@ -235,12 +229,6 @@ Section ListFuncs.
     | |- ?G => check_unsat_neg G; eapply UnsoundAxioms.interp_true
     end.
 
-  Ltac revert_all := 
-    repeat match goal with 
-    | H : _ |- _ => 
-      revert H
-    end.
-
   MetaCoq Quote Definition app_app_nil := (
     (forall (x : A) (xs ys : list A), app (x :: xs) ys = x :: app xs ys) ->
 (forall xs : list A, app [] xs = xs) ->
@@ -264,14 +252,14 @@ forall (a : A) (r : list A), app (app [] [a]) r = app [] (a :: r)
 
     pose proof app_cons.
     pose proof app_nil. 
-    revert_all.
-    induction l; revert_all.
+    Utils.revert_all.
+    induction l; Utils.revert_all.
     
     - 
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_app_nil. 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds app_app_nil. 
       check_goal_unsat.
     -
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_app_cons. 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds app_app_cons. 
       check_goal_unsat.
   Qed.
 
@@ -287,17 +275,18 @@ app [] [] = []
     forall (a : A) (l : list A), app l [] = l -> app (a :: l) [] = a :: l
   ).
 
+  (* hammer works for this one *)
   Lemma app_nil_r : 
     forall l, app l [] = l.
   Proof.
     pose proof app_nil.
     pose proof app_cons.
-    induction l; revert_all.
+    induction l; Utils.revert_all.
     - 
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_nil_r_nil. 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds app_nil_r_nil. 
       check_goal_unsat.
     - 
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_nil_r_cons. 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds app_nil_r_cons. 
       check_goal_unsat.
   Qed.
 
@@ -317,18 +306,19 @@ forall ys zs : list A, app (app [] ys) zs = app [] (app ys zs)
     forall ys zs : list A, app (app (a :: xs) ys) zs = app (a :: xs) (app ys zs)
   ).
 
+  (* hammer works for this one *)
   Lemma app_assoc : 
     forall xs ys zs, app (app xs ys) zs = app xs (app ys zs).
   Proof.
     pose proof app_nil.
     pose proof app_cons.
     pose proof app_nil_r.
-    induction xs; revert_all.
+    induction xs; Utils.revert_all.
     - 
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_assoc_nil. 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds app_assoc_nil. 
       check_goal_unsat.
     - 
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf app_assoc_cons. 
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds app_assoc_cons. 
       check_goal_unsat.
   Qed.
 
@@ -353,28 +343,27 @@ forall ys zs : list A, app (app [] ys) zs = app [] (app ys zs)
   ).
   
 
-  (* hammer does not work for the inductive case here *)
+  (* hammer does not work for the inductive case *)
   Lemma rev_app : 
     forall l r, 
       my_rev (app l r) = app (my_rev r) (my_rev l).
   Proof.
-    (* induction l; try hammer.
-    Restart. *)
+    (* induction l; try hammer. *)
     pose proof my_rev_nil.
     pose proof my_rev_cons.
     pose proof app_nil.
     pose proof app_cons.
-    revert_all.
-    induction l; revert_all.
+    Utils.revert_all.
+    induction l; Utils.revert_all.
     - 
       pose proof app_nil_r.
-      revert_all.
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf rev_app_nil. 
+      Utils.revert_all.
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds rev_app_nil. 
       check_goal_unsat.
     - 
       pose proof app_assoc.
-      revert_all.
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf rev_app_cons. 
+      Utils.revert_all.
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds rev_app_cons. 
       check_goal_unsat.
   Qed.
 
@@ -399,24 +388,26 @@ my_rev (my_rev []) = []
   ).
 
 
+  (* hammer works for this one *)
   Lemma rev_rev : 
     forall (l : list A), 
       my_rev (my_rev l) = l.
   Proof.
+    (* induction l; try hammer. *)
     pose proof my_rev_nil.
     pose proof my_rev_cons.
     pose proof app_nil.
     pose proof app_cons.
-    induction l; revert_all.
+    induction l; Utils.revert_all.
     - 
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf rev_rev_nil.
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds rev_rev_nil.
       check_goal_unsat.
     - 
       pose proof rev_app.
       pose proof app_assoc.
       pose proof app_nil_r.
-      revert_all.
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf rev_rev_cons.
+      Utils.revert_all.
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds rev_rev_cons.
       
       check_goal_unsat.
   Qed.
@@ -448,28 +439,30 @@ my_rev (my_rev []) = []
     (forall acc : list A, tail_app acc l = app (my_rev l) acc) ->
     forall acc : list A, tail_app acc (a :: l) = app (my_rev (a :: l)) acc
   ).
-
+ 
+  (* hammer does not work for the inductive case *)
   Lemma tail_app_rev : 
     forall (l: list A) acc, 
       tail_app acc l = app (my_rev l) acc.
   Proof.
+    (* induction l; try hammer. *)
     pose proof tail_app_nil.
     pose proof tail_app_cons.
     pose proof my_rev_nil.
     pose proof my_rev_cons.
     pose proof app_nil.
     pose proof app_cons.
-    induction l; revert_all.
+    induction l; Utils.revert_all.
     - 
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf tail_app_rev_nil.
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds tail_app_rev_nil.
       check_goal_unsat.
     - 
       pose proof rev_app.
       pose proof app_assoc.
       pose proof app_nil_r.
       pose proof rev_rev.
-      revert_all.
-      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf tail_app_rev_cons.
+      Utils.revert_all.
+      reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds tail_app_rev_cons.
       check_goal_unsat.
   Qed.
 
@@ -486,10 +479,12 @@ my_rev (my_rev []) = []
     forall l r : list A, tail_app r (my_rev l) = app l r
   ).
 
+  (* hammer works for this one *)
   Theorem my_app_sound:
     forall l r,
       my_app l r = app l r.
   Proof.
+    (* unfold my_app; try hammer. *)
     pose proof tail_app_nil.
     pose proof tail_app_cons.
     pose proof my_rev_nil.
@@ -498,9 +493,9 @@ my_rev (my_rev []) = []
     pose proof app_cons.
     pose proof rev_rev.
     pose proof tail_app_rev.
-    revert_all.
+    Utils.revert_all.
     unfold my_app.
-    reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds mt_wf my_app_sound_term.
+    reflect_goal (UF.sig sig symbs) list_uf_model sorts_eq_dec match_tacs match_inds my_app_sound_term.
     check_goal_unsat.
   Qed.
 

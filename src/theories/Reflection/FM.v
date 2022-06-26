@@ -18,13 +18,20 @@ MetaCoq Quote Definition c_or := @or.
 MetaCoq Quote Definition c_and := @and.
 
 
+Print tConstruct.
+
 Fixpoint dec_vars (d: nat) (t: term) : term :=
   match t with
   | tRel n => if (Nat.leb d n) then tRel (n - 1) else tRel n
   | tCast from kind to => 
     tCast (dec_vars d from) kind (dec_vars d to)
   | tProd na ty body => 
-    tProd na (dec_vars d ty) (dec_vars (S d) body)
+    let d' := 
+      match na.(binder_name) with 
+      | nAnon => d
+      | _ => S d
+      end in
+    tProd na (dec_vars d ty) (dec_vars d' body)
   | tLambda na ty body => 
     tLambda na (dec_vars d ty) (dec_vars (S d) body)
   | tLetIn na def def_ty body =>

@@ -413,28 +413,22 @@ Some (x; interp_tm v tm).
     + erewrite H3; eauto.
       eapply iff_refl.
   - simpl in *.
-    repeat (destruct (eq_term _ _)); 
+    repeat destruct (eq_inductive _ _);
     (try now congruence);
     repeat match goal with 
     | H: Some _ = Some _ |- _ => 
       erewrite some_prop in H; subst
     | H: Some _ = Some _ |- _ => 
-      inversion H; subst
+      inversion H; subst; clear H
     end;
     autorewrite with interp_fm;
     eapply iff_refl.
-
   - simpl in *.
-    repeat (destruct (eq_term _ _)); 
-    (try now congruence);
     repeat match goal with 
-    | H: Some _ = Some _ |- _ => 
-      erewrite some_prop in H; subst
-    | H: Some _ = Some _ |- _ => 
-      inversion H; subst
+    | H: (_ × _) |- _ => 
+      destruct H
     end;
-    autorewrite with interp_fm;
-    eapply iff_refl.
+    congruence.
   Qed. 
 
 

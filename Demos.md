@@ -16,6 +16,8 @@ The general formula is to first define a FOL signature, and then make use of Mir
 
 One caveat: before running the following code, make sure that you have built and installed MirrorSolve using `dune build` and `dune install`. 
  
+TODO, Warning: These demos were written at commit `e93d46d76edb06499360e41f8fdf1041b90dcde8` and are currently out of date. 
+
 # Groups
 Our first example is drawn from abstract algebra, specifically group theory. 
 For the inspiration for this example, please see Arjun Guha's [interesting assignment here](https://people.cs.umass.edu/~arjun/courses/cs691pl-spring2014/assignments/groups.html) (which is itself inspired by Adam Chlipala's book on Certified Programming with Dependent Types, CPDT).
@@ -31,6 +33,7 @@ Groups also come equipped with three axioms:
   3. `inv x` is a right-inverse for `x`, i.e. `forall x, op x (inv x) = e`.
 
 We model these straightforwardly in Coq using parameters and axioms in [tests/Groups.v](tests/Groups.v), lines 9-30. We also solve several group theory examples from Arjun's assignment using plain Ltac (through line 160). 
+
 While these proofs are not terribly difficult,
 it turns out that modern SMT solvers can straightforwardly discharge all of these goals,
 and we will develop an SMT theory using MirrorSolve that will automatically handle all of them.

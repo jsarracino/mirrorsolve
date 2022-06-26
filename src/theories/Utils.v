@@ -21,3 +21,15 @@ Proof.
   erewrite H0.
   eapply iff_refl.
 Qed.
+
+Ltac revert_all := 
+  repeat match goal with 
+  | H : _ |- _ => 
+    revert H
+  end.
+
+Ltac pose_all Pfs := 
+  match Pfs with 
+  | (?Pfs', ?Pf) => pose proof Pf; pose_all Pfs'
+  | _ => idtac
+  end.

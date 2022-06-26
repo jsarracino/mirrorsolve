@@ -303,22 +303,15 @@ Section Tactics.
     extract_t2tm mtacs t r_args := extract_mtacs c mtacs t r_args.
 
 
-  Fixpoint i2srt (minds: list (term * sorts)) (t: term) : option sorts :=
+  Fixpoint i2srt (minds: list ((term -> bool) * sorts)) (t: term) : option sorts :=
     match minds with 
     | nil => None
-    | (tInd x _, srt) :: minds => 
-      match t with 
-      | tInd i _ => 
-        if eq_inductive x i then Some srt
-        else i2srt minds t
-      | _ => None
-      end
-    | (t', srt) :: minds => 
-      if eq_term t t' then Some srt else i2srt minds t
+    | (f, srt) :: minds => 
+      if f t then Some srt else i2srt minds t
     end.
 
   Variable match_tacs : list ((term -> bool) * tac_syn).
-  Variable match_inds : list (term * sorts).
+  Variable match_inds : list ((term -> bool) * sorts).
 
   Record match_tacs_wf := {
       match_tacs_sound_some: 
@@ -333,8 +326,40 @@ Section Tactics.
           extract_mtac c test t er = None ->
           denote_mtac test t el = None
     }.
+  
+  Program Definition mt_wf : match_tacs_wf := {| match_tacs_sound_some := _; match_tacs_sound_none := _|}.
+  Next Obligation.
+  destruct test.
+  simpl in *.
+  destruct (b t) eqn:?; [|congruence].
+  induction t0; simpl in *.
+  - admit.
+  - destruct (denote_lit _ _ ) eqn:?; [|congruence].
+    inversion H0.
+    admit.
+  Admitted.
+  Next Obligation.
+  destruct test.
+  simpl in *.
+  destruct (b t) eqn:?; [|congruence].
+  induction t0; simpl in *.
+  - destruct fs.
+    simpl in *.
+    unfold extract_fun in H0.
+    simpl in *.
+    induction args0; simpl in *.
+    (* TODO: some relation between el/er and trim_prefix el/er *)
+    + 
+      destruct (trim_prefix er) eqn:?; try congruence.
+      destruct (trim_prefix el); [exfalso; admit|].
+      trivial.
+    + admit.
 
-  Variable (mt_wf: match_tacs_wf).
+  - destruct (denote_lit _ _) eqn:?; congruence.
+  Admitted.
+
+
+  (* Variable (mt_wf: match_tacs_wf). *)
 
 
   Lemma extract_denote_mtacs_some:
@@ -421,9 +446,9 @@ Section Tactics.
 End Tactics.
 
 
-Ltac extract_goal s m sed mt mi wf t := 
+Ltac extract_goal s m sed mt mi t := 
   let H := fresh "H" in 
-  pose proof (@denote_extract_specialized s m sed mt mi wf (reindex_vars t)) as H;
+  pose proof (@denote_extract_specialized s m sed mt mi (reindex_vars t)) as H;
   let f := fresh "fm" in 
   evar (f: FirstOrder.fm s (SLNil _));
   specialize (H f);
@@ -434,8 +459,8 @@ Ltac extract_goal s m sed mt mi wf t :=
     subst f
   ).
 
-Ltac reflect_goal s m sed mt mi wf t := 
-  extract_goal s m sed mt mi wf t;
+Ltac reflect_goal s m sed mt mi t := 
+  extract_goal s m sed mt mi t;
   let n:= numgoals in guard n<2;
   let H' := fresh "H'" in
   match goal with 

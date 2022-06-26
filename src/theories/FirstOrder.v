@@ -507,6 +507,11 @@ Section FOL.
 
 End FOL.
 
+(* A helper for conditionals, to expose a metacoq term for if-then-else *)
+
+Definition ite {A} (t: bool) (l: A) (r: A) := if t then l else r.
+
+
 Arguments TVar {_ _ _}.
 Arguments TFun _ {_ _ _} _ _.
 Arguments FTrue {sig c}.

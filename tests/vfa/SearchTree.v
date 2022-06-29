@@ -41,47 +41,7 @@ Section Trees.
 
   Definition tree_model := FOLTrees.fm_model V.
 
-  Definition symbs : list (string * list (sig_sorts sig) * sig_sorts sig) := ([
-    ("lookup", [TS; ZS; TreeS], TS); 
-    ("insert", [ZS; TS; TreeS], TreeS); 
-    ("bound", [ZS; TreeS], BS) 
-  ]%string).
-
-  Lemma in_conv : forall {sym a r}, 
-    In (sym, a, r) symbs -> 
-    in_symbs sig sorts_eq_dec symbs sym a r = true.
-  Proof.
-    eapply UF.in_symbs_corr.
-  Defined.
-
   Import HListNotations.
-
-  (* Interpretation function for UF symbols. 
-    In order for the reflection machinery to work out, we need to provide an actual interpretation for the UF symbols (even though they will be discharged as UF symbols in SMT).  *)
-  Definition interp_syms (sym: string) (a: list (sig_sorts sig)) (r: sig_sorts sig) (H: In (sym, a, r) symbs) (args: HList.t (FirstOrder.mod_sorts sig tree_model) a) : FirstOrder.mod_sorts sig tree_model r.
-    pose proof in_conv H.
-    unfold in_symbs in H0.
-    simpl in H0.
-    repeat match goal with 
-    | H: (if (?L =? ?R)%string then _ else _) = _ |- _ => 
-      destruct (comp_str_eqb_spec L R)
-    | H: (if ?A then _ else _) = _ |- _ => 
-      destruct A eqn:?
-    end; try congruence;
-    subst;
-    repeat match goal with 
-    | X: HList.t _ _ |- _ => 
-      inversion X; subst; clear X
-    end.
-    - exact (lookup X X1 X0).
-    - exact (insert X X1 X0).
-    - exact (bound X X1).
-  Defined.
-
-  Definition tree_uf_model := UF.fm_model sig tree_model symbs interp_syms.
-
-  Notation sig' := (UF.sig sig symbs).
-
 
   Require Import MirrorSolve.Reflection.Core.
   Require Import MirrorSolve.Reflection.FM.
@@ -90,12 +50,17 @@ Section Trees.
   MetaCoq Quote Definition t_ite := @ite.
   MetaCoq Quote Definition t_zlt := @Z.ltb.
   MetaCoq Quote Definition t_glt := @Z.gtb.
+  MetaCoq Quote Definition t_zlt' := @Z.lt.
+  MetaCoq Quote Definition t_glt' := @Z.gt.
   MetaCoq Quote Definition t_emp := @Emp.
   MetaCoq Quote Definition t_node := @Node.
 
   MetaCoq Quote Definition t_insert := (@FOLTrees.insert V).
   MetaCoq Quote Definition t_lookup := (@FOLTrees.lookup V).
   MetaCoq Quote Definition t_bound := (@FOLTrees.bound V).
+  MetaCoq Quote Definition t_lt_t := (@FOLTrees.lt_t V).
+  MetaCoq Quote Definition t_gt_t := (@FOLTrees.gt_t V).
+  MetaCoq Quote Definition t_balanced := (@FOLTrees.balanced V).
 
   (* Some match tactics for the meta-interpreter. 
     The meta-interpreter converts these definitions into a reflection procedure between pure Coq goals and FOL terms in the UF + Lists combined theory. 
@@ -108,6 +73,11 @@ Section Trees.
   Definition is_insert t := eq_ctor t t_insert.
   Definition is_lookup t := eq_ctor t t_lookup.
   Definition is_bound t := eq_ctor t t_bound.
+  Definition is_lt_t t := eq_ctor t t_lt_t.
+  Definition is_gt_t t := eq_ctor t t_gt_t.
+  Definition is_balanced t := eq_ctor t t_balanced.
+  Definition is_zlt' t := eq_term t t_zlt'.
+  Definition is_zgt' t := eq_term t t_glt'.
 
   MetaCoq Quote Definition t_bool := (bool).
   MetaCoq Quote Definition t_Z := (Z).
@@ -135,22 +105,27 @@ Section Trees.
     | _ => false
     end.
 
-  Notation blit := (tacLit sig' tree_uf_model bool_lit).
+  Notation tac_bool := (tacLit sig tree_model bool_lit (fun b => (BS; b)) (fun b _ => (BS; TFun sig (b_lit b) hnil))).
+  Notation tac_fun f := (tacFun _ _ (Mk_fun_sym sig _ _ f)).
+  Notation tac_rel f := (tacRel _ _ (Mk_rel_sym sig _ f)).
 
-  Definition match_tacs : list ((term -> bool) * tac_syn sig' tree_uf_model) := [
-      ( is_emp, tacFun _ _ (Mk_fun_sym sig' _ _ (CFun _ symbs e_f)))
-    ; ( is_node, tacFun _ _ (Mk_fun_sym sig' _ _ (CFun _ symbs t_f)))
-    ; ( is_zlt, tacFun _ _ (Mk_fun_sym sig' _ _ (CFun _ symbs z_lt)))
-    ; ( is_zgt, tacFun _ _ (Mk_fun_sym sig' _ _ (CFun _ symbs z_gt)))
-    ; ( is_cond_b, tacFun _ _ (Mk_fun_sym sig' _ _ (CFun _ symbs cond_b)))
-    ; ( is_cond_t, tacFun _ _ (Mk_fun_sym sig' _ _ (CFun _ symbs cond_t)))
-    ; ( is_cond_tree, tacFun _ _ (Mk_fun_sym sig' _ _ (CFun _ symbs cond_tree)))
-    ; ( is_bool_term, blit 
-        (fun b => existT _ BS b) 
-        (fun b _ => existT _ BS (TFun sig' (CFun _ symbs (b_lit b)) hnil)))
-    ; ( is_lookup, tacFun _ _ (Mk_fun_sym sig' _ _ (UFun (s := "lookup") _ symbs ltac:(solve_uf_membership))))
-    ; ( is_bound, tacFun _ _ (Mk_fun_sym sig' _ _ (UFun (s := "bound") _ symbs ltac:(solve_uf_membership))))
-    ; ( is_insert, tacFun _ _ (Mk_fun_sym sig' _ _ (UFun (s := "insert") _ symbs ltac:(solve_uf_membership))))
+  Definition match_tacs : list ((term -> bool) * tac_syn sig tree_model) := [
+      ( is_emp, tac_fun e_f)
+    ; ( is_node, tac_fun t_f)
+    ; ( is_zlt, tac_fun z_lt)
+    ; ( is_zgt, tac_fun z_gt)
+    ; ( is_cond_b, tac_fun cond_b)
+    ; ( is_cond_t, tac_fun cond_t)
+    ; ( is_cond_tree, tac_fun cond_tree)
+    ; ( is_bool_term, tac_bool )
+    ; ( is_lookup, tac_fun lookup_f)
+    ; ( is_bound, tac_fun bound_f)
+    ; ( is_insert, tac_fun insert_f)
+    ; ( is_lt_t, tac_rel lt_t_r)
+    ; ( is_gt_t, tac_rel gt_t_r)
+    ; ( is_balanced, tac_rel balanced_r) 
+    ; ( is_zlt', tac_rel lt_z)
+    ; ( is_zgt', tac_rel gt_z)
   ].
 
   (* This is an analogous match but for reflecting Coq types into FOL sorts. *)
@@ -176,13 +151,24 @@ Section Trees.
   RegisterSMTUF "bound" BS ZS TreeS.
   RegisterSMTUF "lookup" TS TS ZS TreeS.
   RegisterSMTUF "insert" TreeS ZS TS TreeS.
+  RegisterSMTUF "lt_t" BS ZS TreeS.
+  RegisterSMTUF "gt_t" BS ZS TreeS.
+  RegisterSMTUF "balanced" BS TreeS.
 
   Transparent denote_tm.
 
   RegisterSMTFun FOLTrees.z_lt "<" 2.
   RegisterSMTFun FOLTrees.z_gt ">" 2.
+  RegisterSMTFun FOLTrees.lt_z "<" 2.
+  RegisterSMTFun FOLTrees.gt_z ">" 2.
   RegisterSMTFun FOLTrees.e_f "emp" 0.
   RegisterSMTFun FOLTrees.t_f "node" 4.
+  RegisterSMTFun FOLTrees.bound_f "bound" 2.
+  RegisterSMTFun FOLTrees.lookup_f "lookup" 3.
+  RegisterSMTFun FOLTrees.insert_f "insert" 3.
+  RegisterSMTFun FOLTrees.lt_t_r "lt_t" 2.
+  RegisterSMTFun FOLTrees.gt_t_r "gt_t" 2.
+  RegisterSMTFun FOLTrees.balanced_r "balanced" 1.
   RegisterSMTFun FOLTrees.cond_b "ite" 3.
   RegisterSMTFun FOLTrees.cond_t "ite" 3.
   RegisterSMTFun FOLTrees.cond_tree "ite" 3.
@@ -191,24 +177,20 @@ Section Trees.
 
   Require Import MirrorSolve.Axioms.
 
-  Ltac check_goal_sat := 
-    match goal with 
-    | |- ?G => check_interp_pos G; eapply UnsoundAxioms.interp_true
-    end.
   Ltac check_goal_unsat := 
     match goal with 
     | |- ?G => check_unsat_neg G; eapply UnsoundAxioms.interp_true
     end.
 
-  Locate pose_all.
-
   Ltac pose_lookup_axioms := Utils.pose_all (tt, @lookup_emp V, @lookup_node V).
   Ltac pose_bound_axioms := Utils.pose_all (tt, @bound_emp V, @bound_node V).
   Ltac pose_insert_axioms := Utils.pose_all (tt, @insert_emp V, @insert_node V).
+  Ltac pose_balanced_axioms := Utils.pose_all (tt, @lt_t_emp V, @lt_t_node V, @gt_t_emp V, @gt_t_node V, @balanced_emp V, @balanced_node V).
 
-  Ltac pose_tree_axioms := pose_lookup_axioms; pose_bound_axioms; pose_insert_axioms.
+  Ltac pose_tree_axioms := pose_lookup_axioms; pose_bound_axioms; pose_insert_axioms; pose_balanced_axioms.
 
-  Ltac prep_proof := pose_tree_axioms; Utils.revert_all; intros ?.
+  Ltac prep_proof := pose_tree_axioms; Utils.revert_all; intros V.
+  Ltac reflect t := reflect_goal sig tree_model sorts_eq_dec match_tacs match_inds t.
 
 (* ################################################################# *)
 (** * Correctness of BST Operations *)
@@ -256,27 +238,26 @@ Section Trees.
     These three basic equations specify the correct behavior of maps.
     Let's prove that they hold. *)
   MetaCoq Quote Definition lookup_empty_goal := (
-    (forall (d : V) (x : Z) (l : tree V) (y : Z) 
-    (v : V) (r : tree V),
-  lookup d x (Node l y v r) =
-  ite (x <? y)%Z (lookup d x l)
-    (ite (x >? y)%Z (lookup d x r) v)) ->
- (forall (d : V) (x : Z), lookup d x Emp = d) ->
- (forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-  bound x (Node l y v r) =
-  ite (x <? y)%Z (bound x l)
-    (ite (x >? y)%Z (bound x r) true)) ->
- (forall x : Z, bound x Emp = false) ->
- (forall (x : Z) (v : V) (l : tree V) (y : Z) 
-    (v' : V) (r : tree V),
-  insert x v (Node l y v' r) =
-  ite (x <? y)%Z (Node (insert x v l) y v' r)
-    (ite (x >? y)%Z (Node l y v' (insert x v r))
-       (Node l x v r))) ->
- (forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
- forall (d : V) (k : Z), lookup d k Emp = d
+    (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k l -> gt_t k r -> balanced (Node l k v r)) ->
+balanced Emp ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k)%Z -> gt_t k l -> gt_t k r -> gt_t k (Node l k' v r)) ->
+(forall k : Z, gt_t k Emp) ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k)%Z -> lt_t k l -> lt_t k r -> lt_t k (Node l k' v r)) ->
+(forall k : Z, lt_t k Emp) -> forall (d : V) (k : Z), lookup d k Emp = d
   ).
-
   (* MetaCoq Quote Definition  *)
 
   (* hammer handles this one (it's easy) *)
@@ -286,64 +267,12 @@ Section Trees.
       lookup d k Emp = d.
   Proof.
     prep_proof.
-    reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_empty_goal. 
+    reflect lookup_empty_goal; 
     check_goal_unsat.
   Admitted. (* some weird evaluation issue, can't QED... *)
 
 
   MetaCoq Quote Definition lookup_insert_emp := (
-    (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-    lookup d x (Node l y v r) =
-    ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-   (forall (d : V) (x : Z), lookup d x Emp = d) ->
-   (forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-    bound x (Node l y v r) =
-    ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-   (forall x : Z, bound x Emp = false) ->
-   (forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-    insert x v (Node l y v' r) =
-    ite (x <? y)%Z (Node (insert x v l) y v' r)
-      (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-   (forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-   forall (d : V) (k : Z) (v : V), lookup d k (insert k v Emp) = v
-  ).
-
-  MetaCoq Quote Definition lookup_insert_node := (
-    forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
-    (forall (d : V) (k0 : Z) (v0 : V), lookup d k0 (insert k0 v0 t1) = v0) ->
-    (forall (d : V) (k0 : Z) (v0 : V), lookup d k0 (insert k0 v0 t2) = v0) ->
-    (forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-     lookup d x (Node l y v0 r) =
-     ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-    (forall (d : V) (x : Z), lookup d x Emp = d) ->
-    (forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-     bound x (Node l y v0 r) =
-     ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-    (forall x : Z, bound x Emp = false) ->
-    (forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-     insert x v0 (Node l y v' r) =
-     ite (x <? y)%Z (Node (insert x v0 l) y v' r)
-       (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-    (forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-    forall (d : V) (k0 : Z) (v0 : V),
-    lookup d k0 (insert k0 v0 (Node t1 k v t2)) = v0
-  ).
-
-
-  (* hammer handles this one *)
-  Theorem lookup_insert_eq : 
-    forall (t : tree V) d k v,
-      lookup d k (insert k v t)  = v.
-  Proof.
-    induction t; prep_proof.
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_emp. 
-      check_goal_unsat.
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_node. 
-      check_goal_unsat.
-  Admitted.
-
-
-  MetaCoq Quote Definition lookup_insert_neq_emp := (
     (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
  lookup d x (Node l y v r) =
  ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
@@ -357,33 +286,113 @@ Section Trees.
  ite (x <? y)%Z (Node (insert x v l) y v' r)
    (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
 (forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-forall (d : V) (k k' : Z) (v : V),
-k <> k' -> lookup d k' (insert k v Emp) = lookup d k' Emp
+(forall (l : tree V) (k : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k l -> gt_t k r -> balanced (Node l k v r)) ->
+balanced Emp ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k)%Z -> gt_t k l -> gt_t k r -> gt_t k (Node l k' v r)) ->
+(forall k : Z, gt_t k Emp) ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k)%Z -> lt_t k l -> lt_t k r -> lt_t k (Node l k' v r)) ->
+(forall k : Z, lt_t k Emp) ->
+forall (d : V) (k : Z) (v : V), lookup d k (insert k v Emp) = v
+).
+
+  MetaCoq Quote Definition lookup_insert_node := (
+    forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
+(forall (d : V) (k0 : Z) (v0 : V), lookup d k0 (insert k0 v0 t1) = v0) ->
+(forall (d : V) (k0 : Z) (v0 : V), lookup d k0 (insert k0 v0 t2) = v0) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
+ lookup d x (Node l y v0 r) =
+ ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
+ bound x (Node l y v0 r) =
+ ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v0 (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v0 l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
+(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
+(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k0 l -> gt_t k0 r -> balanced (Node l k0 v0 r)) ->
+balanced Emp ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' > k0)%Z -> gt_t k0 l -> gt_t k0 r -> gt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z, gt_t k0 Emp) ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' < k0)%Z -> lt_t k0 l -> lt_t k0 r -> lt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z, lt_t k0 Emp) ->
+forall (d : V) (k0 : Z) (v0 : V), lookup d k0 (insert k0 v0 (Node t1 k v t2)) = v0
+  ).
+
+
+  (* hammer handles this one *)
+  Theorem lookup_insert_eq : 
+    forall (t : tree V) d k v,
+      lookup d k (insert k v t)  = v.
+  Proof.
+    induction t; prep_proof.
+    - reflect lookup_insert_emp; check_goal_unsat.
+    - reflect lookup_insert_node; check_goal_unsat.
+  Admitted.
+
+
+  MetaCoq Quote Definition lookup_insert_neq_emp := (
+    (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k l -> gt_t k r -> balanced (Node l k v r)) ->
+balanced Emp ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k)%Z -> gt_t k l -> gt_t k r -> gt_t k (Node l k' v r)) ->
+(forall k : Z, gt_t k Emp) ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k)%Z -> lt_t k l -> lt_t k r -> lt_t k (Node l k' v r)) ->
+(forall k : Z, lt_t k Emp) ->
+forall (d : V) (k k' : Z) (v : V), k <> k' -> lookup d k' (insert k v Emp) = lookup d k' Emp
   ).
 
 
   MetaCoq Quote Definition lookup_insert_neq_node := (
     forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
-    (forall (d : V) (k0 k' : Z) (v0 : V),
-     k0 <> k' -> lookup d k' (insert k0 v0 t1) = lookup d k' t1) ->
-    (forall (d : V) (k0 k' : Z) (v0 : V),
-     k0 <> k' -> lookup d k' (insert k0 v0 t2) = lookup d k' t2) ->
-    (forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-     lookup d x (Node l y v0 r) =
-     ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-    (forall (d : V) (x : Z), lookup d x Emp = d) ->
-    (forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-     bound x (Node l y v0 r) =
-     ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-    (forall x : Z, bound x Emp = false) ->
-    (forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-     insert x v0 (Node l y v' r) =
-     ite (x <? y)%Z (Node (insert x v0 l) y v' r)
-       (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-    (forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-    forall (d : V) (k0 k' : Z) (v0 : V),
-    k0 <> k' ->
-    lookup d k' (insert k0 v0 (Node t1 k v t2)) = lookup d k' (Node t1 k v t2)
+(forall (d : V) (k0 k' : Z) (v0 : V),
+ k0 <> k' -> lookup d k' (insert k0 v0 t1) = lookup d k' t1) ->
+(forall (d : V) (k0 k' : Z) (v0 : V),
+ k0 <> k' -> lookup d k' (insert k0 v0 t2) = lookup d k' t2) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
+ lookup d x (Node l y v0 r) =
+ ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
+ bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v0 (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v0 l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
+(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
+(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k0 l -> gt_t k0 r -> balanced (Node l k0 v0 r)) ->
+balanced Emp ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' > k0)%Z -> gt_t k0 l -> gt_t k0 r -> gt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z, gt_t k0 Emp) ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' < k0)%Z -> lt_t k0 l -> lt_t k0 r -> lt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z, lt_t k0 Emp) ->
+forall (d : V) (k0 k' : Z) (v0 : V),
+k0 <> k' -> lookup d k' (insert k0 v0 (Node t1 k v t2)) = lookup d k' (Node t1 k v t2)
   ).
 
 
@@ -394,12 +403,8 @@ k <> k' -> lookup d k' (insert k v Emp) = lookup d k' Emp
       lookup d k' (insert k v t) = lookup d k' t.
   Proof.
     induction t; prep_proof.
-    - 
-      reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_neq_emp. 
-      check_goal_unsat.
-    - 
-      reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_neq_node. 
-      check_goal_unsat.
+    - reflect lookup_insert_neq_emp; check_goal_unsat.
+    - reflect lookup_insert_neq_node; check_goal_unsat.
   Admitted.
 
 (** **** Exercise: 3 stars, standard, optional (bound_correct) *)
@@ -417,41 +422,62 @@ k <> k' -> lookup d k' (insert k v Emp) = lookup d k' Emp
 
     MetaCoq Quote Definition bound_default_emp := (
       forall (k : Z) (d : V),
-      (forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-       lookup d0 x (Node l y v r) =
-       ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v)) ->
-      (forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-      (forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-       bound x (Node l y v r) =
-       ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-      (forall x : Z, bound x Emp = false) ->
-      (forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-       insert x v (Node l y v' r) =
-       ite (x <? y)%Z (Node (insert x v l) y v' r)
-         (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-      (forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-      bound k Emp = false -> lookup d k Emp = d
+(forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d0 x (Node l y v r) =
+ ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v)) ->
+(forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) =
+ ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k0 : Z) (v : V) (r : tree V),
+ balanced l ->
+ balanced r -> lt_t k0 l -> gt_t k0 r -> balanced (Node l k0 v r)) ->
+balanced Emp ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k0)%Z -> gt_t k0 l -> gt_t k0 r -> gt_t k0 (Node l k' v r)) ->
+(forall k0 : Z, gt_t k0 Emp) ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k0)%Z -> lt_t k0 l -> lt_t k0 r -> lt_t k0 (Node l k' v r)) ->
+(forall k0 : Z, lt_t k0 Emp) ->
+bound k Emp = false -> lookup d k Emp = d
     ).
   
   
     MetaCoq Quote Definition bound_default_node := (
       forall (k : Z) (d : V) (t1 : tree V) (k0 : Z) (v : V) (t2 : tree V),
-      (bound k t1 = false -> lookup d k t1 = d) ->
-      (bound k t2 = false -> lookup d k t2 = d) ->
-      (forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-       lookup d0 x (Node l y v0 r) =
-       ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v0)) ->
-      (forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-      (forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-       bound x (Node l y v0 r) =
-       ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-      (forall x : Z, bound x Emp = false) ->
-      (forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-       insert x v0 (Node l y v' r) =
-       ite (x <? y)%Z (Node (insert x v0 l) y v' r)
-         (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-      (forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-      bound k (Node t1 k0 v t2) = false -> lookup d k (Node t1 k0 v t2) = d
+(bound k t1 = false -> lookup d k t1 = d) ->
+(bound k t2 = false -> lookup d k t2 = d) ->
+(forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
+ lookup d0 x (Node l y v0 r) =
+ ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v0)) ->
+(forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
+(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
+ bound x (Node l y v0 r) =
+ ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v0 (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v0 l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
+(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
+(forall (l : tree V) (k1 : Z) (v0 : V) (r : tree V),
+ balanced l ->
+ balanced r -> lt_t k1 l -> gt_t k1 r -> balanced (Node l k1 v0 r)) ->
+balanced Emp ->
+(forall (k1 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' > k1)%Z -> gt_t k1 l -> gt_t k1 r -> gt_t k1 (Node l k' v0 r)) ->
+(forall k1 : Z, gt_t k1 Emp) ->
+(forall (k1 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' < k1)%Z -> lt_t k1 l -> lt_t k1 r -> lt_t k1 (Node l k' v0 r)) ->
+(forall k1 : Z, lt_t k1 Emp) ->
+bound k (Node t1 k0 v t2) = false ->
+lookup d k (Node t1 k0 v t2) = d
     ).
 
     (* hammer handles this one *)
@@ -461,11 +487,8 @@ k <> k' -> lookup d k' (insert k v Emp) = lookup d k' Emp
       lookup d k t = d.
   Proof.
     induction t; prep_proof. 
-
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds bound_default_emp. 
-      check_goal_unsat.
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds bound_default_node. 
-      check_goal_unsat.
+    - reflect bound_default_emp; check_goal_unsat.
+    - reflect bound_default_node; check_goal_unsat.
   Admitted.
 
 (** [] *)
@@ -489,29 +512,34 @@ k <> k' -> lookup d k' (insert k v Emp) = lookup d k' Emp
 
 MetaCoq Quote Definition lookup_insert_shadow_emp := (
   (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d x (Node l y v r) =
- ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+ lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
 (forall (d : V) (x : Z), lookup d x Emp = d) ->
 (forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) =
- ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+ bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
 (forall x : Z, bound x Emp = false) ->
 (forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
  insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r)
-   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+ ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
 (forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-forall (v v' d : V) (k k' : Z),
-lookup d k' (insert k v (insert k v' Emp)) = lookup d k' (insert k v Emp)
+(forall (l : tree V) (k : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k l -> gt_t k r -> balanced (Node l k v r)) ->
+balanced Emp ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V), (k' > k)%Z -> gt_t k l -> gt_t k r -> gt_t k (Node l k' v r)) ->
+(forall k : Z, gt_t k Emp) ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V), (k' < k)%Z -> lt_t k l -> lt_t k r -> lt_t k (Node l k' v r)) ->
+(forall k : Z, lt_t k Emp) ->
+forall (v v' d : V) (k k' : Z), lookup d k' (insert k v (insert k v' Emp)) = lookup d k' (insert k v Emp)
 ).
 
 
 MetaCoq Quote Definition lookup_insert_shadow_node := (
   forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
 (forall (v0 v' d : V) (k0 k' : Z),
- lookup d k' (insert k0 v0 (insert k0 v' t1)) = lookup d k' (insert k0 v0 t1)) ->
+ lookup d k' (insert k0 v0 (insert k0 v' t1)) =
+ lookup d k' (insert k0 v0 t1)) ->
 (forall (v0 v' d : V) (k0 k' : Z),
- lookup d k' (insert k0 v0 (insert k0 v' t2)) = lookup d k' (insert k0 v0 t2)) ->
+ lookup d k' (insert k0 v0 (insert k0 v' t2)) =
+ lookup d k' (insert k0 v0 t2)) ->
 (forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
  lookup d x (Node l y v0 r) =
  ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
@@ -525,6 +553,16 @@ MetaCoq Quote Definition lookup_insert_shadow_node := (
  ite (x <? y)%Z (Node (insert x v0 l) y v' r)
    (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
 (forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
+(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
+ balanced l ->
+ balanced r -> lt_t k0 l -> gt_t k0 r -> balanced (Node l k0 v0 r)) ->
+balanced Emp ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' > k0)%Z -> gt_t k0 l -> gt_t k0 r -> gt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z, gt_t k0 Emp) ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' < k0)%Z -> lt_t k0 l -> lt_t k0 r -> lt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z, lt_t k0 Emp) ->
 forall (v0 v' d : V) (k0 k' : Z),
 lookup d k' (insert k0 v0 (insert k0 v' (Node t1 k v t2))) =
 lookup d k' (insert k0 v0 (Node t1 k v t2))
@@ -536,30 +574,33 @@ lookup d k' (insert k0 v0 (Node t1 k v t2))
       lookup d k' (insert k v (insert k v' t)) = lookup d k' (insert k v t).
   Proof. 
     induction t; prep_proof.
-
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_shadow_emp. 
-      check_goal_unsat.
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_shadow_node. 
-      check_goal_unsat.
+    - reflect lookup_insert_shadow_emp; check_goal_unsat.
+    - reflect lookup_insert_shadow_node; check_goal_unsat.
   Admitted.
 
 
   MetaCoq Quote Definition lookup_insert_same_emp := (
     forall (k k' : Z) (d : V),
 (forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d0 x (Node l y v r) =
- ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v)) ->
+ lookup d0 x (Node l y v r) = ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v)) ->
 (forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
 (forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) =
- ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+ bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
 (forall x : Z, bound x Emp = false) ->
 (forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
  insert x v (Node l y v' r) =
  ite (x <? y)%Z (Node (insert x v l) y v' r)
    (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
 (forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-lookup d k' (insert k (lookup d k Emp) Emp) = lookup d k' Emp
+(forall (l : tree V) (k0 : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k0 l -> gt_t k0 r -> balanced (Node l k0 v r)) ->
+balanced Emp ->
+(forall (k0 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
+ (k'0 > k0)%Z -> gt_t k0 l -> gt_t k0 r -> gt_t k0 (Node l k'0 v r)) ->
+(forall k0 : Z, gt_t k0 Emp) ->
+(forall (k0 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
+ (k'0 < k0)%Z -> lt_t k0 l -> lt_t k0 r -> lt_t k0 (Node l k'0 v r)) ->
+(forall k0 : Z, lt_t k0 Emp) -> lookup d k' (insert k (lookup d k Emp) Emp) = lookup d k' Emp
   ).
   
   
@@ -568,18 +609,25 @@ lookup d k' (insert k (lookup d k Emp) Emp) = lookup d k' Emp
 lookup d k' (insert k (lookup d k t1) t1) = lookup d k' t1 ->
 lookup d k' (insert k (lookup d k t2) t2) = lookup d k' t2 ->
 (forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d0 x (Node l y v0 r) =
- ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v0)) ->
+ lookup d0 x (Node l y v0 r) = ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v0)) ->
 (forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
 (forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) =
- ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+ bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
 (forall x : Z, bound x Emp = false) ->
 (forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
  insert x v0 (Node l y v' r) =
  ite (x <? y)%Z (Node (insert x v0 l) y v' r)
    (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
 (forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
+(forall (l : tree V) (k1 : Z) (v0 : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k1 l -> gt_t k1 r -> balanced (Node l k1 v0 r)) ->
+balanced Emp ->
+(forall (k1 : Z) (l : tree V) (k'0 : Z) (v0 : V) (r : tree V),
+ (k'0 > k1)%Z -> gt_t k1 l -> gt_t k1 r -> gt_t k1 (Node l k'0 v0 r)) ->
+(forall k1 : Z, gt_t k1 Emp) ->
+(forall (k1 : Z) (l : tree V) (k'0 : Z) (v0 : V) (r : tree V),
+ (k'0 < k1)%Z -> lt_t k1 l -> lt_t k1 r -> lt_t k1 (Node l k'0 v0 r)) ->
+(forall k1 : Z, lt_t k1 Emp) ->
 lookup d k' (insert k (lookup d k (Node t1 k0 v t2)) (Node t1 k0 v t2)) =
 lookup d k' (Node t1 k0 v t2)
   ).
@@ -592,61 +640,182 @@ lookup d k' (Node t1 k0 v t2)
       lookup d k' (insert k (lookup d k t) t) = lookup d k' t.
   Proof. 
     induction t; prep_proof.
-
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_same_emp. 
-      check_goal_unsat.
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_same_node. 
-      check_goal_unsat.
+    - reflect lookup_insert_same_emp; check_goal_unsat.
+    - reflect lookup_insert_same_node; check_goal_unsat.
   Admitted.
 
 
 
   MetaCoq Quote Definition lookup_insert_permute_emp := (
-    forall (v1 v2 d : V) (k1 k2 k' : Z),
-(forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d0 x (Node l y v r) =
- ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v)) ->
-(forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) =
- ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r)
-   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-k1 <> k2 ->
-lookup d k' (insert k1 v1 (insert k2 v2 Emp)) =
-lookup d k' (insert k2 v2 (insert k1 v1 Emp))
+    forall (v1 v2 d : V)
+    (k1 k2 k' : Z),
+  (forall (d0 : V) 
+     (x : Z) (l : tree V)
+     (y : Z) (v : V)
+     (r : tree V),
+   lookup d0 x
+     (Node l y v r) =
+   ite (x <? y)%Z
+     (lookup d0 x l)
+     (ite (x >? y)%Z
+        (lookup d0 x r) v)) ->
+  (forall (d0 : V) (x : Z),
+   lookup d0 x Emp = d0) ->
+  (forall (x : Z)
+     (l : tree V) (y : Z)
+     (v : V) (r : tree V),
+   bound x (Node l y v r) =
+   ite (x <? y)%Z
+     (bound x l)
+     (ite (x >? y)%Z
+        (bound x r) true)) ->
+  (forall x : Z,
+   bound x Emp = false) ->
+  (forall (x : Z) (v : V)
+     (l : tree V) (y : Z)
+     (v' : V) (r : tree V),
+   insert x v
+     (Node l y v' r) =
+   ite (x <? y)%Z
+     (Node (insert x v l) y
+        v' r)
+     (ite (x >? y)%Z
+        (Node l y v'
+           (insert x v r))
+        (Node l x v r))) ->
+  (forall (x : Z) (v : V),
+   insert x v Emp =
+   Node Emp x v Emp) ->
+  (forall (l : tree V)
+     (k : Z) (v : V)
+     (r : tree V),
+   balanced l ->
+   balanced r ->
+   lt_t k l ->
+   gt_t k r ->
+   balanced (Node l k v r)) ->
+  balanced Emp ->
+  (forall (k : Z)
+     (l : tree V) (k'0 : Z)
+     (v : V) (r : tree V),
+   (k'0 > k)%Z ->
+   gt_t k l ->
+   gt_t k r ->
+   gt_t k (Node l k'0 v r)) ->
+  (forall k : Z, gt_t k Emp) ->
+  (forall (k : Z)
+     (l : tree V) (k'0 : Z)
+     (v : V) (r : tree V),
+   (k'0 < k)%Z ->
+   lt_t k l ->
+   lt_t k r ->
+   lt_t k (Node l k'0 v r)) ->
+  (forall k : Z, lt_t k Emp) ->
+  k1 <> k2 ->
+  lookup d k'
+    (insert k1 v1
+       (insert k2 v2 Emp)) =
+  lookup d k'
+    (insert k2 v2
+       (insert k1 v1 Emp))
 ).
   
   
   MetaCoq Quote Definition lookup_insert_permute_node := (
-    forall (v1 v2 d : V) (k1 k2 k' : Z) (t1 : tree V) 
-    (k : Z) (v : V) (t2 : tree V),
-  (k1 <> k2 ->
-   lookup d k' (insert k1 v1 (insert k2 v2 t1)) =
-   lookup d k' (insert k2 v2 (insert k1 v1 t1))) ->
-  (k1 <> k2 ->
-   lookup d k' (insert k1 v1 (insert k2 v2 t2)) =
-   lookup d k' (insert k2 v2 (insert k1 v1 t2))) ->
-  (forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-   lookup d0 x (Node l y v0 r) =
-   ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v0)) ->
-  (forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-  (forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-   bound x (Node l y v0 r) =
-   ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-  (forall x : Z, bound x Emp = false) ->
-  (forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-   insert x v0 (Node l y v' r) =
-   ite (x <? y)%Z (Node (insert x v0 l) y v' r)
-     (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-  (forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-  k1 <> k2 ->
-  lookup d k' (insert k1 v1 (insert k2 v2 (Node t1 k v t2))) =
-  lookup d k' (insert k2 v2 (insert k1 v1 (Node t1 k v t2)))
+    forall (v1 v2 d : V)
+  (k1 k2 k' : Z)
+  (t1 : tree V) (k : Z)
+  (v : V) (t2 : tree V),
+(k1 <> k2 ->
+ lookup d k'
+   (insert k1 v1
+      (insert k2 v2 t1)) =
+ lookup d k'
+   (insert k2 v2
+      (insert k1 v1 t1))) ->
+(k1 <> k2 ->
+ lookup d k'
+   (insert k1 v1
+      (insert k2 v2 t2)) =
+ lookup d k'
+   (insert k2 v2
+      (insert k1 v1 t2))) ->
+(forall (d0 : V) 
+   (x : Z) (l : tree V)
+   (y : Z) (v0 : V)
+   (r : tree V),
+ lookup d0 x
+   (Node l y v0 r) =
+ ite (x <? y)%Z
+   (lookup d0 x l)
+   (ite (x >? y)%Z
+      (lookup d0 x r) v0)) ->
+(forall (d0 : V) (x : Z),
+ lookup d0 x Emp = d0) ->
+(forall (x : Z)
+   (l : tree V) (y : Z)
+   (v0 : V) (r : tree V),
+ bound x (Node l y v0 r) =
+ ite (x <? y)%Z
+   (bound x l)
+   (ite (x >? y)%Z
+      (bound x r) true)) ->
+(forall x : Z,
+ bound x Emp = false) ->
+(forall (x : Z) (v0 : V)
+   (l : tree V) (y : Z)
+   (v' : V) (r : tree V),
+ insert x v0
+   (Node l y v' r) =
+ ite (x <? y)%Z
+   (Node (insert x v0 l)
+      y v' r)
+   (ite (x >? y)%Z
+      (Node l y v'
+         (insert x v0 r))
+      (Node l x v0 r))) ->
+(forall (x : Z) (v0 : V),
+ insert x v0 Emp =
+ Node Emp x v0 Emp) ->
+(forall (l : tree V)
+   (k0 : Z) (v0 : V)
+   (r : tree V),
+ balanced l ->
+ balanced r ->
+ lt_t k0 l ->
+ gt_t k0 r ->
+ balanced
+   (Node l k0 v0 r)) ->
+balanced Emp ->
+(forall (k0 : Z)
+   (l : tree V) (k'0 : Z)
+   (v0 : V) (r : tree V),
+ (k'0 > k0)%Z ->
+ gt_t k0 l ->
+ gt_t k0 r ->
+ gt_t k0
+   (Node l k'0 v0 r)) ->
+(forall k0 : Z,
+ gt_t k0 Emp) ->
+(forall (k0 : Z)
+   (l : tree V) (k'0 : Z)
+   (v0 : V) (r : tree V),
+ (k'0 < k0)%Z ->
+ lt_t k0 l ->
+ lt_t k0 r ->
+ lt_t k0
+   (Node l k'0 v0 r)) ->
+(forall k0 : Z,
+ lt_t k0 Emp) ->
+k1 <> k2 ->
+lookup d k'
+  (insert k1 v1
+     (insert k2 v2
+        (Node t1 k v t2))) =
+lookup d k'
+  (insert k2 v2
+     (insert k1 v1
+        (Node t1 k v t2)))
   ).
 
   (** **** Exercise: 2 stars, standard, optional (lookup_insert_permute) *)
@@ -659,12 +828,8 @@ lookup d k' (insert k2 v2 (insert k1 v1 Emp))
       = lookup d k' (insert k2 v2 (insert k1 v1 t)).
   Proof. 
     induction t; prep_proof.
-
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_permute_emp. 
-      check_goal_unsat.
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds lookup_insert_permute_node. 
-      check_goal_unsat.
-
+    - reflect lookup_insert_permute_emp; check_goal_unsat.
+    - reflect lookup_insert_permute_node; check_goal_unsat.
   Admitted.
 
 (** Our ability to prove these lemmas without reference to the
@@ -681,44 +846,159 @@ lookup d k' (insert k2 v2 (insert k1 v1 Emp))
 
 
     MetaCoq Quote Definition insert_shadow_equality_emp := (
-      (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-      lookup d x (Node l y v r) =
-      ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-     (forall (d : V) (x : Z), lookup d x Emp = d) ->
-     (forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-      bound x (Node l y v r) =
-      ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-     (forall x : Z, bound x Emp = false) ->
-     (forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-      insert x v (Node l y v' r) =
-      ite (x <? y)%Z (Node (insert x v l) y v' r)
-        (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-     (forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-     forall (k : Z) (v v' : V), insert k v (insert k v' Emp) = insert k v Emp
+      (forall (d : V) (x : Z)
+      (l : tree V) (y : Z)
+      (v : V) (r : tree V),
+    lookup d x
+      (Node l y v r) =
+    ite (x <? y)%Z
+      (lookup d x l)
+      (ite (x >? y)%Z
+         (lookup d x r) v)) ->
+   (forall (d : V) (x : Z),
+    lookup d x Emp = d) ->
+   (forall (x : Z)
+      (l : tree V) (y : Z)
+      (v : V) (r : tree V),
+    bound x (Node l y v r) =
+    ite (x <? y)%Z
+      (bound x l)
+      (ite (x >? y)%Z
+         (bound x r) true)) ->
+   (forall x : Z,
+    bound x Emp = false) ->
+   (forall (x : Z) (v : V)
+      (l : tree V) (y : Z)
+      (v' : V) (r : tree V),
+    insert x v
+      (Node l y v' r) =
+    ite (x <? y)%Z
+      (Node (insert x v l) y
+         v' r)
+      (ite (x >? y)%Z
+         (Node l y v'
+            (insert x v r))
+         (Node l x v r))) ->
+   (forall (x : Z) (v : V),
+    insert x v Emp =
+    Node Emp x v Emp) ->
+   (forall (l : tree V)
+      (k : Z) (v : V)
+      (r : tree V),
+    balanced l ->
+    balanced r ->
+    lt_t k l ->
+    gt_t k r ->
+    balanced (Node l k v r)) ->
+   balanced Emp ->
+   (forall (k : Z)
+      (l : tree V) (k' : Z)
+      (v : V) (r : tree V),
+    (k' > k)%Z ->
+    gt_t k l ->
+    gt_t k r ->
+    gt_t k (Node l k' v r)) ->
+   (forall k : Z, gt_t k Emp) ->
+   (forall (k : Z)
+      (l : tree V) (k' : Z)
+      (v : V) (r : tree V),
+    (k' < k)%Z ->
+    lt_t k l ->
+    lt_t k r ->
+    lt_t k (Node l k' v r)) ->
+   (forall k : Z, lt_t k Emp) ->
+   forall (k : Z) (v v' : V),
+   insert k v
+     (insert k v' Emp) =
+   insert k v Emp
   ).
     
     
     MetaCoq Quote Definition insert_shadow_equality_node := (
-      forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
-      (forall (k0 : Z) (v0 v' : V),
-       insert k0 v0 (insert k0 v' t1) = insert k0 v0 t1) ->
-      (forall (k0 : Z) (v0 v' : V),
-       insert k0 v0 (insert k0 v' t2) = insert k0 v0 t2) ->
-      (forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-       lookup d x (Node l y v0 r) =
-       ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-      (forall (d : V) (x : Z), lookup d x Emp = d) ->
-      (forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
-       bound x (Node l y v0 r) =
-       ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-      (forall x : Z, bound x Emp = false) ->
-      (forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-       insert x v0 (Node l y v' r) =
-       ite (x <? y)%Z (Node (insert x v0 l) y v' r)
-         (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-      (forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-      forall (k0 : Z) (v0 v' : V),
-      insert k0 v0 (insert k0 v' (Node t1 k v t2)) = insert k0 v0 (Node t1 k v t2)
+      forall (t1 : tree V)
+  (k : Z) (v : V)
+  (t2 : tree V),
+(forall (k0 : Z)
+   (v0 v' : V),
+ insert k0 v0
+   (insert k0 v' t1) =
+ insert k0 v0 t1) ->
+(forall (k0 : Z)
+   (v0 v' : V),
+ insert k0 v0
+   (insert k0 v' t2) =
+ insert k0 v0 t2) ->
+(forall (d : V) (x : Z)
+   (l : tree V) (y : Z)
+   (v0 : V) (r : tree V),
+ lookup d x
+   (Node l y v0 r) =
+ ite (x <? y)%Z
+   (lookup d x l)
+   (ite (x >? y)%Z
+      (lookup d x r) v0)) ->
+(forall (d : V) (x : Z),
+ lookup d x Emp = d) ->
+(forall (x : Z)
+   (l : tree V) (y : Z)
+   (v0 : V) (r : tree V),
+ bound x (Node l y v0 r) =
+ ite (x <? y)%Z
+   (bound x l)
+   (ite (x >? y)%Z
+      (bound x r) true)) ->
+(forall x : Z,
+ bound x Emp = false) ->
+(forall (x : Z) (v0 : V)
+   (l : tree V) (y : Z)
+   (v' : V) (r : tree V),
+ insert x v0
+   (Node l y v' r) =
+ ite (x <? y)%Z
+   (Node (insert x v0 l)
+      y v' r)
+   (ite (x >? y)%Z
+      (Node l y v'
+         (insert x v0 r))
+      (Node l x v0 r))) ->
+(forall (x : Z) (v0 : V),
+ insert x v0 Emp =
+ Node Emp x v0 Emp) ->
+(forall (l : tree V)
+   (k0 : Z) (v0 : V)
+   (r : tree V),
+ balanced l ->
+ balanced r ->
+ lt_t k0 l ->
+ gt_t k0 r ->
+ balanced
+   (Node l k0 v0 r)) ->
+balanced Emp ->
+(forall (k0 : Z)
+   (l : tree V) (k' : Z)
+   (v0 : V) (r : tree V),
+ (k' > k0)%Z ->
+ gt_t k0 l ->
+ gt_t k0 r ->
+ gt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z,
+ gt_t k0 Emp) ->
+(forall (k0 : Z)
+   (l : tree V) (k' : Z)
+   (v0 : V) (r : tree V),
+ (k' < k0)%Z ->
+ lt_t k0 l ->
+ lt_t k0 r ->
+ lt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z,
+ lt_t k0 Emp) ->
+forall (k0 : Z)
+  (v0 v' : V),
+insert k0 v0
+  (insert k0 v'
+     (Node t1 k v t2)) =
+insert k0 v0
+  (Node t1 k v t2)
     ).
 
 
@@ -729,11 +1009,8 @@ lookup d k' (insert k2 v2 (insert k1 v1 Emp))
       insert k v (insert k v' t) = insert k v t.
   Proof.
     induction t; prep_proof.
-
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds insert_shadow_equality_emp. 
-      check_goal_unsat.
-    - reflect_goal (UF.sig sig symbs) tree_uf_model sorts_eq_dec match_tacs match_inds insert_shadow_equality_node. 
-      check_goal_unsat.
+    - reflect insert_shadow_equality_emp; check_goal_unsat.
+    - reflect insert_shadow_equality_node; check_goal_unsat.
   Admitted.
 
 (** But the other two direct equalities on BSTs do not necessarily
@@ -760,3 +1037,445 @@ Proof.
 
 (** [] *)
 
+(** some custom stuff, about balance and that insert preserves the balance of the tree **)
+
+MetaCoq Quote Definition insert_left_lt_emp := (
+  (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) =
+ ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) =
+ ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k l -> gt_t k r -> balanced (Node l k v r)) ->
+balanced Emp ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k)%Z -> gt_t k l -> gt_t k r -> gt_t k (Node l k' v r)) ->
+(forall k : Z, gt_t k Emp) ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k)%Z -> lt_t k l -> lt_t k r -> lt_t k (Node l k' v r)) ->
+(forall k : Z, lt_t k Emp) ->
+forall (k k' : Z) (v : V),
+(k < k')%Z -> lt_t k' Emp -> lt_t k' (insert k v Emp)
+).
+
+
+MetaCoq Quote Definition insert_left_lt_node := (
+  forall (l1 : tree V) (k : Z) (v : V) (l2 : tree V),
+(forall (k0 k' : Z) (v0 : V),
+ (k0 < k')%Z -> lt_t k' l1 -> lt_t k' (insert k0 v0 l1)) ->
+(forall (k0 k' : Z) (v0 : V),
+ (k0 < k')%Z -> lt_t k' l2 -> lt_t k' (insert k0 v0 l2)) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
+ lookup d x (Node l y v0 r) =
+ ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
+ bound x (Node l y v0 r) =
+ ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v0 (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v0 l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
+(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
+(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
+ balanced l ->
+ balanced r -> lt_t k0 l -> gt_t k0 r -> balanced (Node l k0 v0 r)) ->
+balanced Emp ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' > k0)%Z -> gt_t k0 l -> gt_t k0 r -> gt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z, gt_t k0 Emp) ->
+(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
+ (k' < k0)%Z -> lt_t k0 l -> lt_t k0 r -> lt_t k0 (Node l k' v0 r)) ->
+(forall k0 : Z, lt_t k0 Emp) ->
+forall (k0 k' : Z) (v0 : V),
+(k0 < k')%Z ->
+lt_t k' (Node l1 k v l2) -> lt_t k' (insert k0 v0 (Node l1 k v l2))
+).
+
+(* unfortunately we can't handle the recursive case *)
+SetSMTSolver "cvc5".
+Lemma insert_left_lt : 
+  forall (l: tree V) k k' v, 
+    (k < k')%Z -> 
+    lt_t k' l -> 
+    lt_t k' (insert k v l).
+Proof.
+  induction l; prep_proof.
+  - reflect insert_left_lt_emp; check_goal_unsat.
+  - 
+  (* reflect insert_left_lt_node; check_goal_unsat. *)
+    intros; simpl in *.
+    destruct (_ <? _)%Z eqn:?;
+    simpl in *;
+    intuition eauto.
+    destruct (_ >? _)%Z eqn:?;
+    simpl in *;
+    intuition eauto.
+Admitted.
+
+Lemma insert_right_lt : 
+  forall (r: tree V) k k' v, 
+    (k' < k)%Z -> 
+    gt_t k' r -> 
+    gt_t k' (insert k v r).
+Admitted.
+
+Ltac prep_proof' := Utils.pose_all (tt, insert_left_lt, insert_right_lt); prep_proof.
+
+MetaCoq Quote Definition insert_balanced_left_emp := (
+  (forall (r : tree V) (k k' : Z) (v : V), (k' < k)%Z -> gt_t k' r -> gt_t k' (insert k v r)) ->
+(forall (l : tree V) (k k' : Z) (v : V), (k < k')%Z -> lt_t k' l -> lt_t k' (insert k v l)) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k l -> gt_t k r -> balanced (Node l k v r)) ->
+balanced Emp ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k)%Z -> gt_t k l -> gt_t k r -> gt_t k (Node l k' v r)) ->
+(forall k : Z, gt_t k Emp) ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k)%Z -> lt_t k l -> lt_t k r -> lt_t k (Node l k' v r)) ->
+(forall k : Z, lt_t k Emp) ->
+forall (k k' : Z) (v : V), (k < k')%Z -> lt_t k' Emp -> balanced Emp -> balanced (insert k v Emp)
+).
+
+
+MetaCoq Quote Definition insert_balanced_left_node_0 := (
+  forall (l1 : tree V) (k : Z) (l2 : tree V),
+(forall (k0 k' : Z) (v : V),
+ (k0 < k')%Z -> lt_t k' l1 -> balanced l1 -> balanced (insert k0 v l1)) ->
+(forall (k0 k' : Z) (v : V),
+ (k0 < k')%Z -> lt_t k' l2 -> balanced l2 -> balanced (insert k0 v l2)) ->
+forall (k0 k' : Z) (v0 : V),
+(k0 < k')%Z ->
+(k < k')%Z /\ lt_t k' l1 /\ lt_t k' l2 ->
+lt_t k l1 /\ gt_t k l2 /\ balanced l1 /\ balanced l2 ->
+(k0 <? k)%Z = true ->
+(forall (r : tree V) (k1 k'0 : Z) (v : V),
+ (k'0 < k1)%Z -> gt_t k'0 r -> gt_t k'0 (insert k1 v r)) ->
+(forall (l : tree V) (k1 k'0 : Z) (v : V),
+ (k1 < k'0)%Z -> lt_t k'0 l -> lt_t k'0 (insert k1 v l)) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) =
+ ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) =
+ ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k1 : Z) (v : V) (r : tree V),
+ balanced l ->
+ balanced r -> lt_t k1 l -> gt_t k1 r -> balanced (Node l k1 v r)) ->
+balanced Emp ->
+(forall (k1 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
+ (k'0 > k1)%Z -> gt_t k1 l -> gt_t k1 r -> gt_t k1 (Node l k'0 v r)) ->
+(forall k1 : Z, gt_t k1 Emp) ->
+(forall (k1 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
+ (k'0 < k1)%Z -> lt_t k1 l -> lt_t k1 r -> lt_t k1 (Node l k'0 v r)) ->
+(forall k1 : Z, lt_t k1 Emp) ->
+lt_t k (insert k0 v0 l1) /\
+gt_t k l2 /\ balanced (insert k0 v0 l1) /\ balanced l2
+).
+
+MetaCoq Quote Definition insert_balanced_left_node_1 := (
+  forall (l1 : tree V) (k : Z) (l2 : tree V),
+(forall (k0 k' : Z) (v : V),
+ (k0 < k')%Z ->
+ lt_t k' l1 -> balanced l1 -> balanced (insert k0 v l1)) ->
+(forall (k0 k' : Z) (v : V),
+ (k0 < k')%Z ->
+ lt_t k' l2 -> balanced l2 -> balanced (insert k0 v l2)) ->
+forall (k0 k' : Z) (v0 : V),
+(k0 < k')%Z ->
+(k < k')%Z /\ lt_t k' l1 /\ lt_t k' l2 ->
+lt_t k l1 /\ gt_t k l2 /\ balanced l1 /\ balanced l2 ->
+(k0 <? k)%Z = false ->
+(k0 >? k)%Z = true ->
+(forall (r : tree V) (k1 k'0 : Z) (v : V),
+ (k'0 < k1)%Z -> gt_t k'0 r -> gt_t k'0 (insert k1 v r)) ->
+(forall (l : tree V) (k1 k'0 : Z) (v : V),
+ (k1 < k'0)%Z -> lt_t k'0 l -> lt_t k'0 (insert k1 v l)) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) 
+   (v : V) (r : tree V),
+ lookup d x (Node l y v r) =
+ ite (x <? y)%Z (lookup d x l)
+   (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) =
+ ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) 
+   (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v r))
+      (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k1 : Z) (v : V) (r : tree V),
+ balanced l ->
+ balanced r ->
+ lt_t k1 l -> gt_t k1 r -> balanced (Node l k1 v r)) ->
+balanced Emp ->
+(forall (k1 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
+ (k'0 > k1)%Z ->
+ gt_t k1 l -> gt_t k1 r -> gt_t k1 (Node l k'0 v r)) ->
+(forall k1 : Z, gt_t k1 Emp) ->
+(forall (k1 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
+ (k'0 < k1)%Z ->
+ lt_t k1 l -> lt_t k1 r -> lt_t k1 (Node l k'0 v r)) ->
+(forall k1 : Z, lt_t k1 Emp) ->
+lt_t k l1 /\
+gt_t k (insert k0 v0 l2) /\
+balanced l1 /\ balanced (insert k0 v0 l2)
+).
+
+MetaCoq Quote Definition insert_balanced_left_node_2 := (
+  forall (l1 : tree V) (k : Z) (l2 : tree V),
+(forall (k0 k' : Z) (v : V),
+ (k0 < k')%Z -> lt_t k' l1 -> balanced l1 -> balanced (insert k0 v l1)) ->
+(forall (k0 k' : Z) (v : V),
+ (k0 < k')%Z -> lt_t k' l2 -> balanced l2 -> balanced (insert k0 v l2)) ->
+forall k0 k' : Z,
+(k0 < k')%Z ->
+(k < k')%Z /\ lt_t k' l1 /\ lt_t k' l2 ->
+lt_t k l1 /\ gt_t k l2 /\ balanced l1 /\ balanced l2 ->
+(k0 <? k)%Z = false ->
+(k0 >? k)%Z = false ->
+(forall (r : tree V) (k1 k'0 : Z) (v : V),
+ (k'0 < k1)%Z -> gt_t k'0 r -> gt_t k'0 (insert k1 v r)) ->
+(forall (l : tree V) (k1 k'0 : Z) (v : V),
+ (k1 < k'0)%Z -> lt_t k'0 l -> lt_t k'0 (insert k1 v l)) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) =
+ ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) =
+ ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k1 : Z) (v : V) (r : tree V),
+ balanced l ->
+ balanced r -> lt_t k1 l -> gt_t k1 r -> balanced (Node l k1 v r)) ->
+balanced Emp ->
+(forall (k1 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
+ (k'0 > k1)%Z -> gt_t k1 l -> gt_t k1 r -> gt_t k1 (Node l k'0 v r)) ->
+(forall k1 : Z, gt_t k1 Emp) ->
+(forall (k1 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
+ (k'0 < k1)%Z -> lt_t k1 l -> lt_t k1 r -> lt_t k1 (Node l k'0 v r)) ->
+(forall k1 : Z, lt_t k1 Emp) ->
+lt_t k0 l1 /\ gt_t k0 l2 /\ balanced l1 /\ balanced l2
+).
+
+Lemma insert_balanced_left :
+  forall (l: tree V) k k' v, 
+    (k < k')%Z -> 
+    lt_t k' l -> 
+    balanced l ->
+    balanced (insert k v l).
+Proof.
+  induction l.
+
+  - prep_proof'; reflect insert_balanced_left_emp; check_goal_unsat.
+  - 
+    (* prep_proof'; reflect insert_balanced_left_node; check_goal_unsat. *)
+
+    intros; simpl in *;
+    destruct (_ <? _)%Z eqn:?;
+    simpl in *.
+    
+    + clear v; prep_proof'; reflect insert_balanced_left_node_0; check_goal_unsat.
+    + destruct (_ >? _)%Z eqn:?;
+      simpl in *; clear v.
+      * prep_proof'; reflect insert_balanced_left_node_1; check_goal_unsat.
+      * clear v0.
+        prep_proof';
+        reflect insert_balanced_left_node_2; check_goal_unsat.
+Admitted.
+
+Lemma insert_balanced_right :
+forall (r: tree V) k k' v, 
+  (k > k')%Z -> 
+  gt_t k' r -> 
+  balanced r ->
+  balanced (insert k v r).
+Admitted.
+
+Ltac prep_proof'' := Utils.pose_all (tt, insert_balanced_left, insert_balanced_right); prep_proof'.
+
+MetaCoq Quote Definition insert_balanced_emp := (
+  (forall (r : tree V) (k k' : Z) (v : V), (k > k')%Z -> gt_t k' r -> balanced r -> balanced (insert k v r)) ->
+(forall (l : tree V) (k k' : Z) (v : V), (k < k')%Z -> lt_t k' l -> balanced l -> balanced (insert k v l)) ->
+(forall (r : tree V) (k k' : Z) (v : V), (k' < k)%Z -> gt_t k' r -> gt_t k' (insert k v r)) ->
+(forall (l : tree V) (k k' : Z) (v : V), (k < k')%Z -> lt_t k' l -> lt_t k' (insert k v l)) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k l -> gt_t k r -> balanced (Node l k v r)) ->
+balanced Emp ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k)%Z -> gt_t k l -> gt_t k r -> gt_t k (Node l k' v r)) ->
+(forall k : Z, gt_t k Emp) ->
+(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k)%Z -> lt_t k l -> lt_t k r -> lt_t k (Node l k' v r)) ->
+(forall k : Z, lt_t k Emp) -> forall (k : Z) (v : V), balanced Emp -> balanced (insert k v Emp)
+).
+
+MetaCoq Quote Definition insert_balanced_node_0 := (
+  forall (t1 : tree V) (k : Z) (t2 : tree V),
+(forall (k0 : Z) (v : V), balanced t1 -> balanced (insert k0 v t1)) ->
+(forall (k0 : Z) (v : V), balanced t2 -> balanced (insert k0 v t2)) ->
+forall (k0 : Z) (v0 : V),
+lt_t k t1 /\ gt_t k t2 /\ balanced t1 /\ balanced t2 ->
+(k0 <? k)%Z = true ->
+(forall (r : tree V) (k1 k' : Z) (v : V), (k1 > k')%Z -> gt_t k' r -> balanced r -> balanced (insert k1 v r)) ->
+(forall (l : tree V) (k1 k' : Z) (v : V), (k1 < k')%Z -> lt_t k' l -> balanced l -> balanced (insert k1 v l)) ->
+(forall (r : tree V) (k1 k' : Z) (v : V), (k' < k1)%Z -> gt_t k' r -> gt_t k' (insert k1 v r)) ->
+(forall (l : tree V) (k1 k' : Z) (v : V), (k1 < k')%Z -> lt_t k' l -> lt_t k' (insert k1 v l)) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k1 : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k1 l -> gt_t k1 r -> balanced (Node l k1 v r)) ->
+balanced Emp ->
+(forall (k1 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k1)%Z -> gt_t k1 l -> gt_t k1 r -> gt_t k1 (Node l k' v r)) ->
+(forall k1 : Z, gt_t k1 Emp) ->
+(forall (k1 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k1)%Z -> lt_t k1 l -> lt_t k1 r -> lt_t k1 (Node l k' v r)) ->
+(forall k1 : Z, lt_t k1 Emp) ->
+lt_t k (insert k0 v0 t1) /\ gt_t k t2 /\ balanced (insert k0 v0 t1) /\ balanced t2
+).
+
+MetaCoq Quote Definition insert_balanced_node_1 := (
+  forall (t1 : tree V) (k : Z) (t2 : tree V),
+(forall (k0 : Z) (v : V), balanced t1 -> balanced (insert k0 v t1)) ->
+(forall (k0 : Z) (v : V), balanced t2 -> balanced (insert k0 v t2)) ->
+forall (k0 : Z) (v0 : V),
+lt_t k t1 /\ gt_t k t2 /\ balanced t1 /\ balanced t2 ->
+(k0 <? k)%Z = false ->
+(k0 >? k)%Z = true ->
+(forall (r : tree V) (k1 k' : Z) (v : V), (k1 > k')%Z -> gt_t k' r -> balanced r -> balanced (insert k1 v r)) ->
+(forall (l : tree V) (k1 k' : Z) (v : V), (k1 < k')%Z -> lt_t k' l -> balanced l -> balanced (insert k1 v l)) ->
+(forall (r : tree V) (k1 k' : Z) (v : V), (k' < k1)%Z -> gt_t k' r -> gt_t k' (insert k1 v r)) ->
+(forall (l : tree V) (k1 k' : Z) (v : V), (k1 < k')%Z -> lt_t k' l -> lt_t k' (insert k1 v l)) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k1 : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k1 l -> gt_t k1 r -> balanced (Node l k1 v r)) ->
+balanced Emp ->
+(forall (k1 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k1)%Z -> gt_t k1 l -> gt_t k1 r -> gt_t k1 (Node l k' v r)) ->
+(forall k1 : Z, gt_t k1 Emp) ->
+(forall (k1 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k1)%Z -> lt_t k1 l -> lt_t k1 r -> lt_t k1 (Node l k' v r)) ->
+(forall k1 : Z, lt_t k1 Emp) -> lt_t k t1 /\ gt_t k (insert k0 v0 t2) /\ balanced t1 /\ balanced (insert k0 v0 t2)
+).
+
+MetaCoq Quote Definition insert_balanced_node_2 := (
+  forall (t1 : tree V) (k : Z) (t2 : tree V),
+(forall (k0 : Z) (v : V), balanced t1 -> balanced (insert k0 v t1)) ->
+(forall (k0 : Z) (v : V), balanced t2 -> balanced (insert k0 v t2)) ->
+forall k0 : Z,
+lt_t k t1 /\ gt_t k t2 /\ balanced t1 /\ balanced t2 ->
+(k0 <? k)%Z = false ->
+(k0 >? k)%Z = false ->
+(forall (r : tree V) (k1 k' : Z) (v : V),
+ (k1 > k')%Z -> gt_t k' r -> balanced r -> balanced (insert k1 v r)) ->
+(forall (l : tree V) (k1 k' : Z) (v : V),
+ (k1 < k')%Z -> lt_t k' l -> balanced l -> balanced (insert k1 v l)) ->
+(forall (r : tree V) (k1 k' : Z) (v : V), (k' < k1)%Z -> gt_t k' r -> gt_t k' (insert k1 v r)) ->
+(forall (l : tree V) (k1 k' : Z) (v : V), (k1 < k')%Z -> lt_t k' l -> lt_t k' (insert k1 v l)) ->
+(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
+(forall (d : V) (x : Z), lookup d x Emp = d) ->
+(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
+ bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
+(forall x : Z, bound x Emp = false) ->
+(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
+ insert x v (Node l y v' r) =
+ ite (x <? y)%Z (Node (insert x v l) y v' r)
+   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
+(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
+(forall (l : tree V) (k1 : Z) (v : V) (r : tree V),
+ balanced l -> balanced r -> lt_t k1 l -> gt_t k1 r -> balanced (Node l k1 v r)) ->
+balanced Emp ->
+(forall (k1 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' > k1)%Z -> gt_t k1 l -> gt_t k1 r -> gt_t k1 (Node l k' v r)) ->
+(forall k1 : Z, gt_t k1 Emp) ->
+(forall (k1 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
+ (k' < k1)%Z -> lt_t k1 l -> lt_t k1 r -> lt_t k1 (Node l k' v r)) ->
+(forall k1 : Z, lt_t k1 Emp) -> lt_t k0 t1 /\ gt_t k0 t2 /\ balanced t1 /\ balanced t2
+).
+
+Theorem insert_balanced : 
+forall (t: tree V) k v,
+  balanced t -> 
+  balanced (insert k v t).
+Proof.
+  induction t.
+  - prep_proof''; reflect insert_balanced_emp; check_goal_unsat.
+  - intros;
+    simpl in *.
+    destruct (_ <? _)%Z eqn:?;
+    simpl in *.
+    
+    + clear v; prep_proof''; reflect insert_balanced_node_0; check_goal_unsat.
+    + destruct (_ >? _)%Z eqn:?;
+      simpl in *; clear v.
+      * prep_proof''; reflect insert_balanced_node_1; check_goal_unsat.
+      * clear v0.
+        prep_proof'';
+        reflect insert_balanced_node_2; check_goal_unsat.
+Admitted.

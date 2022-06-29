@@ -46,6 +46,12 @@ Section Tactics.
     | t :: ts => (mod_sorts t -> (denote_func ts ret))%type
     end.
 
+  Fixpoint denote_rel (args: list sorts): Type := 
+    match args with 
+    | nil => Prop
+    | t :: ts => (mod_sorts t -> (denote_rel ts))%type
+    end.
+
   Fixpoint apply_denote_func (arg_tys: list sorts) : forall {ret_ty: sorts} (args: denote_args arg_tys) (f: denote_func arg_tys ret_ty), mod_sorts ret_ty :=
     match arg_tys as atys return 
       (forall ret_ty : sorts,
@@ -54,11 +60,24 @@ Section Tactics.
     | nil => fun _ _ v => v
     | t :: ts => fun _ '(args, arg) f => apply_denote_func ts args (f arg)
     end.
+  
+  Fixpoint apply_denote_rel (arg_tys: list sorts) : forall (args: denote_args arg_tys) (f: denote_rel arg_tys), Prop :=
+    match arg_tys as atys return 
+      ( denote_args atys ->
+        denote_rel atys -> Prop) with 
+    | nil => fun _ v => v
+    | t :: ts => fun '(args, arg) f => apply_denote_rel ts args (f arg)
+    end.
 
   Record fun_sym := Mk_fun_sym {
-    args: list sorts;
+    args_f: list sorts;
     ret: sorts;
-    deep_f: s.(sig_funs) args ret; 
+    deep_f: s.(sig_funs) args_f ret; 
+  }.
+
+  Record rel_sym := Mk_rel_sym {
+    args_r: list sorts;
+    deep_r: s.(sig_rels) args_r; 
   }.
 
   Inductive tac_lits := | bool_lit | z_lit | nat_lit | n_lit.
@@ -75,6 +94,8 @@ Section Tactics.
   Inductive tac_syn :=
     | tacFun : 
       forall (fs: fun_sym), tac_syn
+    | tacRel : 
+      forall (rs: rel_sym), tac_syn
     | tacLit : 
       forall (lit : tac_lits) (denote_lit: lit_ty lit -> {ty & mod_sorts ty}) (extract_lit: lit_ty lit -> forall c, {ty & tm s c ty}), tac_syn.
 
@@ -110,6 +131,15 @@ Section Tactics.
     | nil => fun f => f hnil
     | t :: ts => fun f v => 
       conv_fun (fun vs => f (v ::: vs))
+    end.
+
+  Eval compute in denote_rel nil.
+
+  Fixpoint conv_rel {arg_tys} {struct arg_tys}: (HList.t mod_sorts arg_tys -> Prop) -> denote_rel arg_tys :=
+    match arg_tys with 
+    | nil => fun f => f hnil
+    | t :: ts => fun f v => 
+      conv_rel (fun vs => f (v ::: vs))
     end.
 
   MetaCoq Quote Definition c_tru := true.
@@ -195,27 +225,35 @@ Section Tactics.
     | n_lit => None (* TODO N *)
     | nat_lit => denote_nat t
     end.
+
+  Definition denote_tac_rty : Type := 
+    ({ty & mod_sorts ty} + Prop)%type.
   
-  Definition denote_tac (tac: tac_syn) (opt_args : list (option ({ty & mod_sorts ty}))) (t: term) : option ({ty & mod_sorts ty}) :=
+  Definition denote_tac (tac: tac_syn) (opt_args : list (option ({ty & mod_sorts ty}))) (t: term) : option denote_tac_rty :=
     match tac with 
     | tacFun fs => 
-      match denote_tac_args (fs.(args)) (trim_prefix opt_args) with 
-      | Some wrapped_args => Some (existT _ fs.(ret) (apply_denote_func _ wrapped_args (conv_fun (s.(mod_fns) _ _ _ fs.(deep_f)))))
+      match denote_tac_args (fs.(args_f)) (trim_prefix opt_args) with 
+      | Some wrapped_args => Some (inl (existT _ fs.(ret) (apply_denote_func _ wrapped_args (conv_fun (s.(mod_fns) _ _ _ fs.(deep_f))))))
+      | None => None
+      end
+    | tacRel rs => 
+      match denote_tac_args (rs.(args_r)) (trim_prefix opt_args) with 
+      | Some wrapped_args => Some (inr (apply_denote_rel _ wrapped_args (conv_rel (s.(mod_rels) _ _ rs.(deep_r)))))
       | None => None
       end
     | tacLit lit dt _ => 
       match denote_lit lit t with 
-      | Some dlit => Some (dt dlit)
+      | Some dlit => Some (inl (dt dlit))
       | None => None
       end
     end.
 
-  Definition denote_mtac (mtac: (term -> bool) * tac_syn) (t: term) (args: list (option ({ty & mod_sorts ty})%type)) : option ({ty & mod_sorts ty}) :=
+  Definition denote_mtac (mtac: (term -> bool) * tac_syn) (t: term) (args: list (option ({ty & mod_sorts ty})%type)) : option denote_tac_rty :=
     let (test, tac) := mtac in 
     if test t then denote_tac tac args t
     else None.
         
-  Fixpoint denote_mtacs (mtacs: list ((term -> bool) * tac_syn)) (t: term) (args: list (option ({ty & mod_sorts ty})%type)) : option ({ty & mod_sorts ty}) := 
+  Fixpoint denote_mtacs (mtacs: list ((term -> bool) * tac_syn)) (t: term) (args: list (option ({ty & mod_sorts ty})%type)) : option denote_tac_rty := 
     match mtacs with 
     | nil => None
     | mtac :: mtacs => 
@@ -228,10 +266,22 @@ Section Tactics.
   Equations denote_tm (mtacs: list ((term -> bool) * tac_syn)) (t: term) (args: list (option ({ty & mod_sorts ty}))) : option ({ty & mod_sorts ty}) := 
     denote_tm mtacs (tApp f args) r_args := 
       match denote_mtacs mtacs f r_args with 
-      | Some x => Some x
-      | None => denote_mtacs mtacs (tApp f args) r_args (* literal tactics need to be called on the whole term *)
+      | Some (inl x) => Some x
+      | Some _ => None
+      | None => 
+       (* literal tactics need to be called on the whole term *)
+        match denote_mtacs mtacs (tApp f args) r_args with 
+        | Some (inl x) => Some x
+        | Some _
+        | None => None
+        end
       end;
-    denote_tm mtacs t r_args := denote_mtacs mtacs t r_args.
+    denote_tm mtacs t r_args := 
+      match denote_mtacs mtacs t r_args with 
+      | Some (inl x) => Some x
+      | Some _ 
+      | None => None
+      end.
 
 
   Fixpoint extract_args {c: ctx s} (arg_tys : list sorts) (r_args: list (option ({srt & tm s c srt}))) : option (HList.t (tm s c) arg_tys) :=
@@ -262,28 +312,46 @@ Section Tactics.
     end.
 
   Definition extract_fun {c: ctx s} (fs: fun_sym) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) :=
-    match extract_args fs.(args) (trim_prefix r_args) with 
+    match extract_args fs.(args_f) (trim_prefix r_args) with 
     | Some fargs => Some (existT _ _ (TFun s fs.(deep_f) fargs))
     | None => None
     end.
 
-  Definition extract_tac (c: ctx s) (tac: tac_syn) (r_args: list (option ({srt & tm s c srt}))) (t: term) : option ({srt & tm s c srt}) := 
+  Definition extract_rel {c: ctx s} (rs: rel_sym) (r_args: list (option ({srt & tm s c srt}))) : option (fm s c) :=
+    match extract_args rs.(args_r) (trim_prefix r_args) with 
+    | Some fargs => Some (FRel _ rs.(deep_r) fargs)
+    | None => None
+    end.
+
+  Definition extract_rty c : Type := 
+    {srt & tm s c srt} + fm s c.
+
+  Definition extract_tac (c: ctx s) (tac: tac_syn) (r_args: list (option ({srt & tm s c srt}))) (t: term) : option (extract_rty c) := 
     match tac with 
-    | tacFun fs => extract_fun fs r_args
+    | tacFun fs => 
+      match extract_fun fs r_args with 
+      | Some x => Some (inl x)
+      | None => None
+      end
+    | tacRel rs => 
+      match extract_rel rs r_args with 
+      | Some x => Some (inr x)
+      | None => None
+      end
     | tacLit lit _ ef => 
       match denote_lit lit t with 
-      | Some dlit => Some (ef dlit c)
+      | Some dlit => Some (inl (ef dlit c))
       | None => None
       end
     end.
 
-  Definition extract_mtac (c: ctx s) (mtac: (term -> bool) * tac_syn) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
+  Definition extract_mtac (c: ctx s) (mtac: (term -> bool) * tac_syn) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option (extract_rty c) := 
     let (test, tac) := mtac in 
     if test t then extract_tac c tac r_args t
     else None.
 
 
-  Fixpoint extract_mtacs (c: ctx s) (mtacs: list ((term -> bool) * tac_syn)) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
+  Fixpoint extract_mtacs (c: ctx s) (mtacs: list ((term -> bool) * tac_syn)) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option (extract_rty c) := 
     match mtacs with 
     | nil => None
     | mt :: mtacs => 
@@ -297,10 +365,35 @@ Section Tactics.
   Equations extract_t2tm {c: ctx s} (mtacs: list ((term -> bool) * tac_syn)) (t: term) (r_args: list (option ({srt & tm s c srt}))) : option ({srt & tm s c srt}) := 
     extract_t2tm mtacs (tApp f args) r_args := 
       match extract_mtacs c mtacs f r_args with 
-      | Some v => Some v
-      | None => extract_mtacs c mtacs (tApp f args) r_args
+      | Some (inl v) => Some v
+      | Some _ => None
+      | None => 
+        match extract_mtacs c mtacs (tApp f args) r_args with 
+        | Some (inl v) => Some v
+        | Some _ 
+        | None => None
+        end
       end;
-    extract_t2tm mtacs t r_args := extract_mtacs c mtacs t r_args.
+    extract_t2tm mtacs t r_args := 
+      match extract_mtacs c mtacs t r_args with
+      | Some (inl v) => Some v
+      | Some _ 
+      | None => None
+      end.
+
+  Definition extract_t2rel {c: ctx s} (mtacs: list ((term -> bool) * tac_syn)) (t: term) (args : list (option (∑ srt : sorts, tm s c srt))) : option (fm s c) := 
+    match extract_mtacs c mtacs t args with 
+    | Some (inr f) => Some f
+    | Some _ 
+    | None => None
+    end.
+
+  Definition denote_t2rel (mtacs: list ((term -> bool) * tac_syn)) (t: term) (args: list (option ({ty & mod_sorts ty}))) : Prop := 
+    match denote_mtacs mtacs t args with 
+    | Some (inr p) => p
+    | Some _ => (False -> False)
+    | None => False
+    end.
 
 
   Fixpoint i2srt (minds: list ((term -> bool) * sorts)) (t: term) : option sorts :=
@@ -314,32 +407,45 @@ Section Tactics.
   Variable match_inds : list ((term -> bool) * sorts).
 
   Record match_tacs_wf := {
-      match_tacs_sound_some: 
-        forall c v test t el er ty tm,  
-          EquivEnvs s m el er -> 
-          In test match_tacs ->
-          extract_mtac c test t er = Some (ty; tm) ->
-          denote_mtac test t el = Some (ty; interp_tm v tm);
-      match_tacs_sound_none: 
-        forall c test t el er,  
-          In test match_tacs ->
-          extract_mtac c test t er = None ->
-          denote_mtac test t el = None
+    match_tacs_sound_some_inl: 
+      forall c v test t el er ty tm,  
+        EquivEnvs s m el er -> 
+        In test match_tacs ->
+        extract_mtac c test t er = Some (inl (ty; tm)) ->
+        denote_mtac test t el = Some (inl (ty; interp_tm v tm));
+    match_tacs_sound_some_inr: 
+      forall c v test t el er p fm,  
+        EquivEnvs s m el er -> 
+        In test match_tacs ->
+        extract_mtac c test t er = Some (inr fm) ->
+        denote_mtac test t el = Some (inr p) -> 
+        (p <-> interp_fm (m := m) v fm);
+    match_tacs_sound_none: 
+      forall c test t el er,  
+        In test match_tacs ->
+        extract_mtac c test t er = None ->
+        denote_mtac test t el = None
     }.
   
-  Program Definition mt_wf : match_tacs_wf := {| match_tacs_sound_some := _; match_tacs_sound_none := _|}.
+  Program Definition mt_wf : match_tacs_wf := {| 
+    match_tacs_sound_some_inl := _;
+    match_tacs_sound_some_inr := _; 
+    match_tacs_sound_none := _
+  |}.
   Next Obligation.
-  destruct test.
+  (* destruct test.
   simpl in *.
   destruct (b t) eqn:?; [|congruence].
   induction t0; simpl in *.
   - admit.
   - destruct (denote_lit _ _ ) eqn:?; [|congruence].
     inversion H0.
-    admit.
+    admit. *)
   Admitted.
   Next Obligation.
-  destruct test.
+  Admitted.
+  Next Obligation.
+  (* destruct test.
   simpl in *.
   destruct (b t) eqn:?; [|congruence].
   induction t0; simpl in *.
@@ -353,21 +459,31 @@ Section Tactics.
       destruct (trim_prefix er) eqn:?; try congruence.
       destruct (trim_prefix el); [exfalso; admit|].
       trivial.
-    + admit.
+    + admit. *)
 
-  - destruct (denote_lit _ _) eqn:?; congruence.
+  (* - destruct (denote_lit _ _) eqn:?; congruence. *)
   Admitted.
 
 
   (* Variable (mt_wf: match_tacs_wf). *)
 
+  Lemma extract_denote_mtacs_rel : 
+    forall (c : ctx s) (v : valu s m c) (t : term)
+      (el : list (option (∑ ty : sorts, mod_sorts ty)))
+      (er : list (option (∑ srt : sorts, tm s c srt))) 
+      (fm : FirstOrder.fm s c),
+    EquivEnvs s m el er ->
+    (fun c0 : ctx s => extract_t2rel match_tacs) c t er = Some fm ->
+    denote_t2rel match_tacs t el <-> interp_fm v fm.
+  Admitted.
 
-  Lemma extract_denote_mtacs_some:
+
+  Lemma extract_denote_mtacs_some_inl:
     forall c v el er tests ty tm t,
       EquivEnvs s m el er -> 
       Forall (fun t => In t match_tacs) tests ->
-      extract_mtacs c tests t er = Some (ty; tm) -> 
-      denote_mtacs tests t el = Some (ty; interp_tm v tm).
+      extract_mtacs c tests t er = Some (inl (ty; tm)) -> 
+      denote_mtacs tests t el = Some (inl (ty; interp_tm v tm)).
   Proof.
   Admitted.
     (* slightly broken... *)
@@ -420,15 +536,19 @@ Section Tactics.
 
   Lemma denote_extract_specialized: 
     forall t fm,
-      extract_t2fm s (fun c => @extract_t2tm c match_tacs) (i2srt match_inds) sorts_eq_dec _ t = Some fm -> 
-      (denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (i2srt match_inds) (VEmp _ _) t <-> interp_fm (m := m) (VEmp _ _) fm).
+      extract_t2fm s (fun c => @extract_t2tm c match_tacs) (fun c => @extract_t2rel c match_tacs) (i2srt match_inds) sorts_eq_dec _ t = Some fm -> 
+      (denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (denote_t2rel match_tacs) (i2srt match_inds) (VEmp _ _) t <-> interp_fm (m := m) (VEmp _ _) fm).
   Proof.
     intros.
-    eapply denote_extract_general with (extract_tf := (fun c => @extract_t2tm c match_tacs)); eauto.
-    intros.
-    induction t0 using term_ind'; 
-    autorewrite with denote_tm;
-    try now (
+    eapply denote_extract_general; eauto.
+    - 
+      intros.
+      induction t0 using term_ind'; 
+      autorewrite with denote_tm;
+      admit.
+    - eapply extract_denote_mtacs_rel.
+  Admitted.
+    (* try now (
       eapply extract_denote_mtacs_some; eauto;
       eapply Forall_refl
     ).
@@ -440,7 +560,7 @@ Section Tactics.
       inversion Heqo; subst; trivial.
     + erewrite extract_denote_mtacs_none; eauto; try eapply Forall_refl;
       eapply extract_denote_mtacs_some; eauto; eapply Forall_refl.
-  Qed.
+  Qed. *)
 
   (* TODO: need lemma for also applying reindex_vars *)
 End Tactics.
@@ -461,7 +581,6 @@ Ltac extract_goal s m sed mt mi t :=
 
 Ltac reflect_goal s m sed mt mi t := 
   extract_goal s m sed mt mi t;
-  let n:= numgoals in guard n<2;
   let H' := fresh "H'" in
   match goal with 
   | H: interp_fm _ _ -> ?X |- ?G => 

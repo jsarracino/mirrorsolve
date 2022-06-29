@@ -56,6 +56,7 @@ let c_impl () = get_coq "ms.core.impl"
 let c_and () = get_coq "ms.core.and"
 let c_or () = get_coq "ms.core.or"
 let c_not () = get_coq "ms.core.neg"
+let c_rel () = get_coq "ms.core.rel"
 
 let c_tt () = get_coq "ms.core.tt"
 let c_ff () = get_coq "ms.core.ff"
@@ -832,6 +833,16 @@ let rec pretty_fm (e: C.t) : string =
         (* bunch of junk, inner *)
         let _ = debug_pp @@ Pp.str "extracting not" in
           Format.sprintf "(not %s)" (pretty_fm (a_last es))
+      else if equal_ctor f c_rel then 
+        let _ = debug_pp @@ Pp.str "extracting a relation:" in
+        let _ = debug_pp @@ C.debug_print f in 
+        let _ = debug_pp @@ Pp.str "with args:" in 
+        let _ = debug_pp @@ format_args es in
+        let fargs = extract_h_list (a_last es) in
+        let _ = debug_pp @@ Pp.str "extracted args to:" in 
+        let _ = debug_pp @@ format_args (Array.of_list fargs) in 
+        let fe = es.(Array.length es - 2) in 
+        pretty_fun fe fargs
 
       else if equal_ctor f c_tt then 
         let _ = debug_pp @@ Pp.str "extracting true" in

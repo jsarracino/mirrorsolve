@@ -203,6 +203,30 @@ Section Meta.
       extract_tf c t er = Some (ty; tm) -> denote_tf t el = Some (ty; interp_tm v tm)
   ).
 
+  Variable (denote_tr : 
+    term ->
+    list
+      (option
+        (∑ ty : sig_sorts s,
+            mod_sorts s m ty)) ->
+    Prop
+  ).
+
+  Variable (extract_tr : 
+    forall c : ctx s,
+      term ->
+      list (option (∑ srt : sig_sorts s, tm s c srt)) ->
+      option (fm s c)
+  ).
+
+  Variable (denote_extract_tr_spec : 
+    forall c v t el er fm, 
+      EquivEnvs el er -> 
+      extract_tr c t er = Some fm -> 
+      (denote_tr t el <-> interp_fm (m := m) v fm)
+  ).
+
+
   Lemma equiv_envs_map:
     forall c v tms,
       EquivEnvs (map (denote_tm' (c := c) s m denote_tf v) tms)
@@ -293,8 +317,8 @@ Some (x; interp_tm v tm).
 
   Theorem denote_extract_general:
     forall (t : term) i2srt c (v: valu s _ c) fm,
-      extract_t2fm s extract_tf i2srt sorts_eq_dec c t = Some fm -> 
-      (denote_t2fm s m sorts_eq_dec denote_tf i2srt v t <-> interp_fm (m := m) v fm).
+      extract_t2fm s extract_tf extract_tr i2srt sorts_eq_dec c t = Some fm -> 
+      (denote_t2fm s m sorts_eq_dec denote_tf denote_tr i2srt v t <-> interp_fm (m := m) v fm).
   Proof.
 
   induction t using term_ind'; intros; try now (
@@ -412,6 +436,8 @@ Some (x; interp_tm v tm).
       eapply H3; eauto.
     + erewrite H3; eauto.
       eapply iff_refl.
+    + eapply denote_extract_tr_spec; eauto.
+      eapply equiv_envs_map.
   - simpl in *.
     repeat destruct (eq_inductive _ _);
     (try now congruence);
@@ -434,8 +460,8 @@ Some (x; interp_tm v tm).
 
   Theorem denote_extract : 
     forall t fm i2srt, 
-      extract_fm s extract_tf i2srt sorts_eq_dec t = Some fm -> 
-      (denote_fm s m sorts_eq_dec denote_tf i2srt t <-> interp_fm (VEmp _ m) fm).
+      extract_fm s extract_tf extract_tr i2srt sorts_eq_dec t = Some fm -> 
+      (denote_fm s m sorts_eq_dec denote_tf denote_tr i2srt t <-> interp_fm (VEmp _ m) fm).
   Proof.
     intros.
     eapply denote_extract_general.

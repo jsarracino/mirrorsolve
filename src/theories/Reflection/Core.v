@@ -110,5 +110,6 @@ Definition eq_ctor (l r: term) : bool :=
   match l, r with 
   | tApp l' _, tApp r' _ => eq_term l' r'
   | tApp l' _, _ => eq_term l' r
+  | _, tApp r' _ => eq_term l r'
   | _, _ => false
   end.

@@ -18,8 +18,6 @@ MetaCoq Quote Definition c_or := @or.
 MetaCoq Quote Definition c_and := @and.
 
 
-Print tConstruct.
-
 Fixpoint dec_vars (d: nat) (t: term) : term :=
   match t with
   | tRel n => if (Nat.leb d n) then tRel (n - 1) else tRel n
@@ -93,8 +91,9 @@ Section ExtractFM.
   Variable (m: model s).
 
   Variable (extract_t2tm : forall c, term -> list (option ({srt & (tm s c srt)})) -> option ({srt & (tm s c srt)})).
+  Variable (extract_t2rel : forall c, term -> list (option ({srt & (tm s c srt)})) -> option (fm s c)).
   Variable (extract_t2srt : term -> option (sig_sorts s)).
-
+  
   Variable (sort_eq_dec: EquivDec.EqDec (sig_sorts s) eq).
 
   Equations extract_var (c: ctx s) (n: nat) : option ({srt & var s c srt}) by struct c :=
@@ -168,7 +167,7 @@ Section ExtractFM.
           | _ => None
           end
         else
-          None
+          extract_t2rel c f (map (extract_t2tm' c) es)
       | tProd ba_name pre pst => 
         match ba_name.(binder_name) with 
         | nAnon => 
@@ -227,6 +226,7 @@ Section DenoteFM.
   Notation env_ty c := (valu s m c).
 
   Variable (denote_tm : term -> list res_ty -> res_ty).
+  Variable (denote_rel: term -> list res_ty -> Prop).
   Variable (reify_srt : term -> option (s.(sig_sorts))).
 
   Fixpoint denote_var {c} (env: env_ty c) (n: nat) : res_ty :=
@@ -285,8 +285,8 @@ Section DenoteFM.
           | x :: _ => ~ denote_t2fm env x
           | _ => False
           end
-        else
-          False
+        else 
+          denote_rel f (map (denote_tm' env) es)
       | tProd ba_name pre pst => 
         match ba_name.(binder_name) with 
         | nAnon => denote_t2fm env pre -> denote_t2fm env pst

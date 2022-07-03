@@ -12,6 +12,7 @@ Set Universe Polymorphism.
 
 Require Import Coq.ZArith.BinInt.
 
+(*** MS BEGIN {"type": "definition"} *)
 Section Tree.
   (* type of values in the tree *)
   Variable (V: Type).
@@ -30,22 +31,6 @@ Section Tree.
       (ite (x >? y)%Z (bound x r) true)
     end.
 
-  Lemma bound_emp: 
-    forall x, 
-      bound x Emp = false.
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma bound_node: 
-    forall x l y v r, 
-      bound x (Node l y v r) = ( 
-        ite (x <? y)%Z (bound x l)
-        (ite (x >? y)%Z (bound x r) true)
-      ).
-  Proof. intros; exact eq_refl. Qed.
-
-  (** [lookup d k t] is the value bound to [k] in [t], or is default
-      value [d] if [k] is not bound in [t]. *)
-
   Fixpoint lookup (d : V) (x : Z) (t : tree) : V :=
     match t with
     | Emp => d
@@ -53,22 +38,6 @@ Section Tree.
       ite (x <? y)%Z (lookup d x l)
       (ite (x >? y)%Z (lookup d x r) v)
     end.
-
-  Lemma lookup_emp: 
-    forall d x, 
-      lookup d x Emp = d.
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma lookup_node: 
-    forall d x l y v r, 
-      lookup d x (Node l y v r) = ( 
-        ite (x <? y)%Z (lookup d x l)
-        (ite (x >? y)%Z (lookup d x r) v)
-      ).
-  Proof. intros; exact eq_refl. Qed.
-
-  (** [insert k v t] is the map containing all the bindings of [t] along
-      with a binding of [k] to [v]. *)
 
   Fixpoint insert (x : Z) (v : V) (t : tree) : tree :=
     match t with
@@ -79,6 +48,41 @@ Section Tree.
         (Node l x v r)
       )
     end.
+
+  Fixpoint lt_t (k: Z) (t: tree) : Prop := 
+    match t with 
+    | Emp => True
+    | Node l k' _ r => (k' < k)%Z /\ lt_t k l /\ lt_t k r
+    end. 
+
+  Fixpoint gt_t (k: Z) (t: tree) : Prop := 
+    match t with 
+    | Emp => True
+    | Node l k' _ r => (k' > k)%Z /\ gt_t k l /\ gt_t k r
+    end. 
+
+  
+  Fixpoint ordered (t: tree) : Prop :=
+    match t with 
+    | Emp => True
+    | Node l k _ r => 
+      lt_t k l /\ 
+      gt_t k r /\ 
+      ordered l /\ ordered r
+    end.
+  (*** MS END {"type": "definition"} *)
+
+  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
+  Lemma lt_t_emp: 
+    forall k, 
+      lt_t k Emp.
+  Proof. intros; simpl; intuition. Qed.
+
+  Lemma lt_t_node: 
+    forall k l k' v r, 
+      ((k' < k)%Z /\ lt_t k l /\ lt_t k r) <-> 
+      lt_t k (Node l k' v r).
+  Proof. intros; simpl; intuition. Qed.
 
   Lemma insert_emp: 
     forall x v, 
@@ -95,31 +99,18 @@ Section Tree.
       ).
   Proof. intros; exact eq_refl. Qed.
 
+  Lemma lookup_emp: 
+    forall d x, 
+      lookup d x Emp = d.
+  Proof. intros; exact eq_refl. Qed.
 
-  Fixpoint lt_t (k: Z) (t: tree) : Prop := 
-    match t with 
-    | Emp => True
-    | Node l k' _ r => (k' < k)%Z /\ lt_t k l /\ lt_t k r
-    end. 
-
-  Lemma lt_t_emp: 
-    forall k, 
-      lt_t k Emp.
-  Proof. intros; simpl; intuition. Qed.
-
-  Lemma lt_t_node: 
-    forall k l k' v r, 
-      (k' < k)%Z ->
-      lt_t k l -> 
-      lt_t k r -> 
-      lt_t k (Node l k' v r).
-  Proof. intros; simpl; intuition. Qed.
-
-  Fixpoint gt_t (k: Z) (t: tree) : Prop := 
-    match t with 
-    | Emp => True
-    | Node l k' _ r => (k' > k)%Z /\ gt_t k l /\ gt_t k r
-    end. 
+  Lemma lookup_node: 
+    forall d x l y v r, 
+      lookup d x (Node l y v r) = ( 
+        ite (x <? y)%Z (lookup d x l)
+        (ite (x >? y)%Z (lookup d x r) v)
+      ).
+  Proof. intros; exact eq_refl. Qed.
 
   Lemma gt_t_emp: 
     forall k, 
@@ -128,35 +119,38 @@ Section Tree.
 
   Lemma gt_t_node: 
     forall k l k' v r, 
-      (k' > k)%Z ->
-      gt_t k l -> 
-      gt_t k r -> 
+      ((k' > k)%Z /\ gt_t k l /\ gt_t k r) <-> 
       gt_t k (Node l k' v r).
   Proof. intros; simpl; intuition. Qed.
 
-  Fixpoint balanced (t: tree) : Prop :=
-    match t with 
-    | Emp => True
-    | Node l k _ r => 
-      lt_t k l /\ 
-      gt_t k r /\ 
-      balanced l /\ balanced r
-    end.
+  Lemma bound_emp: 
+    forall x, 
+      bound x Emp = false.
+  Proof. intros; exact eq_refl. Qed.
+
+  Lemma bound_node: 
+    forall x l y v r, 
+      bound x (Node l y v r) = ( 
+        ite (x <? y)%Z (bound x l)
+        (ite (x >? y)%Z (bound x r) true)
+      ).
+  Proof. intros; exact eq_refl. Qed.
   
-  Lemma balanced_emp: 
-    balanced Emp.
+  Lemma ordered_emp: 
+    ordered Emp.
   Proof. intros; simpl; intuition. Qed.
 
-  Lemma balanced_node: 
+  Lemma ordered_node: 
     forall l k v r, 
-      balanced l -> 
-      balanced r ->
-      lt_t k l -> 
-      gt_t k r ->
-      balanced (Node l k v r).
+      (lt_t k l /\ 
+      gt_t k r /\ 
+      ordered l /\ ordered r) <->
+      ordered (Node l k v r).
   Proof. intros; simpl; intuition. Qed.
-
+  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
+(*** MS BEGIN {"type": "definition"} *)
 End Tree.
+
 
 Arguments Emp {_}.
 Arguments Node {_} _ _ _ _.
@@ -165,8 +159,10 @@ Arguments lookup {_} _ _ _.
 Arguments insert {_} _ _ _.
 Arguments lt_t {_} _ _.
 Arguments gt_t {_} _ _.
-Arguments balanced {_} _.
+Arguments ordered {_} _.
+(*** MS END {"type": "definition"} *)
 
+(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
 Section FOLTree.
 
   Variable (T: Type).
@@ -194,7 +190,7 @@ Section FOLTree.
     | gt_z : rels [ZS; ZS]
     | gt_t_r : rels [ZS; TreeS]
     | lt_t_r : rels [ZS; TreeS]
-    | balanced_r : rels [TreeS].
+    | ordered_r : rels [TreeS].
 
   Definition sig: signature :=
     {| sig_sorts := sorts;
@@ -238,7 +234,7 @@ Section FOLTree.
       mod_rels _ gt_z (l ::: r ::: _) := (l > r)%Z;
       mod_rels _ lt_t_r (k ::: t ::: _) := lt_t k t;
       mod_rels _ gt_t_r (k ::: t ::: _) := gt_t k t;
-      mod_rels _ balanced_r (t ::: _) := balanced t;
+      mod_rels _ ordered_r (t ::: _) := ordered t;
     }.
 
   Program Definition fm_model : model sig := {|
@@ -248,4 +244,5 @@ Section FOLTree.
   |}.
 
 End FOLTree.
+(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 

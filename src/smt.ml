@@ -7,6 +7,12 @@ let show_solver_t s =
   | CVC5 -> "cvc5"
   end
 
+let make_args s = 
+  begin match s with 
+  | Z3 -> ["-T:10"]
+  | _ -> []
+  end
+
 let str_to_solver s = 
   begin match s with 
   | "z3" -> Some Z3
@@ -144,8 +150,9 @@ let run_smt query =
   let err_in, err_out = pipe ~cloexec:true () in 
 
   let cmd = show_solver_t (get_solver ()) in
+  let s_args = make_args (get_solver()) in 
 
-  let args = [| cmd; query_file |] in
+  let args = Array.concat [[| cmd |]; Array.of_list s_args; [| query_file |]] in
   let smt_pid = create_process cmd args in_in out_out err_out in
 
   let _ = waitpid [] smt_pid in 

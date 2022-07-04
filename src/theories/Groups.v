@@ -10,15 +10,21 @@ Import HListNotations.
 
 Set Universe Polymorphism.
 Section Groups.
+  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
   Variable (G: Type).
   Variable (e: G).
+  Variable (f: G -> G -> G).
+  Variable (i: G -> G).
 
   Inductive sorts : Set := | G'.
 
   Scheme Equality for sorts.
   Set Universe Polymorphism.
 
-  Inductive funs: arity sorts -> sorts -> Type :=.
+  Inductive funs: arity sorts -> sorts -> Type :=
+    | e_f : funs [] G'
+    | f_f : funs [G'; G'] G'
+    | i_f : funs [G'] G'.
 
   Inductive rels: arity sorts -> Type :=.
 
@@ -37,9 +43,12 @@ Section Groups.
 
   Obligation Tactic := idtac.
   Equations 
-    mod_fns params ret (f: sig_funs sig params ret) (args: HList.t mod_sorts params) 
+    mod_fns {params ret} (f: sig_funs sig params ret) (args: HList.t mod_sorts params) 
     : mod_sorts ret :=
     { 
+      mod_fns e_f _ := e;
+      mod_fns f_f (l ::: r ::: _) := f l r;
+      mod_fns i_f (x ::: _) := i x;
     }.
 
   Definition mod_rels params
@@ -48,11 +57,14 @@ Section Groups.
     match args with
     end.
 
+  Arguments mod_fns _ _ _ _ : clear implicits.
+
   Program Definition fm_model : model sig := {|
     FirstOrder.mod_sorts := mod_sorts;
     FirstOrder.mod_fns := mod_fns;
     FirstOrder.mod_rels := mod_rels;
   |}.
+  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
 End Groups.
 

@@ -156,24 +156,28 @@ Section Meta.
   Admitted. *)
 
   Inductive EquivEnvs {c} : 
+    valu s m c ->
     list (option (∑ ty : sig_sorts s, mod_sorts s m ty)) -> 
     list (option (∑ srt : sig_sorts s, tm s c srt)) -> 
     Type := 
-    | equiv_nil   : EquivEnvs [] []
-    | equiv_cons  : 
-      forall el er, 
-      EquivEnvs el er -> 
-      forall ty v mv tm, 
-        mv = interp_tm v tm ->
-        EquivEnvs ((Some (ty; mv)) :: el) (Some (ty; tm) :: er).
+    | equiv_nil   : forall v, EquivEnvs v [] []
+    | equiv_cons_none   : 
+      forall el er v,
+      EquivEnvs v el er -> 
+      EquivEnvs v (None :: el) (None :: er)
+    | equiv_cons_some  : 
+      forall v el er, 
+      EquivEnvs v el er -> 
+      forall ty tm, 
+        EquivEnvs v ((Some (ty; interp_tm v tm)) :: el) (Some (ty; tm) :: er).
 
   Lemma build_equiv_cons : 
     forall c v el er  ty x y tm mv,
-      EquivEnvs (c := c) el er -> 
+      EquivEnvs (c := c) v el er -> 
       x = Some (ty; mv) -> 
       y = Some (ty; tm) -> 
       mv = interp_tm v tm ->
-      EquivEnvs (x :: el) (y :: er).
+      EquivEnvs v (x :: el) (y :: er).
   Proof.
     intros.
     subst.
@@ -199,7 +203,7 @@ Section Meta.
 
   Variable (denote_extract_tf_spec : 
     forall c v t el er ty tm, 
-      EquivEnvs el er -> 
+      EquivEnvs v el er -> 
       extract_tf c t er = Some (ty; tm) -> denote_tf t el = Some (ty; interp_tm v tm)
   ).
 
@@ -221,7 +225,7 @@ Section Meta.
 
   Variable (denote_extract_tr_spec : 
     forall c v t el er fm, 
-      EquivEnvs el er -> 
+      EquivEnvs v el er -> 
       extract_tr c t er = Some fm -> 
       (denote_tr t el <-> interp_fm (m := m) v fm)
   ).
@@ -229,7 +233,7 @@ Section Meta.
 
   Lemma equiv_envs_map:
     forall c v tms,
-      EquivEnvs (map (denote_tm' (c := c) s m denote_tf v) tms)
+      EquivEnvs v (map (denote_tm' (c := c) s m denote_tf v) tms)
       (map (extract_t2tm' s extract_tf c)
         tms).
   Proof.

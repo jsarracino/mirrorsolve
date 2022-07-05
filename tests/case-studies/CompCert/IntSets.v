@@ -1963,8 +1963,7 @@ Section IntvSets.
     unfold "<->" in *;
     Utils.revert_all;
     try (setoid_rewrite ok_ok').
-  Ltac reflect t := reflect_goal sig intvset_model sorts_eq_dec match_tacs match_inds t.
-  Ltac extract t := extract_goal sig intvset_model sorts_eq_dec match_tacs match_inds t.
+  Ltac reflect t := reflect_goal_trust sig intvset_model sorts_eq_dec match_tacs match_inds t.
 
   (*** MS END {"type": "configuration", "config_type":"tactics"} *)
 

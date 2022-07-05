@@ -24,6 +24,17 @@ Fixpoint trim_prefix {A} (l: list (option A)) : list (option A) :=
   | _ => l
   end.
 
+Lemma trim_prefix_equiv_envs: 
+  forall {s m c v xs ys}, 
+    EquivEnvs (c := c) s m v xs ys -> 
+    Meta.EquivEnvs s m v (trim_prefix xs) (trim_prefix ys).
+Proof.
+  induction 1.
+  - econstructor.
+  - simpl; eauto.
+  - simpl; econstructor; eauto.
+Qed.
+
 Section Tactics.
   Variable (s: signature).
   Variable (m: model s).
@@ -406,81 +417,38 @@ Section Tactics.
   Variable match_tacs : list ((term -> bool) * tac_syn).
   Variable match_inds : list ((term -> bool) * sorts).
 
-  Record match_tacs_wf := {
-    match_tacs_sound_some_inl: 
-      forall c v test t el er ty tm,  
-        EquivEnvs s m el er -> 
-        In test match_tacs ->
-        extract_mtac c test t er = Some (inl (ty; tm)) ->
-        denote_mtac test t el = Some (inl (ty; interp_tm v tm));
-    match_tacs_sound_some_inr: 
-      forall c v test t el er p fm,  
-        EquivEnvs s m el er -> 
-        In test match_tacs ->
-        extract_mtac c test t er = Some (inr fm) ->
-        denote_mtac test t el = Some (inr p) -> 
-        (p <-> interp_fm (m := m) v fm);
-    match_tacs_sound_none: 
-      forall c test t el er,  
-        In test match_tacs ->
-        extract_mtac c test t er = None ->
-        denote_mtac test t el = None
-    }.
-  
-  Program Definition mt_wf : match_tacs_wf := {| 
-    match_tacs_sound_some_inl := _;
-    match_tacs_sound_some_inr := _; 
-    match_tacs_sound_none := _
-  |}.
-  Next Obligation.
-  (* destruct test.
-  simpl in *.
-  destruct (b t) eqn:?; [|congruence].
-  induction t0; simpl in *.
-  - admit.
-  - destruct (denote_lit _ _ ) eqn:?; [|congruence].
-    inversion H0.
-    admit. *)
-  Admitted.
-  Next Obligation.
-  Admitted.
-  Next Obligation.
-  (* destruct test.
-  simpl in *.
-  destruct (b t) eqn:?; [|congruence].
-  induction t0; simpl in *.
-  - destruct fs.
-    simpl in *.
-    unfold extract_fun in H0.
-    simpl in *.
-    induction args0; simpl in *.
-    (* TODO: some relation between el/er and trim_prefix el/er *)
-    + 
-      destruct (trim_prefix er) eqn:?; try congruence.
-      destruct (trim_prefix el); [exfalso; admit|].
-      trivial.
-    + admit. *)
-
-  (* - destruct (denote_lit _ _) eqn:?; congruence. *)
-  Admitted.
-
-
   (* Variable (mt_wf: match_tacs_wf). *)
+
+  Definition extract_denote_mtacs_rel_def mtacs :=
+    forall (c : ctx s) (v : valu s m c) (t : term)
+      (el : list (option (∑ ty : sorts, mod_sorts ty)))
+      (er : list (option (∑ srt : sorts, tm s c srt))) 
+      (fm : FirstOrder.fm s c),
+    EquivEnvs s m v el er ->
+    (fun c0 : ctx s => extract_t2rel mtacs) c t er = Some fm ->
+    denote_t2rel match_tacs t el <-> interp_fm v fm.
 
   Lemma extract_denote_mtacs_rel : 
     forall (c : ctx s) (v : valu s m c) (t : term)
       (el : list (option (∑ ty : sorts, mod_sorts ty)))
       (er : list (option (∑ srt : sorts, tm s c srt))) 
       (fm : FirstOrder.fm s c),
-    EquivEnvs s m el er ->
+    EquivEnvs s m v el er ->
     (fun c0 : ctx s => extract_t2rel match_tacs) c t er = Some fm ->
     denote_t2rel match_tacs t el <-> interp_fm v fm.
   Admitted.
 
 
+  Definition extract_denote_mtacs_some_inl_def mtacs := 
+    forall c v el er tests ty tm t,
+      EquivEnvs s m v el er -> 
+      Forall (fun t => In t mtacs) tests ->
+      extract_mtacs c tests t er = Some (inl (ty; tm)) -> 
+      denote_mtacs tests t el = Some (inl (ty; interp_tm v tm)).
+
   Lemma extract_denote_mtacs_some_inl:
     forall c v el er tests ty tm t,
-      EquivEnvs s m el er -> 
+      EquivEnvs s m v el er -> 
       Forall (fun t => In t match_tacs) tests ->
       extract_mtacs c tests t er = Some (inl (ty; tm)) -> 
       denote_mtacs tests t el = Some (inl (ty; interp_tm v tm)).
@@ -534,41 +502,79 @@ Section Tactics.
     intros; induction l; trivial.
   Admitted.
 
+  Definition mtacs_extract_none_def mtacs :=
+    forall c t er args, 
+      extract_mtacs c mtacs t er = None -> 
+      extract_mtacs c mtacs (tApp t args) er = None.
+
+  (* Lemma mtacs_extract_none: 
+    forall {c mtacs t er args}, 
+    extract_mtacs c mtacs t er = None -> 
+    extract_mtacs c mtacs (tApp t args) er = None.
+  Proof.
+  Admitted. *)
+    (* induction mtacs; simpl; auto.
+    intros.
+    erewrite IHmtacs; eauto.
+    - destruct (extract_mtac _ _ _ _) eqn:?.
+      congruence.
+    - simpl; auto.
+    - simpl; auto.
+    -  *)
+
+  Definition mtacs_wf mtacs := 
+      extract_denote_mtacs_rel_def mtacs /\
+      extract_denote_mtacs_some_inl_def mtacs /\
+      mtacs_extract_none_def mtacs.
+
+  Variable (match_tacs_wf : mtacs_wf match_tacs).
+
   Lemma denote_extract_specialized: 
     forall t fm,
       extract_t2fm s (fun c => @extract_t2tm c match_tacs) (fun c => @extract_t2rel c match_tacs) (i2srt match_inds) sorts_eq_dec _ t = Some fm -> 
       (denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (denote_t2rel match_tacs) (i2srt match_inds) (VEmp _ _) t <-> interp_fm (m := m) (VEmp _ _) fm).
   Proof.
+    destruct match_tacs_wf as [? [? ?]].
     intros.
     eapply denote_extract_general; eauto.
-    - 
-      intros.
-      induction t0 using term_ind'; 
-      autorewrite with denote_tm;
-      admit.
-    - eapply extract_denote_mtacs_rel.
-  Admitted.
-    (* try now (
-      eapply extract_denote_mtacs_some; eauto;
-      eapply Forall_refl
-    ).
-    autorewrite with extract_t2tm in *.
-    destruct (extract_mtacs _ _ _ _) eqn:?.
-    + erewrite extract_denote_mtacs_some; eauto; try eapply Forall_refl.
-      destruct s0.
-      inversion H0.
-      inversion Heqo; subst; trivial.
-    + erewrite extract_denote_mtacs_none; eauto; try eapply Forall_refl;
-      eapply extract_denote_mtacs_some; eauto; eapply Forall_refl.
-  Qed. *)
+    intros.
+    induction t0 using term_ind'; 
+    autorewrite with denote_tm;
+    autorewrite with extract_t2tm in *;
+    repeat match goal with 
+    | H : match ?X with | Some _ => _ | None => _ end = _ |- _ => 
+      destruct X eqn:?; try congruence
+    | H : match ?X with | inl _ => _ | inr _ => _ end = _ |- _ => 
+      destruct X eqn:?; try congruence
+    end;
+    match goal with 
+    | |- match denote_mtacs _ _ _ with Some _ => _ | None => _ end = _ => 
+      erewrite H0; eauto; try eapply Forall_refl
+    end;
+    subst;
+    eauto;
+    match goal with 
+    | H: Some _ = Some _ |- _ => 
+      inversion H; subst
+    end;
+    eauto.
+    exfalso.
+    erewrite H1 in Heqo0; congruence.
+  Qed.
 
-  (* TODO: need lemma for also applying reindex_vars *)
 End Tactics.
 
+Module Axioms.
+  Polymorphic Axiom (trust_mtacs: 
+    forall s m sed mtacs,
+      mtacs_wf s m sed mtacs mtacs
+  ).
+End Axioms.
 
-Ltac extract_goal s m sed mt mi t := 
+
+Ltac extract_goal s m sed mt mi wf t := 
   let H := fresh "H" in 
-  pose proof (@denote_extract_specialized s m sed mt mi (reindex_vars t)) as H;
+  pose proof (@denote_extract_specialized s m sed mt mi wf (reindex_vars t)) as H;
   let f := fresh "fm" in 
   evar (f: FirstOrder.fm s (SLNil _));
   specialize (H f);
@@ -579,8 +585,21 @@ Ltac extract_goal s m sed mt mi t :=
     subst f
   ).
 
-Ltac reflect_goal s m sed mt mi t := 
-  extract_goal s m sed mt mi t;
+Ltac reflect_goal s m sed mt mi wf t := 
+  extract_goal s m sed mt mi wf t;
+  let H' := fresh "H'" in
+  match goal with 
+  | H: interp_fm _ _ -> ?X |- ?G => 
+    assert (H': X = G) by exact eq_refl
+  end;
+  erewrite H' in *;
+  match goal with 
+  | H: _ -> ?X |- _ => 
+    eapply H
+  end.
+
+Ltac reflect_goal_trust s m sed mt mi t := 
+  extract_goal s m sed mt mi (Axioms.trust_mtacs s m sed mt) t;
   let H' := fresh "H'" in
   match goal with 
   | H: interp_fm _ _ -> ?X |- ?G => 

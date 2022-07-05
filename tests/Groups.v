@@ -98,6 +98,170 @@ Definition match_inds : list ((term -> bool) * Groups.sorts) := [
   ].
 (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
+
+Require Import Coq.Program.Equality.
+
+Lemma mt_wf: mtacs_wf sig group_model sorts_eq_dec match_tacs match_tacs.
+Proof.
+  unfold mtacs_wf, match_tacs.
+  unfold extract_denote_mtacs_rel_def, extract_denote_mtacs_some_inl_def, mtacs_extract_none_def;
+  intuition;
+  simpl.
+  - assert (t = t_f \/ t  = t_i \/ t = t_e) by shelve.
+    intuition;
+    subst.
+    + exfalso.
+      clear H.
+      unfold extract_t2rel in H0.
+      unfold extract_mtacs in H0.
+      simpl in H0.
+      unfold extract_fun in H0.
+      simpl in H0.
+      destruct (trim_prefix _); [congruence |].
+      destruct o; [|congruence].
+      destruct s;
+      destruct x.
+      vm_compute in H0.
+      destruct l; [congruence|];
+      destruct o; [|congruence].
+      destruct s;
+      destruct x.
+      destruct l; congruence.
+    + exfalso.
+      clear H.
+      unfold extract_t2rel in H0.
+      unfold extract_mtacs in H0.
+      simpl in H0.
+      unfold extract_fun in H0.
+      simpl in H0.
+      destruct (trim_prefix _); [congruence |].
+      destruct o; [|congruence].
+      destruct s;
+      destruct x.
+      vm_compute in H0.
+      destruct l; [congruence|];
+      destruct o; congruence.
+    + exfalso.
+      clear H.
+      unfold extract_t2rel in H0.
+      unfold extract_mtacs in H0.
+      simpl in H0.
+      unfold extract_fun in H0.
+      simpl in H0.
+      destruct (trim_prefix _); congruence.
+  - exfalso.
+    assert (t = t_f \/ t = t_i \/ t = t_e) by shelve.
+    intuition;
+    subst.
+    + unfold extract_t2rel in H0.
+      unfold extract_mtacs in H0.
+      simpl in H0.
+      unfold extract_fun in H0.
+      simpl in H0.
+      destruct (trim_prefix _); [congruence |].
+      destruct o; [|congruence].
+      destruct s;
+      destruct x.
+      vm_compute in H0.
+      destruct l; [congruence|];
+      destruct o; [|congruence].
+      destruct s;
+      destruct x.
+      destruct l; congruence.
+    + unfold extract_t2rel in H0.
+      unfold extract_mtacs in H0.
+      simpl in H0.
+      unfold extract_fun in H0.
+      simpl in H0.
+      destruct (trim_prefix _); [congruence |].
+      destruct o; [|congruence].
+      destruct s;
+      destruct x.
+      vm_compute in H0.
+      destruct l; [congruence|];
+      destruct o; congruence.
+    + unfold extract_t2rel in H0.
+      unfold extract_mtacs in H0.
+      simpl in H0.
+      unfold extract_fun in H0.
+      simpl in H0.
+      destruct (trim_prefix _); congruence.
+  - assert (tests = [(eq_term t_f, uf f_f); (eq_term t_i, uf i_f);
+  (eq_term t_e, uf e_f)]) by shelve.
+    subst.
+    pose proof trim_prefix_equiv_envs H.
+    assert (t = t_f \/ t = t_i \/ t = t_e) by shelve.
+    intuition;
+    subst.
+    * simpl in H1.
+      unfold extract_fun in H1.
+      destruct (trim_prefix er) eqn:?; [
+          simpl in H1; congruence
+        |
+      ].
+      destruct o; [|simpl in H1; congruence].
+      destruct s;
+      destruct x.
+      destruct l eqn:?; [simpl in H1; congruence|].
+      destruct o; [|simpl in H1; congruence].
+      destruct s;
+      destruct x.
+      destruct l0 eqn:?; [|simpl in H1; congruence].
+      simpl in H1.
+      inversion H1; subst.
+      do 3 dependent destruction H2.
+      unfold denote_mtacs.
+      unfold denote_mtac.
+      unfold denote_tac.
+      erewrite <- x0.
+      simpl.
+      unfold eq_rect_r; simpl eq_rect.
+      autorewrite with interp_tm.
+      simpl.
+      trivial.
+    * simpl in H1.
+      unfold extract_fun in H1.
+      destruct (trim_prefix er) eqn:?; [
+          simpl in H1; congruence
+        |
+      ].
+      destruct o; [|simpl in H1; congruence].
+      destruct s;
+      destruct x.
+      destruct l eqn:?; [|simpl in H1; congruence].
+      simpl in H1.
+      inversion H1; subst.
+      do 2 dependent destruction H2.
+      unfold denote_mtacs.
+      unfold denote_mtac.
+      unfold denote_tac.
+      erewrite <- x0.
+      simpl.
+      unfold eq_rect_r; simpl eq_rect.
+      autorewrite with interp_tm.
+      simpl.
+      trivial.
+    * simpl in H1.
+      unfold extract_fun in H1.
+      destruct (trim_prefix er) eqn:?; [
+        | simpl in H1; congruence
+      ].
+      simpl in H1.
+      inversion H1; subst.
+      dependent destruction H2.
+      unfold denote_mtacs.
+      unfold denote_mtac.
+      unfold denote_tac.
+      erewrite <- x.
+      simpl.
+      unfold eq_rect_r; simpl eq_rect.
+      autorewrite with interp_tm.
+      simpl.
+      trivial.
+  Unshelve.
+Admitted.
+
+
 (* Next we configure the backend solver. We need to tell the OCaml backend about: 
    A custom sort symbol for the Groups.G' sort;
    and custom UF symbols for e, op, and inv. 
@@ -128,7 +292,7 @@ Ltac prep_proof := Utils.pose_all (tt, assoc, inv_r, id_r);
 Ltac extend_ctx H f := pose proof H;
   f.
 
-Ltac reflect t := reflect_goal sig group_model sorts_eq_dec match_tacs match_inds t.
+Ltac reflect t := reflect_goal_trust sig group_model sorts_eq_dec match_tacs match_inds t.
  
 
 Ltac check_goal := 
@@ -184,6 +348,8 @@ Proof.
   (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":1} *)
 Qed.
 
+Print Assumptions unique_id.
+
 (*** MS BEGIN {"type": "configuration", "config_type":"tactics"} *)
 Ltac prep_proof' := extend_ctx unique_id prep_proof.
 (*** MS END {"type": "configuration", "config_type":"tactics"} *)
@@ -228,6 +394,8 @@ Proof.
   check_goal.
   (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":1} *)
 Qed.
+
+Show Assumptions inv_l.
 
 
 (*** MS BEGIN {"type": "configuration", "config_type":"tactics"} *)

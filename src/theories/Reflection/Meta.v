@@ -159,7 +159,7 @@ Section Meta.
     valu s m c ->
     list (option (∑ ty : sig_sorts s, mod_sorts s m ty)) -> 
     list (option (∑ srt : sig_sorts s, tm s c srt)) -> 
-    Type := 
+    Prop := 
     | equiv_nil   : forall v, EquivEnvs v [] []
     | equiv_cons_none   : 
       forall el er v,
@@ -204,8 +204,17 @@ Section Meta.
   Variable (denote_extract_tf_spec : 
     forall c v t el er ty tm, 
       EquivEnvs v el er -> 
-      extract_tf c t er = Some (ty; tm) -> denote_tf t el = Some (ty; interp_tm v tm)
+      extract_tf c t er = Some (ty; tm) -> 
+      denote_tf t el = Some (ty; interp_tm v tm)
+  ). 
+
+  Variable (denote_extract_tf_spec_none : 
+    forall c v t el er, 
+      EquivEnvs v el er -> 
+      extract_tf c t er = None -> 
+      denote_tf t el = None
   ).
+
 
   Variable (denote_tr : 
     term ->
@@ -230,39 +239,65 @@ Section Meta.
       (denote_tr t el <-> interp_fm (m := m) v fm)
   ).
 
-
   Lemma equiv_envs_map:
-    forall c v tms,
-      EquivEnvs v (map (denote_tm' (c := c) s m denote_tf v) tms)
-      (map (extract_t2tm' s extract_tf c)
-        tms).
+    forall c v 
+      (dtm: term -> option (∑ ty : sig_sorts s, mod_sorts s m ty))
+      (etm: term -> option (∑ srt : sig_sorts s, tm s c srt)),
+      (forall t, etm t = None -> dtm t = None) -> 
+      (forall t ty tm, etm t = Some (ty; tm) -> dtm t = Some (ty; interp_tm v tm)) -> 
+      forall tms,
+        EquivEnvs v (map dtm tms) (map etm tms).
   Proof.
-    induction tms.
-    - simpl.
+    induction tms; try now econstructor.
+    simpl.
+    destruct (etm _) eqn:?;
+    match goal with 
+    | H: ∑ _, _ |- _ => 
+      destruct H
+    | _ => idtac
+    end.
+    - erewrite H0;
+      eauto.
       econstructor.
-    - simpl.
-  Admitted.
+      eauto.
+    - erewrite H;
+      eauto;
+      econstructor;
+      eauto.
+  Qed.
 
-  Lemma denote_extract_app_spec: 
-  forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) 
-  (tm : tm s c x) (t : term) (args : list term),
-Forall
-  (fun t0 : term =>
-   forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
-   extract_t2tm' s extract_tf c t0 = Some (x0; tm0) ->
-   denote_tm' s m denote_tf v t0 = Some (x0; interp_tm v tm0)) args ->
-(forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
- extract_t2tm' s extract_tf c t = Some (x0; tm0) ->
- denote_tm' s m denote_tf v t = Some (x0; interp_tm v tm0)) ->
-extract_tf c (tApp t args) (map (extract_t2tm' s extract_tf c) args) =
-Some (x; tm) ->
-denote_tf (tApp t args) (map (denote_tm' s m denote_tf v) args) =
-Some (x; interp_tm v tm).
+  Lemma equiv_envs_map_args:
+    forall c v
+      (dtm: term -> option (∑ ty : sig_sorts s, mod_sorts s m ty))
+      (etm: term -> option (∑ srt : sig_sorts s, tm s c srt))
+    args,
+      Forall
+        (fun t : term =>
+          (forall (x : sig_sorts s) (tm : tm s c x),
+            etm t = Some (x; tm) ->
+            dtm t = Some (x; interp_tm v tm)) /\ 
+          (etm t = None -> dtm t = None)) args ->
+      EquivEnvs v (map dtm args) (map etm args).
   Proof.
+    induction 1; try now econstructor.
     intros.
-    eapply denote_extract_tf_spec; eauto.
-  Admitted. 
-
+    simpl.
+    destruct H.
+    destruct (etm _) eqn:?;
+    match goal with 
+    | H: ∑ _, _ |- _ => 
+      destruct H
+    | _ => idtac
+    end.
+    - erewrite H;
+      eauto.
+      econstructor.
+      eauto.
+    - erewrite H1;
+      eauto;
+      econstructor;
+      eauto.
+  Qed.
 
   Lemma interp_snoc_there: 
     forall s m t c v ty mv v',
@@ -297,26 +332,106 @@ Some (x; interp_tm v tm).
       eapply IHc; eauto.
   Qed.
 
-  Lemma denote'_extract'_spec : 
-    forall {c v} t x tm, 
-      extract_t2tm' s extract_tf c t = Some (x; tm) -> 
-      denote_tm' s m denote_tf v t = Some (x; interp_tm v tm).
+  Lemma extract_denote_var_none : 
+    forall c (v: valu s m c) n,
+      extract_var s c n = None -> 
+      denote_var s m v n = None.
   Proof.
-    induction t using term_ind'; intros; 
-    try (now 
-      eapply denote_extract_tf_spec;
+    induction c;
+    dependent destruction v; 
+    simpl;
+    intros;
+    autorewrite with extract_var in *;
+    try congruence.
+    destruct n.
+    - autorewrite with extract_var in *.
+      inversion H.
+    - autorewrite with extract_var in H.
+      destruct (extract_var _ _ _) eqn:?; [
+          destruct s0; congruence
+        | 
+      ].
+      eapply IHc; eauto.
+  Qed.
+(* 
+  Lemma denote_extract_app_spec: 
+  forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) 
+  (tm : tm s c x) (t : term) (args : list term),
+Forall
+  (fun t0 : term =>
+   forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
+   extract_t2tm' s extract_tf c t0 = Some (x0; tm0) ->
+   denote_tm' s m denote_tf v t0 = Some (x0; interp_tm v tm0)) args ->
+(forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
+ extract_t2tm' s extract_tf c t = Some (x0; tm0) ->
+ denote_tm' s m denote_tf v t = Some (x0; interp_tm v tm0)) ->
+extract_tf c (tApp t args) (map (extract_t2tm' s extract_tf c) args) =
+Some (x; tm) ->
+denote_tf (tApp t args) (map (denote_tm' s m denote_tf v) args) =
+Some (x; interp_tm v tm).
+  Proof.
+    intros.
+    eapply denote_extract_tf_spec; eauto.
+    eapply equiv_envs_map.
+  Qed. *)
+
+
+  Lemma denote'_extract'_spec : 
+    forall {c v} t, 
+      ( forall ty tm,
+          extract_t2tm' s extract_tf c t = Some (ty; tm) -> 
+          denote_tm' s m denote_tf v t = Some (ty; interp_tm v tm)) /\
+      (extract_t2tm' s extract_tf c t = None -> 
+        denote_tm' s m denote_tf v t = None).
+  Proof.
+    induction t using term_ind'; intros;
+    try now (
+      split; intros;
+        [   eapply denote_extract_tf_spec
+        | eapply denote_extract_tf_spec_none
+      ];
       eauto;
       econstructor
     ).
     - simpl in *.
-      destruct (extract_var _ _ _) eqn:?; try congruence.
-      destruct s0.
-      inversion H; subst.
-      erewrite extract_denote_var; repeat f_equal; eauto.
-
+      destruct (extract_var _ _ _) eqn:?; 
+      try (intros; congruence).
+      + destruct s0;
+        split; try congruence.
+        intros.
+        inversion H; subst.
+        erewrite extract_denote_var;
+        eauto.
+      + split; intros; try congruence.
+        erewrite extract_denote_var_none;
+        trivial.
     - simpl in *.
-      eapply denote_extract_app_spec; 
-      eauto.
+      destruct (extract_tf _ _ _) eqn:?;
+      split; try (intros; congruence).
+      + destruct s0.
+        intros.
+        inversion H0; subst.
+        eapply denote_extract_tf_spec; 
+        eauto.
+        eapply equiv_envs_map_args;
+        eauto.
+      + intros.
+        eapply denote_extract_tf_spec_none;
+        eauto.
+        eapply equiv_envs_map_args; 
+        eauto.
+    Unshelve.
+    all: eauto.
+  Qed.
+
+  Lemma denote'_extract'_spec_some : 
+    forall {c v} t x tm, 
+      extract_t2tm' s extract_tf c t = Some (x; tm) -> 
+      denote_tm' s m denote_tf v t = Some (x; interp_tm v tm).
+  Proof.
+    intros.
+    eapply denote'_extract'_spec.
+    eauto.
   Qed.
 
   Theorem denote_extract_general:
@@ -407,10 +522,10 @@ Some (x; interp_tm v tm).
 
     (* equality, \/, /\, and ~ *)
     + 
-      pose proof denote'_extract'_spec (v := v) t1 _ t3.
+      pose proof denote'_extract'_spec_some (v := v) t1 _ t3.
       erewrite H; eauto.
       clear H.
-      pose proof denote'_extract'_spec (v := v) t2 _ t4.
+      pose proof denote'_extract'_spec_some (v := v) t2 _ t4.
       erewrite H; eauto.
       clear H.
 
@@ -441,7 +556,18 @@ Some (x; interp_tm v tm).
     + erewrite H3; eauto.
       eapply iff_refl.
     + eapply denote_extract_tr_spec; eauto.
-      eapply equiv_envs_map.
+      eapply equiv_envs_map_args;
+      eauto.
+      revert denote_extract_tf_spec.
+      revert denote_extract_tf_spec_none.
+      clear.
+      induction args; econstructor;
+      eauto.
+      pose proof denote_extract_tf_spec.
+      pose proof denote_extract_tf_spec_none.
+    
+      eapply denote'_extract'_spec.
+      
   - simpl in *.
     repeat destruct (eq_inductive _ _);
     (try now congruence);

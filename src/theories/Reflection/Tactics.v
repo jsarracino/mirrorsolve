@@ -417,13 +417,100 @@ Section Tactics.
   Variable match_tacs : list ((term -> bool) * tac_syn).
   Variable match_inds : list ((term -> bool) * sorts).
 
+  Lemma extract_denote_args_f_none: 
+    forall c (v: valu s m c) el er fs, 
+      EquivEnvs s m v el er -> 
+      extract_args (args_f fs) er = None -> 
+      denote_tac_args (args_f fs) el = None.
+  Proof.
+    intros.
+    destruct fs.
+    simpl in  *.
+    clear deep_f0.
+    revert H0.
+    revert H.
+    revert el.
+    revert er.
+    induction args_f0;
+    intros;
+    simpl in *.
+    - destruct H;
+      trivial;
+      congruence.
+    - destruct H;
+      simpl in *;
+      trivial;
+      try congruence.
+      destruct (sorts_eq_dec _ _) eqn:?;
+      try congruence.
+      * destruct (extract_args args_f0 er) eqn:?;
+        try congruence.
+        erewrite IHargs_f0; eauto.
+      * destruct (denote_tac_args args_f0 el); trivial.
+  Qed.
+
+  Lemma extract_denote_args_r_none: 
+    forall c (v: valu s m c) el er fs, 
+      EquivEnvs s m v el er -> 
+      extract_args (args_r fs) er = None -> 
+      denote_tac_args (args_r fs) el = None.
+  Admitted.
+
+  Lemma extract_denote_tac_none: 
+    forall c v tac el er t, 
+      EquivEnvs s m v el er -> 
+      extract_tac c tac er t = None -> 
+      denote_tac tac el t = None.
+  Proof.
+    induction tac; intros; simpl in *;
+    unfold extract_fun, extract_rel in *;
+    try now (
+      destruct (extract_args _ _) eqn:?; 
+      try now inversion H0;
+      (erewrite extract_denote_args_f_none || erewrite extract_denote_args_r_none); 
+      eauto;
+      eapply trim_prefix_equiv_envs;
+      eauto
+    ).
+    destruct (denote_lit _ _); eauto.
+    inversion H0.
+  Qed.
+
+  Lemma extract_denote_mtac_some_inr : 
+    forall c v test t el er fm,
+      EquivEnvs s m v el er -> 
+      extract_mtac c test t er = Some (inr fm) ->
+      denote_mtac test t el = Some (inr (interp_fm v fm)).
+  Admitted.
+
+  Lemma extract_denote_mtac_none : 
+    forall c v test t el er,
+      EquivEnvs s m v el er -> 
+      extract_mtac c test t er = None ->
+      denote_mtac test t el = None.
+  Proof.
+    intros.
+    unfold extract_mtac in H0.
+    unfold denote_mtac.
+    destruct test.
+    destruct (b t); trivial.
+
+    erewrite extract_denote_tac_none; eauto.
+  Qed.
+
   Lemma extract_denote_mtacs_some_inr:
       forall c v el er tests fm t,
         EquivEnvs s m v el er -> 
         extract_mtacs c tests t er = Some (inr fm ) -> 
         denote_mtacs tests t el = Some (inr (interp_fm v fm)).
     Proof.
-    Admitted.
+      induction tests; intros; simpl in *; try now inversion H0.
+      destruct (extract_mtac c a t er) eqn:?.
+      - destruct e; inversion H0.
+        subst.
+        erewrite extract_denote_mtac_some_inr; eauto; trivial.
+      - erewrite extract_denote_mtac_none; eauto; trivial.
+    Qed.
 
   Lemma extract_denote_mtacs_some_inl:
     forall c v el er tests ty tm t,
@@ -561,52 +648,6 @@ Section Tactics.
 
 End Tactics.
 
-Module Axioms.
-  Polymorphic Axiom (trust_mtacs: 
-    forall s m sed mtacs,
-      mtacs_wf s m sed mtacs mtacs
-  ).
-End Axioms.
-
-
-Ltac extract_goal s m sed mt mi wf t := 
-  let H := fresh "H" in 
-  pose proof (@denote_extract_specialized s m sed mt mi wf (reindex_vars t)) as H;
-  let f := fresh "fm" in 
-  evar (f: FirstOrder.fm s (SLNil _));
-  specialize (H f);
-  destruct H; [
-    subst f; try exact eq_refl |
-  ]; try (
-    vm_compute in f;
-    subst f
-  ).
-
-Ltac reflect_goal s m sed mt mi wf t := 
-  extract_goal s m sed mt mi wf t;
-  let H' := fresh "H'" in
-  match goal with 
-  | H: interp_fm _ _ -> ?X |- ?G => 
-    assert (H': X = G) by exact eq_refl
-  end;
-  erewrite H' in *;
-  match goal with 
-  | H: _ -> ?X |- _ => 
-    eapply H
-  end.
-
-Ltac reflect_goal_trust s m sed mt mi t := 
-  extract_goal s m sed mt mi (Axioms.trust_mtacs s m sed mt) t;
-  let H' := fresh "H'" in
-  match goal with 
-  | H: interp_fm _ _ -> ?X |- ?G => 
-    assert (H': X = G) by exact eq_refl
-  end;
-  erewrite H' in *;
-  match goal with 
-  | H: _ -> ?X |- _ => 
-    eapply H
-  end.
 
 (* 
 Transparent denote_tm.

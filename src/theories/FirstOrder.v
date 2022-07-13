@@ -202,6 +202,78 @@ Section FOL.
       apply iff_refl.
     Qed.
 
+    Variable (mv_dec: 
+      forall (s: sig_sorts sig),
+        forall (x y: m.(mod_sorts) s), {x = y} + {x <> y}  
+    ).
+
+    Variable (rel_interp_dec: 
+      forall args hargs (r: sig_rels sig args), 
+        mod_rels m args r hargs \/ ~ mod_rels m args r hargs
+    ).
+
+    Variable (distinct_mv: 
+      forall s (x: m.(mod_sorts) s), 
+        (exists (y: m.(mod_sorts) s), x <> y) \/ 
+        (forall (y: m.(mod_sorts) s), x = y)
+    ).
+
+    Lemma refute_dec: 
+      forall c v s f,
+        (exists (x: m.(mod_sorts) s), ~ interp_fm (CSnoc c _) (VSnoc _ _ v x) f) \/ 
+        forall (x: m.(mod_sorts) s), interp_fm _ (VSnoc _ _ v x) f. 
+    Proof.
+      dependent induction f.
+      - right; 
+        intros;
+        autorewrite with interp_fm; trivial.
+      - left; 
+        eexists;
+        autorewrite with interp_fm; 
+        intuition.
+      - admit.
+      - admit. 
+    Admitted.
+
+
+    Lemma interp_dec: 
+      forall c v f, 
+        interp_fm c v f \/ ~ interp_fm c v f. 
+    Proof.
+      induction f; 
+      autorewrite with interp_fm in *;
+      try (now intuition).
+      - destruct (mv_dec _ (interp_tm c s v t) (interp_tm c s v t0)); [
+            left | right
+        ]; 
+        intuition.
+      - destruct (@IHf v).
+        + right; intuition.
+        + left; intuition.
+      - destruct (@IHf1 v); [
+            left; left; eauto
+          | 
+        ].
+        destruct (@IHf2 v).
+        + left; right; eauto.
+        + right; intuition.
+      - destruct (@IHf1 v);
+        destruct (@IHf2 v); 
+        try now (right; intuition).
+        left; intuition.
+      - destruct (@IHf1 v);
+        destruct (@IHf2 v);
+        try now (left; intuition);
+        try now (right; intuition).
+        right; intuition.
+      - pose proof refute_dec.
+        destruct (H c v s f).
+        + right.
+          destruct H0.
+          intuition eauto.
+        + left; intuition eauto.
+    Qed.
+
     (* Require Import Coq.Logic.JMeq.
     Lemma forall_interp:
       forall c srt v (F : mod_sorts m srt -> fm (CSnoc c srt)) t', 

@@ -417,46 +417,17 @@ Section Tactics.
   Variable match_tacs : list ((term -> bool) * tac_syn).
   Variable match_inds : list ((term -> bool) * sorts).
 
-  (* Variable (mt_wf: match_tacs_wf). *)
-
-  Definition extract_denote_mtacs_rel_def mtacs :=
-    forall (c : ctx s) (v : valu s m c) (t : term)
-      (el : list (option (∑ ty : sorts, mod_sorts ty)))
-      (er : list (option (∑ srt : sorts, tm s c srt))) 
-      (fm : FirstOrder.fm s c),
-    EquivEnvs s m v el er ->
-    (fun c0 : ctx s => extract_t2rel mtacs) c t er = Some fm ->
-    denote_t2rel match_tacs t el <-> interp_fm v fm.
-
-  Lemma extract_denote_mtacs_rel : 
-    forall (c : ctx s) (v : valu s m c) (t : term)
-      (el : list (option (∑ ty : sorts, mod_sorts ty)))
-      (er : list (option (∑ srt : sorts, tm s c srt))) 
-      (fm : FirstOrder.fm s c),
-    EquivEnvs s m v el er ->
-    (fun c0 : ctx s => extract_t2rel match_tacs) c t er = Some fm ->
-    denote_t2rel match_tacs t el <-> interp_fm v fm.
-  Admitted.
-
-
-  Definition extract_denote_mtacs_some_inl_def mtacs := 
-    forall c v el er tests ty tm t,
-      EquivEnvs s m v el er -> 
-      Forall (fun t => In t mtacs) tests ->
-      extract_mtacs c tests t er = Some (inl (ty; tm)) -> 
-      denote_mtacs tests t el = Some (inl (ty; interp_tm v tm)).
-
-  Definition extract_denote_mtacs_some_inr_def mtacs := 
-    forall c v el er tests fm t,
-      EquivEnvs s m v el er -> 
-      Forall (fun t => In t mtacs) tests ->
-      extract_mtacs c tests t er = Some (inr fm) -> 
-      denote_mtacs tests t el = Some (inr (interp_fm v fm)).
+  Lemma extract_denote_mtacs_some_inr:
+      forall c v el er tests fm t,
+        EquivEnvs s m v el er -> 
+        extract_mtacs c tests t er = Some (inr fm ) -> 
+        denote_mtacs tests t el = Some (inr (interp_fm v fm)).
+    Proof.
+    Admitted.
 
   Lemma extract_denote_mtacs_some_inl:
     forall c v el er tests ty tm t,
       EquivEnvs s m v el er -> 
-      Forall (fun t => In t match_tacs) tests ->
       extract_mtacs c tests t er = Some (inl (ty; tm)) -> 
       denote_mtacs tests t el = Some (inl (ty; interp_tm v tm)).
   Proof.
@@ -488,7 +459,6 @@ Section Tactics.
 
   Lemma extract_denote_mtacs_none:
     forall c el er tests t,
-      Forall (fun t => In t match_tacs) tests ->
       extract_mtacs c tests t er = None -> 
       denote_mtacs tests t el = None.
   Proof.
@@ -503,57 +473,39 @@ Section Tactics.
     erewrite match_tacs_sound_none; eauto.
   Qed. *)
 
-  Lemma Forall_weaken: 
-    forall A (P Q : A -> Prop) l, 
-      (forall x, P x -> Q x) -> 
-      Forall P l -> 
-      Forall Q l.
+
+  Lemma extract_denote_mtacs_rel : 
+    forall (c : ctx s) (v : valu s m c) (t : term)
+      (el : list (option (∑ ty : sorts, mod_sorts ty)))
+      (er : list (option (∑ srt : sorts, tm s c srt))) 
+      (fm : FirstOrder.fm s c),
+    EquivEnvs s m v el er ->
+    (fun c0 : ctx s => extract_t2rel match_tacs) c t er = Some fm ->
+    denote_t2rel match_tacs t el <-> interp_fm v fm.
   Proof.
-    induction 2; trivial.
-    econstructor; intuition.
-  Qed.
-
-  Lemma Forall_refl : 
-    forall {A} (l: list A), Forall (fun x => In x l) l.
-  Proof. 
-    intros; induction l; trivial.
-    simpl.
-    econstructor; intuition eauto.
-    eapply Forall_weaken; [|eapply IHl].
     intros.
-    right; eauto.
+    simpl in *.
+    unfold extract_t2rel in H0.
+    unfold denote_t2rel.
+    destruct (extract_mtacs c match_tacs t er) eqn:?.
+    - destruct e eqn:?; try now inversion H0.
+      erewrite extract_denote_mtacs_some_inr; eauto; trivial.
+      inversion H0.
+      eapply iff_refl.
+    - inversion H0.
   Qed.
-  
-  Definition mtacs_extract_none_def mtacs :=
-    forall c t er args, 
-      extract_mtacs c mtacs t er = None -> 
-      extract_mtacs c mtacs (tApp t args) er = None.
-
-  Definition extract_denote_mtacs_none_def mtacs :=
-    forall c el er tests t,
-      Forall (fun t => In t mtacs) tests ->
-      extract_mtacs c tests t er = None -> 
-      denote_mtacs tests t el = None.
-
-  Definition mtacs_wf mtacs := 
-      extract_denote_mtacs_rel_def mtacs /\
-      extract_denote_mtacs_some_inl_def mtacs /\
-      extract_denote_mtacs_some_inr_def mtacs /\
-      extract_denote_mtacs_none_def mtacs /\
-      mtacs_extract_none_def mtacs.
-
-  Variable (match_tacs_wf : mtacs_wf match_tacs).
 
   Lemma denote_extract_specialized: 
     forall t fm,
       extract_t2fm s (fun c => @extract_t2tm c match_tacs) (fun c => @extract_t2rel c match_tacs) (i2srt match_inds) sorts_eq_dec _ t = Some fm -> 
       (denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (denote_t2rel match_tacs) (i2srt match_inds) (VEmp _ _) t <-> interp_fm (m := m) (VEmp _ _) fm).
   Proof.
-    destruct match_tacs_wf as [? [? [? [? ?]]]].
+    (* destruct match_tacs_wf as [? [? [? [? ?]]]]. *)
     intros.
     eapply denote_extract_general; eauto.
     - intros.
-      induction t0 using term_ind'; 
+      simpl in *.
+      induction t0 using term_ind';
       autorewrite with denote_tm;
       autorewrite with extract_t2tm in *;
       repeat match goal with 
@@ -562,21 +514,20 @@ Section Tactics.
       | H : match ?X with | inl _ => _ | inr _ => _ end = _ |- _ => 
         destruct X eqn:?; try congruence
       end;
-      match goal with 
-      | |- match denote_mtacs _ _ _ with Some _ => _ | None => _ end = _ => 
-        erewrite H0; eauto; try eapply Forall_refl
-      end;
-      subst;
-      eauto;
-      match goal with 
-      | H: Some _ = Some _ |- _ => 
-        inversion H; subst
-      end;
-      eauto.
-      exfalso.
-      erewrite H3 in Heqo0; congruence.
+      try now (
+        erewrite extract_denote_mtacs_some_inl; eauto; trivial;
+        match goal with 
+        | H: Some _ = Some _ |- _ => 
+          inversion H; subst
+        end;
+        eauto
+      ).
+      erewrite extract_denote_mtacs_none; eauto.
+      destruct s0.
+      inversion H1.
+      erewrite extract_denote_mtacs_some_inl; eauto; trivial.
+
     - intros.
-      unfold extract_denote_mtacs_rel_def, extract_denote_mtacs_some_inl_def, extract_denote_mtacs_some_inr_def, mtacs_extract_none_def in *.
       induction t0 using term_ind'; 
       autorewrite with denote_tm;
       autorewrite with extract_t2tm in *;
@@ -588,22 +539,25 @@ Section Tactics.
       end;
       match goal with 
       | H: _ = inr _ |- _ => 
-        try now (erewrite H1; eauto; try eapply Forall_refl)
-      (* | |- match denote_mtacs _ _ _ with Some _ => _ | None => _ end = Some _ => 
-        (erewrite H1; eauto; try eapply Forall_refl) *)
-      | H: extract_mtacs _ _ _ _ = None |- _ => 
-        erewrite H2; eauto; try eapply Forall_refl
+        try now (erewrite extract_denote_mtacs_some_inr; eauto)
+      | H: _ = None |- _ => 
+        try now (erewrite extract_denote_mtacs_none; eauto)
+      | _ => idtac
       end.
-      + erewrite H2; auto.
-        * erewrite H1; eauto.
-          eapply Forall_refl.
-        * eapply Forall_refl.
-        * eapply Heqo.
-      + erewrite H2; eauto.
-        eapply Forall_refl.
+      + erewrite extract_denote_mtacs_none;
+        eauto.
+        erewrite extract_denote_mtacs_some_inr;
+        eauto.
+      + erewrite extract_denote_mtacs_none;
+        eauto.
+        erewrite extract_denote_mtacs_none;
+        eauto.
+    - intros.
+      eapply extract_denote_mtacs_rel;
+      eauto.
   Qed.
 
-  (* Print Assumptions denote_extract_specialized. *)
+  Print Assumptions denote_extract_specialized.
 
 End Tactics.
 

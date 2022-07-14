@@ -57,6 +57,11 @@ Section Tactics.
     | t :: ts => (mod_sorts t -> (denote_func ts ret))%type
     end.
 
+  Equations wrap_h_args {c} {v: valu s m c} {args: list (s.(sig_sorts))} (h_args: HList.t (tm s c) args) : denote_args args by struct h_args := {
+    wrap_h_args hnil := tt;
+    wrap_h_args (x ::: xs) := (wrap_h_args xs, interp_tm v x);
+  }.
+
   Fixpoint denote_rel (args: list sorts): Type := 
     match args with 
     | nil => Prop
@@ -454,7 +459,32 @@ Section Tactics.
       EquivEnvs s m v el er -> 
       extract_args (args_r fs) er = None -> 
       denote_tac_args (args_r fs) el = None.
-  Admitted.
+  Proof.
+    intros.
+    destruct fs.
+    simpl in  *.
+    clear deep_r0.
+    revert H0.
+    revert H.
+    revert el.
+    revert er.
+    induction args_r0;
+    intros;
+    simpl in *.
+    - destruct H;
+      trivial;
+      congruence.
+    - destruct H;
+      simpl in *;
+      trivial;
+      try congruence.
+      destruct (sorts_eq_dec _ _) eqn:?;
+      try congruence.
+      * destruct (extract_args args_r0 er) eqn:?;
+        try congruence.
+        erewrite IHargs_r0; eauto.
+      * destruct (denote_tac_args args_r0 el); trivial.
+  Qed.
 
   Lemma extract_denote_tac_none: 
     forall c v tac el er t, 
@@ -476,12 +506,46 @@ Section Tactics.
     inversion H0.
   Qed.
 
-  Lemma extract_denote_mtac_some_inr : 
-    forall c v test t el er fm,
+  Lemma extract_args_wrap:
+    forall c (v: valu s m c) x er el (h_args: HList.t _ x), 
       EquivEnvs s m v el er -> 
-      extract_mtac c test t er = Some (inr fm) ->
-      denote_mtac test t el = Some (inr (interp_fm v fm)).
+      extract_args x er = Some h_args -> 
+      denote_tac_args x el = Some (wrap_h_args (v := v) h_args).
   Admitted.
+
+  Lemma apply_denote_mod_rel : 
+    forall c (v: valu s m c) args (h_args : HList.t _ args) rel,
+      apply_denote_rel args (wrap_h_args (v := v) h_args) 
+        (conv_rel (mod_rels s m args rel)) =
+      mod_rels s m args rel (interp_tms v h_args).
+  Admitted.
+
+  Lemma extract_denote_tac_some_inr : 
+    forall c v tac el er t fm,
+      EquivEnvs s m v el er -> 
+      extract_tac c tac er t = Some (inr fm) -> 
+      denote_tac tac el t = Some (inr (interp_fm v fm)).
+  Proof.
+    intros.
+    induction tac; intros; simpl in *;
+    unfold extract_fun, extract_rel in *;
+    try now (
+      destruct (extract_args _ _) eqn:?; 
+      try now inversion H0
+    ).
+    - destruct (extract_args _ _) eqn:?; 
+      inversion H0.
+      clear H2.
+      clear H0.
+      erewrite extract_args_wrap; eauto.
+      do 2 f_equal.
+      autorewrite with interp_fm.
+      eapply apply_denote_mod_rel.
+      eapply trim_prefix_equiv_envs.
+      trivial.
+    - destruct (denote_lit _ _); 
+      inversion H0.
+  Qed.
 
   Lemma extract_denote_mtac_none : 
     forall c v test t el er,
@@ -497,6 +561,60 @@ Section Tactics.
 
     erewrite extract_denote_tac_none; eauto.
   Qed.
+
+
+  Lemma extract_denote_mtac_some_inr : 
+    forall c v test t el er fm,
+      EquivEnvs s m v el er -> 
+      extract_mtac c test t er = Some (inr fm) ->
+      denote_mtac test t el = Some (inr (interp_fm v fm)).
+  Proof.
+    intros.
+    unfold extract_mtac in *.
+    unfold denote_mtac.
+    destruct test.
+    destruct (b t); try congruence.
+
+    eapply extract_denote_tac_some_inr;
+    eauto.
+  Qed.
+
+  (* Lemma extract_denote_args_f_some_inl: 
+    forall c (v: valu s m c) el er fs out out', 
+      EquivEnvs s m v el er -> 
+      extract_args (args_f fs) er = Some out -> 
+      denote_tac_args (args_f fs) el = Some (denote_args (args_f fs)).
+  Proof.
+    intros.
+    destruct fs.
+    simpl in  *.
+    clear deep_f0.
+    revert H0.
+    revert H.
+    revert el.
+    revert er.
+    induction args_f0;
+    intros;
+    simpl in *.
+    - destruct H;
+      trivial;
+      try congruence.
+      destruct out'.
+      trivial.
+    - destruct H;
+      simpl in *;
+      trivial;
+      try congruence.
+      destruct (sorts_eq_dec _ _) eqn:?;
+      try congruence.
+      * destruct (extract_args args_f0 er) eqn:?;
+        try congruence.
+        destruct e.
+        unfold eq_rect_r in *;
+        simpl in *.
+        erewrite IHargs_f0; eauto.
+      * destruct (denote_tac_args args_f0 el); trivial.
+  Qed. *)
 
   Lemma extract_denote_mtacs_some_inr:
       forall c v el er tests fm t,

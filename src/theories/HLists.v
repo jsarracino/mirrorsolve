@@ -20,8 +20,32 @@ Module HList.
         B a ->
         t rest ->
         t (a :: rest).
+
+    Lemma hcons_inv : 
+      forall a rest (x y: B a) hl hl', 
+        @HCons a rest x hl = @HCons a rest y hl' <->
+        x = y /\ hl = hl'.
+    Proof.
+      intuition.
+      - inversion H as [].
+        inversion_sigma.
+        subst.
+        erewrite (UIP_refl _ _ H1).
+        simpl.
+        trivial.
+      - inversion H as [].
+        inversion_sigma.
+        subst.
+        erewrite (UIP_refl _ _ H2).
+        simpl.
+        trivial.
+      - subst.
+        trivial.
+    Qed.
   End HList.
   Derive NoConfusion Signature for t.
+
+
 
   Fixpoint mapl {A B} (f: forall a: A, B a) (l: list A): HList.t B l :=
     match l with

@@ -507,17 +507,41 @@ Section Tactics.
   Qed.
 
   Lemma extract_args_wrap:
-    forall c (v: valu s m c) x er el (h_args: HList.t _ x), 
+    forall c (v: valu s m c) x (h_args: HList.t _ x) er el , 
       EquivEnvs s m v el er -> 
       extract_args x er = Some h_args -> 
       denote_tac_args x el = Some (wrap_h_args (v := v) h_args).
-  Admitted.
+  Proof.
+    induction h_args;
+    simpl in *;
+    intros;
+    destruct H; try congruence.
+    - autorewrite with wrap_h_args.
+      trivial.
+    - destruct (sorts_eq_dec _ _); 
+      try congruence.
+      destruct e.
+      unfold eq_rect_r in *.
+      simpl in *.
+      destruct (extract_args rest er) eqn:?;
+      try congruence.
+      inversion H0 as [].
+      inversion_sigma.
+      subst.
+      erewrite (Eqdep.EqdepTheory.UIP_refl _ _ H2) in *.
+      erewrite (Eqdep.EqdepTheory.UIP_refl _ _ H3) in *.
+      simpl in *.
+      erewrite IHh_args; eauto.
+  Qed.
 
   Lemma apply_denote_mod_rel : 
-    forall c (v: valu s m c) args (h_args : HList.t _ args) rel,
+    forall c (v: valu s m c) args rel (h_args : HList.t _ args),
       apply_denote_rel args (wrap_h_args (v := v) h_args) 
         (conv_rel (mod_rels s m args rel)) =
       mod_rels s m args rel (interp_tms v h_args).
+  Proof.
+    intros.
+    (* TODO *)
   Admitted.
 
   Lemma extract_denote_tac_some_inr : 

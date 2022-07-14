@@ -1,5 +1,13 @@
 Require Import Coq.Setoids.Setoid.
 
+Lemma some_ty: 
+  forall {T} {x x': T},
+    Some x = Some x' <-> 
+    x = x'.
+Proof.
+  intros.
+  intuition (inversion H; eauto).
+Qed.
 
 Lemma some_prop: 
   forall p p': Prop,
@@ -7,7 +15,7 @@ Lemma some_prop:
     p = p'.
 Proof.
   intros.
-  split; intros; subst; trivial; inversion H; trivial.
+  eapply some_ty.
 Qed.
 
 Lemma iff_distribute:

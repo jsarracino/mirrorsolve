@@ -113,7 +113,11 @@ Section Tactics.
     | tacRel : 
       forall (rs: rel_sym), tac_syn
     | tacLit : 
-      forall (lit : tac_lits) (denote_lit: lit_ty lit -> {ty & mod_sorts ty}) (extract_lit: lit_ty lit -> forall c, {ty & tm s c ty}), tac_syn.
+      forall (lit : tac_lits) (denote_lit: lit_ty lit -> {ty & mod_sorts ty}) (extract_lit: lit_ty lit -> forall c, {ty & tm s c ty}), 
+        (forall l c v ty tm, 
+          extract_lit l c = (ty; tm) -> 
+          denote_lit l = (ty; interp_tm v tm)) ->
+      tac_syn.
 
   Fixpoint denote_tac_args (tac_args: list sorts) (opt_args: list (option ({ty & mod_sorts ty}))) : option (denote_args tac_args) := 
     match opt_args with 
@@ -141,15 +145,12 @@ Section Tactics.
       end
     end.
 
-
   Fixpoint conv_fun {arg_tys ret_ty} {struct arg_tys}: (HList.t mod_sorts arg_tys -> mod_sorts ret_ty) -> denote_func arg_tys ret_ty :=
     match arg_tys with 
     | nil => fun f => f hnil
     | t :: ts => fun f v => 
       conv_fun (fun vs => f (v ::: vs))
     end.
-
-  Eval compute in denote_rel nil.
 
   Fixpoint conv_rel {arg_tys} {struct arg_tys}: (HList.t mod_sorts arg_tys -> Prop) -> denote_rel arg_tys :=
     match arg_tys with 
@@ -257,7 +258,7 @@ Section Tactics.
       | Some wrapped_args => Some (inr (apply_denote_rel _ wrapped_args (conv_rel (s.(mod_rels) _ _ rs.(deep_r)))))
       | None => None
       end
-    | tacLit lit dt _ => 
+    | tacLit lit dt _ _ => 
       match denote_lit lit t with 
       | Some dlit => Some (inl (dt dlit))
       | None => None
@@ -354,7 +355,7 @@ Section Tactics.
       | Some x => Some (inr x)
       | None => None
       end
-    | tacLit lit _ ef => 
+    | tacLit lit _ ef _ => 
       match denote_lit lit t with 
       | Some dlit => Some (inl (ef dlit c))
       | None => None
@@ -537,12 +538,32 @@ Section Tactics.
   Lemma apply_denote_mod_rel : 
     forall c (v: valu s m c) args rel (h_args : HList.t _ args),
       apply_denote_rel args (wrap_h_args (v := v) h_args) 
-        (conv_rel (mod_rels s m args rel)) =
-      mod_rels s m args rel (interp_tms v h_args).
+        (conv_rel rel) =
+      rel (interp_tms v h_args).
   Proof.
-    intros.
-    (* TODO *)
-  Admitted.
+    induction h_args;
+    intros;
+    trivial.
+    simpl.
+    autorewrite with wrap_h_args.
+    erewrite IHh_args.
+    trivial.
+  Qed.
+
+  Lemma apply_denote_mod_func : 
+    forall c (v: valu s m c) args rt (func : HList.t _ args -> mod_sorts rt) (h_args : HList.t _ args),
+      apply_denote_func args (wrap_h_args (v := v) h_args) 
+        (conv_fun func) =
+      func (interp_tms v h_args).
+  Proof.
+    induction h_args;
+    intros;
+    trivial.
+    simpl.
+    autorewrite with wrap_h_args.
+    erewrite IHh_args.
+    trivial.
+  Qed.
 
   Lemma extract_denote_tac_some_inr : 
     forall c v tac el er t fm,
@@ -571,6 +592,37 @@ Section Tactics.
       inversion H0.
   Qed.
 
+  Lemma extract_denote_tac_some_inl : 
+    forall c v tac el er t ty tm,
+      EquivEnvs s m v el er -> 
+      extract_tac c tac er t = Some (inl (ty; tm)) -> 
+      denote_tac tac el t = Some (inl (ty; interp_tm v tm)).
+  Proof.
+    induction tac; intros; simpl in *;
+    unfold extract_fun, extract_rel in *;
+    try now (
+      destruct (extract_args _ _) eqn:?; 
+      try now inversion H0
+    ).
+    - destruct (extract_args _ _) eqn:?; 
+      inversion H0.
+      clear H2.
+      clear H0.
+      erewrite extract_args_wrap; eauto.
+      * do 3 f_equal.
+        autorewrite with interp_tm.
+        destruct fs.
+        simpl in *.
+        eapply apply_denote_mod_func.
+      * eapply trim_prefix_equiv_envs.
+        trivial.
+    - destruct (denote_lit _ _); 
+      inversion H0.
+      do 2 f_equal.
+      eapply e.
+      trivial.
+  Qed.
+
   Lemma extract_denote_mtac_none : 
     forall c v test t el er,
       EquivEnvs s m v el er -> 
@@ -582,7 +634,6 @@ Section Tactics.
     unfold denote_mtac.
     destruct test.
     destruct (b t); trivial.
-
     erewrite extract_denote_tac_none; eauto.
   Qed.
 
@@ -598,47 +649,25 @@ Section Tactics.
     unfold denote_mtac.
     destruct test.
     destruct (b t); try congruence.
-
     eapply extract_denote_tac_some_inr;
     eauto.
   Qed.
 
-  (* Lemma extract_denote_args_f_some_inl: 
-    forall c (v: valu s m c) el er fs out out', 
+  Lemma extract_denote_mtac_some_inl : 
+    forall c v test t el er ty tm,
       EquivEnvs s m v el er -> 
-      extract_args (args_f fs) er = Some out -> 
-      denote_tac_args (args_f fs) el = Some (denote_args (args_f fs)).
+      extract_mtac c test t er = Some (inl (ty; tm)) ->
+      denote_mtac test t el = Some (inl (ty; interp_tm v tm)).
   Proof.
     intros.
-    destruct fs.
-    simpl in  *.
-    clear deep_f0.
-    revert H0.
-    revert H.
-    revert el.
-    revert er.
-    induction args_f0;
-    intros;
-    simpl in *.
-    - destruct H;
-      trivial;
-      try congruence.
-      destruct out'.
-      trivial.
-    - destruct H;
-      simpl in *;
-      trivial;
-      try congruence.
-      destruct (sorts_eq_dec _ _) eqn:?;
-      try congruence.
-      * destruct (extract_args args_f0 er) eqn:?;
-        try congruence.
-        destruct e.
-        unfold eq_rect_r in *;
-        simpl in *.
-        erewrite IHargs_f0; eauto.
-      * destruct (denote_tac_args args_f0 el); trivial.
-  Qed. *)
+    unfold extract_mtac in *.
+    unfold denote_mtac.
+    destruct test.
+    destruct (b t); try congruence.
+
+    eapply extract_denote_tac_some_inl;
+    eauto.
+  Qed.
 
   Lemma extract_denote_mtacs_some_inr:
       forall c v el er tests fm t,
@@ -660,47 +689,27 @@ Section Tactics.
       extract_mtacs c tests t er = Some (inl (ty; tm)) -> 
       denote_mtacs tests t el = Some (inl (ty; interp_tm v tm)).
   Proof.
-  Admitted.
-    (* slightly broken... *)
-    (* destruct mt_wf.
-    destruct t;
-    induction tests;
-    intros;
-    simpl in *;
-    try congruence;
-    match goal with 
-    | H: match ?X with | Some _ => _ | None => _ end = _ |- _ => 
-      destruct X eqn:?
-    end;
-    repeat match goal with 
-    | H: extract_mtac _ _ _ _ = Some _ |- _ => 
-      erewrite match_tacs_sound_some; eauto
-    | H: extract_mtac _ _ _ _ = None |- _ => 
-      erewrite match_tacs_sound_none; eauto
-    end;
-    repeat match goal with
-    | X: ∑ _, _ |- _ => 
-      destruct X
-    | H: Some _ = Some _ |- _ => 
-      inversion H; subst; clear H; eauto
-    end.
-  Qed. *)
+    induction tests; intros; simpl in *; try now inversion H0.
+    destruct (extract_mtac c a t er) eqn:?.
+    - destruct e; inversion H0.
+      subst.
+      erewrite extract_denote_mtac_some_inl; eauto; trivial.
+    - erewrite extract_denote_mtac_none; eauto; trivial.
+  Qed.
 
   Lemma extract_denote_mtacs_none:
-    forall c el er tests t,
+    forall c v el er tests t,
+      EquivEnvs s m v el er -> 
       extract_mtacs c tests t er = None -> 
       denote_mtacs tests t el = None.
   Proof.
-  Admitted.
-    (* destruct mt_wf;
-    destruct t; induction tests;
-    simpl; intros; trivial;
-    match goal with 
-    | H : match ?X with | Some _ => _ | None => _ end = _ |- _ => 
-      destruct X eqn:?; try congruence
-    end;
-    erewrite match_tacs_sound_none; eauto.
-  Qed. *)
+    induction tests; intros; simpl in *; (try now inversion H0);
+    trivial.
+    destruct (extract_mtac c a t er) eqn:?;
+    try now inversion H.
+    erewrite extract_denote_mtac_none;
+    eauto.
+  Qed.
 
 
   Lemma extract_denote_mtacs_rel : 
@@ -786,9 +795,9 @@ Section Tactics.
       eauto.
   Qed.
 
-  Print Assumptions denote_extract_specialized.
-
 End Tactics.
+
+Print Assumptions denote_extract_specialized.
 
 
 (* 

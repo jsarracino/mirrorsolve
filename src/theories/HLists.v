@@ -30,13 +30,18 @@ Module HList.
       - inversion H as [].
         inversion_sigma.
         subst.
-        erewrite (UIP_refl _ _ H1).
-        simpl.
+        repeat match goal with 
+        | H: ?X = ?X |- _ => 
+          erewrite (UIP_refl _ _ H) in *; simpl in *
+        end.
         trivial.
       - inversion H as [].
         inversion_sigma.
         subst.
-        erewrite (UIP_refl _ _ H2).
+        repeat match goal with 
+        | H: ?X = ?X |- _ => 
+          erewrite (UIP_refl _ _ H) in *; simpl in *
+        end.
         simpl.
         trivial.
       - subst.

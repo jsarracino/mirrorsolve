@@ -46,18 +46,14 @@ Section Meta.
     (forall (ind : inductive) (u : Instance.t), P (tInd ind u)) ->
     (forall (ind : inductive) (idx : nat) (u : Instance.t),
     P (tConstruct ind idx u)) ->
-    (forall (ind_nbparams_relevance : (inductive × nat) × relevance)
-      (type_info : term),
-    P type_info ->
-    forall discr : term,
-    P discr ->
-    forall branches : list (nat × term),
-    P (tCase ind_nbparams_relevance type_info discr branches)) ->
+    (forall (ci : case_info) (type_info : predicate term) (discr : term),
+        P discr ->
+        forall branches : list (branch term),
+        P (tCase ci type_info discr branches)) ->
     (forall (proj : projection) (t : term), P t -> P (tProj proj t)) ->
     (forall (mfix : mfixpoint term) (idx : nat), P (tFix mfix idx)) ->
-    (forall (mfix : mfixpoint term) (idx : nat), P (tCoFix mfix idx)) ->
-    (forall i : Int63.int, P (tInt i)) ->
-    (forall f16 : PrimFloat.float, P (tFloat f16)) -> forall t : term, P t :=
+    (forall (mfix : mfixpoint term) (idx : nat), P (tCoFix mfix idx)) -> 
+    forall (t: term), P t :=
   fun (P : term -> Prop) (f : forall n : nat, P (tRel n))
     (f0 : forall id : ident, P (tVar id))
     (f1 : forall (ev : nat) (args : list term), P (tEvar ev args))
@@ -82,18 +78,14 @@ Section Meta.
     (f9 : forall (ind : inductive) (u : Instance.t), P (tInd ind u))
     (f10 : forall (ind : inductive) (idx : nat) (u : Instance.t),
           P (tConstruct ind idx u))
-    (f11 : forall (ind_nbparams_relevance : (inductive × nat) × relevance)
-            (type_info : term),
-          P type_info ->
-          forall discr : term,
+    (f11 : forall (ci : case_info) (type_info : predicate term) (discr : term),
           P discr ->
-          forall branches : list (nat × term),
-          P (tCase ind_nbparams_relevance type_info discr branches))
+          forall branches : list (branch term),
+          P (tCase ci type_info discr branches))
     (f12 : forall (proj : projection) (t : term), P t -> P (tProj proj t))
     (f13 : forall (mfix : mfixpoint term) (idx : nat), P (tFix mfix idx))
     (f14 : forall (mfix : mfixpoint term) (idx : nat), P (tCoFix mfix idx))
-    (f15 : forall i : Int63.int, P (tInt i))
-    (f16 : forall f16 : PrimFloat.float, P (tFloat f16)) =>
+     =>
     fix F (t : term) : P t :=
     match t as t0 return (P t0) with
     | tRel n => f n
@@ -116,44 +108,12 @@ Section Meta.
     | tConst c u => f8 c u
     | tInd ind u => f9 ind u
     | tConstruct ind idx u => f10 ind idx u
-    | tCase ind_nbparams_relevance type_info discr branches =>
-        f11 ind_nbparams_relevance type_info (F type_info) discr 
-          (F discr) branches
+    | tCase ci type_info discr branches =>
+      f11 ci type_info discr (F discr) branches
     | tProj proj t0 => f12 proj t0 (F t0)
     | tFix mfix idx => f13 mfix idx
     | tCoFix mfix idx => f14 mfix idx
-    | tInt i => f15 i
-    | tFloat f17 => f16 f17
     end.
-
-  (* Lemma mk_denote_var : 
-    forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) (tm : tm s c x) (n : nat),
-  match mk_var s c n with
-  | Some s0 => let (srt, v0) := s0 in Some (srt; TVar v0)
-  | None => None
-  end = Some (x; tm) -> denote_var s m v n = Some (x; interp_tm v tm).
-  Proof.
-    intros.
-    induction c; 
-    dependent destruction v; 
-    simpl in *; autorewrite with mk_var in *; try congruence.
-    destruct (mk_var _ _ _) eqn:?; try congruence.
-    destruct s0.
-    inversion H; subst.
-
-    assert ()
-    destruct n.
-    - simpl. autorewrite with mk_var in *.
-    specialize (IHc v )
-    erewrite Heqo in IHc.
-
-    - inversion H.
-      f_equal.
-    -
-      destruct n.
-      + eapply IHn.
-
-  Admitted. *)
 
   Inductive EquivEnvs {c} : 
     valu s m c ->
@@ -328,8 +288,10 @@ Section Meta.
       destruct (extract_var _ _ _) eqn:?; try congruence.
       destruct s0.
       inversion H.
-      erewrite interp_snoc_there.
-      eapply IHc; eauto.
+      subst x.
+      erewrite IHc with (ty := ty);
+      eauto.
+      f_equal.
   Qed.
 
   Lemma extract_denote_var_none : 
@@ -353,27 +315,6 @@ Section Meta.
       ].
       eapply IHc; eauto.
   Qed.
-(* 
-  Lemma denote_extract_app_spec: 
-  forall (c : ctx s) (v : valu s m c) (x : sig_sorts s) 
-  (tm : tm s c x) (t : term) (args : list term),
-Forall
-  (fun t0 : term =>
-   forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
-   extract_t2tm' s extract_tf c t0 = Some (x0; tm0) ->
-   denote_tm' s m denote_tf v t0 = Some (x0; interp_tm v tm0)) args ->
-(forall (x0 : sig_sorts s) (tm0 : FirstOrder.tm s c x0),
- extract_t2tm' s extract_tf c t = Some (x0; tm0) ->
- denote_tm' s m denote_tf v t = Some (x0; interp_tm v tm0)) ->
-extract_tf c (tApp t args) (map (extract_t2tm' s extract_tf c) args) =
-Some (x; tm) ->
-denote_tf (tApp t args) (map (denote_tm' s m denote_tf v) args) =
-Some (x; interp_tm v tm).
-  Proof.
-    intros.
-    eapply denote_extract_tf_spec; eauto.
-    eapply equiv_envs_map.
-  Qed. *)
 
 
   Lemma denote'_extract'_spec : 
@@ -422,6 +363,7 @@ Some (x; interp_tm v tm).
         eauto.
     Unshelve.
     all: eauto.
+    eapply H.
   Qed.
 
   Lemma denote'_extract'_spec_some : 
@@ -552,10 +494,12 @@ Some (x; interp_tm v tm).
           destruct H
         end; [left; eapply H3 | right; eapply H2]; eauto.
     + intuition.
-      eapply H3; eauto.
     + erewrite H3; eauto.
       eapply iff_refl.
-    + eapply denote_extract_tr_spec; eauto.
+    + erewrite denote_extract_tr_spec with (v := v);
+      eauto; 
+      try eapply iff_refl.
+
       eapply equiv_envs_map_args;
       eauto.
       revert denote_extract_tf_spec.
@@ -565,8 +509,9 @@ Some (x; interp_tm v tm).
       eauto.
       pose proof denote_extract_tf_spec.
       pose proof denote_extract_tf_spec_none.
-    
-      eapply denote'_extract'_spec.
+      intros.
+      pose proof (@denote'_extract'_spec c v a).
+      intuition.
       
   - simpl in *.
     repeat destruct (eq_inductive _ _);
@@ -579,12 +524,6 @@ Some (x; interp_tm v tm).
     end;
     autorewrite with interp_fm;
     eapply iff_refl.
-  - simpl in *.
-    repeat match goal with 
-    | H: (_ × _) |- _ => 
-      destruct H
-    end;
-    congruence.
   Qed. 
 
 

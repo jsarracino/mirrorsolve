@@ -8,10 +8,10 @@ Require Import MirrorSolve.HLists.
 Import ListNotations.
 Import HListNotations.
 
-Require Import SMTCoq.SMTCoq.
+(* Require Import SMTCoq.SMTCoq.
 Set Universe Polymorphism.
 
-Import BVList.BITVECTOR_LIST.
+Import BVList.BITVECTOR_LIST. *)
 
 Require Import Coq.Numbers.BinNums.
 Require Import Coq.NArith.BinNat.
@@ -19,6 +19,14 @@ Require Import Coq.NArith.BinNat.
 (* A definition of bitvectors using SMTCoq's BV representation  *)
 
 Section BVFOL.
+
+  (* TODO: update smtcoq to coq 8.16, replace axiom with actual smtcoq functions *)
+  Axiom (bitvector: N -> Type).
+  Axiom (bv_concat: forall {n m}, bitvector n -> bitvector m -> bitvector (n + m)).
+  Axiom (bv_extr: forall {n} hi lo, bitvector n -> bitvector (N.min (1 + hi) n - lo)).
+
+  Axiom (MkBitvector : forall (l: list bool), bitvector (N.of_nat (length l))).
+  
   Inductive sorts: Set :=
   | BV: forall (width: N), sorts.
 

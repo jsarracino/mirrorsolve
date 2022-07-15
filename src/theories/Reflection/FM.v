@@ -17,6 +17,11 @@ MetaCoq Quote Definition c_not := @not.
 MetaCoq Quote Definition c_or := @or.
 MetaCoq Quote Definition c_and := @and.
 
+Definition app_ty_info (f: term -> term) (x: predicate term) : predicate term := 
+  {| puinst := x.(puinst); pparams := map f x.(pparams); pcontext := x.(pcontext); preturn := f x.(preturn) |}.
+
+Definition app_branch (f: term -> term) (x: branch term) : branch term := 
+  {| bcontext := x.(bcontext); bbody := f x.(bbody) |}.
 
 Fixpoint dec_vars (d: nat) (t: term) : term :=
   match t with
@@ -36,11 +41,11 @@ Fixpoint dec_vars (d: nat) (t: term) : term :=
     tLetIn na (dec_vars d def) (dec_vars d def_ty) (dec_vars (S d) body)
   | tApp f args => 
     tApp (dec_vars d f) (map (dec_vars d) args)
-  | tCase ind_nbparams_relevance type_info discr branches =>
-    tCase ind_nbparams_relevance (dec_vars d type_info) (dec_vars d discr) (List.map (fun '(n, t) => (n, dec_vars d t)) branches)
+  | tCase c_info type_info discr branches =>
+    tCase c_info (app_ty_info (dec_vars d) type_info) (dec_vars d discr) (List.map (app_branch (dec_vars d)) branches)
   | tProj proj t0 => tProj proj (dec_vars d t0)
   | _ => t
-  end.
+  end. 
 
 Fixpoint reindex_vars (t: term) : term :=
   match t with
@@ -60,31 +65,11 @@ Fixpoint reindex_vars (t: term) : term :=
     tLetIn na (reindex_vars def) (reindex_vars def_ty) (reindex_vars body)
   | tApp f args => 
     tApp (reindex_vars f) (map reindex_vars args)
-  | tCase ind_nbparams_relevance type_info discr branches =>
-    tCase ind_nbparams_relevance (reindex_vars type_info) (reindex_vars discr) (List.map (fun '(n, t) => (n, reindex_vars t)) branches)
+  | tCase c_info type_info discr branches =>
+    tCase c_info (app_ty_info reindex_vars type_info) (reindex_vars discr) (List.map (app_branch reindex_vars) branches)
   | tProj proj t0 => tProj proj (reindex_vars t0)
   | _ => t
   end.
-
-Section Lenses.
-  Variable (s: signature).
-  Variable (m: model s).
-  Equations mk_var (c: ctx s) (v: valu s m c) (n: nat) : option ({ty & s.(mod_sorts) m ty * var s c ty})%type by struct c := 
-    mk_var SLNil _ _ := None;
-    (* ugh auto-generated names... *)
-    mk_var (Snoc _ srt) (VSnoc _ _ _ x) 0 := Some (v; (x, VHere _ _ _));
-    mk_var (Snoc c' ty) (VSnoc _ _ v _) (S n) := 
-      (* 
-        c' is v1, ty is v0, v is v, n is n
-      *)
-      match mk_var v1 v n with 
-      | Some (ty; (r, v')) => Some (ty; (r, VThere _ _ _ _ v'))
-      | None => None
-      end.
-
-  (* Parameter dummy_valu : forall (c: ctx s), valu s m c. *)
-
-End Lenses.
 
 Section ExtractFM.
   Variable (s: signature).
@@ -222,7 +207,7 @@ Section DenoteFM.
 
   Variable (sorts_eq_dec: EquivDec.EqDec (s.(sig_sorts)) eq).
 
-  Notation res_ty := (option ({ty & s.(mod_sorts) m ty})).
+  Notation res_ty := (option ({ty & mod_sorts s m ty})).
   Notation env_ty c := (valu s m c).
 
   Variable (denote_tm : term -> list res_ty -> res_ty).
@@ -293,7 +278,7 @@ Section DenoteFM.
         | nNamed _ =>
           match reify_srt pre with
           | Some ty' => 
-            forall x: (s.(mod_sorts) m ty'), 
+            forall x: (mod_sorts s m ty'), 
               denote_t2fm (VSnoc _ _ ty' c env x) pst 
           | None => False
           end

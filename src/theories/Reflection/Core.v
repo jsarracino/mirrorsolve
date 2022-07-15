@@ -4,6 +4,9 @@ Require Export MetaCoq.Template.All.
 
 Require Import MetaCoq.Template.Checker.
 
+Definition eq_predicate {T: Type} (eq_T: T -> T -> bool) (l r: predicate T) : bool :=
+  forallb2 eq_T l.(pparams) r.(pparams) && eq_T l.(preturn) r.(preturn).
+
 Fixpoint eq_term (l r: term) : bool := 
   match l with
   | tRel n =>
@@ -13,12 +16,12 @@ Fixpoint eq_term (l r: term) : bool :=
     end
   | tVar id => 
     match r with
-    | tVar id' => eq_string id id'
+    | tVar id' => String.eqb id id'
     | _ => false
     end
   | tEvar ev args =>
     match r with
-    | tEvar ev' args' => (PeanoNat.Nat.eqb ev ev' && forallb2 eq_term args args')%bool
+    | tEvar ev' args' => (Nat.eqb ev ev' && forallb2 eq_term args args')%bool
     | _ => false
     end
   | tSort _ =>
@@ -66,16 +69,12 @@ Fixpoint eq_term (l r: term) : bool :=
     | tConstruct i' k' _ => (eq_inductive i i' && PeanoNat.Nat.eqb k k')%bool
     | _ => false
     end
-  | tCase ind_nbparams_relevance p c brs =>
-    let (p0, _) := ind_nbparams_relevance in
-    let (ind, par) := p0 in
+  | tCase c_info p c brs =>
       match r with
-      | tCase ind_nbparams_relevance0 p' c' brs' =>
-        let (p1, _) := ind_nbparams_relevance0 in
-        let (ind', par') := p1 in
-        (eq_inductive ind ind' && PeanoNat.Nat.eqb par par' &&
-          eq_term p p' && eq_term c c' &&
-          forallb2 (fun '(_, b) '(_, b') => eq_term b b') brs brs')%bool
+      | tCase c_info' p' c' brs' =>
+        (eq_inductive c_info.(ci_ind) c_info'.(ci_ind) &&
+          eq_predicate eq_term p p' && eq_term c c' &&
+          forallb2 (fun l r => eq_term l.(bbody) r.(bbody)) brs brs')%bool
       | _ => false
       end
   | tProj p c =>
@@ -103,7 +102,6 @@ Fixpoint eq_term (l r: term) : bool :=
         PeanoNat.Nat.eqb idx idx')%bool
     | _ => false
     end
-  | _ => false
   end.
 
 Definition eq_ctor (l r: term) : bool := 

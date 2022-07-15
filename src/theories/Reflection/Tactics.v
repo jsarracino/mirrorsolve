@@ -40,12 +40,12 @@ Section Tactics.
   Variable (m: model s).
 
   Notation sorts := (s.(sig_sorts)).
-  Notation mod_sorts := (s.(mod_sorts) m).
+  Notation mod_sorts := (mod_sorts s m).
 
-  Variable (sorts_eq_dec: EquivDec.EqDec (s.(sig_sorts)) eq).
+  Variable (sorts_eq_dec: EquivDec.EqDec sorts eq).
 
 
-  Fixpoint denote_args (args: list (s.(sig_sorts))) : Type := 
+  Fixpoint denote_args (args: list sorts) : Type := 
     match args with 
     | nil => unit
     | t :: ts => (denote_args ts * mod_sorts t)%type
@@ -57,7 +57,7 @@ Section Tactics.
     | t :: ts => (mod_sorts t -> (denote_func ts ret))%type
     end.
 
-  Equations wrap_h_args {c} {v: valu s m c} {args: list (s.(sig_sorts))} (h_args: HList.t (tm s c) args) : denote_args args by struct h_args := {
+  Equations wrap_h_args {c} {v: valu s m c} {args: list sorts} (h_args: HList.t (tm s c) args) : denote_args args by struct h_args := {
     wrap_h_args hnil := tt;
     wrap_h_args (x ::: xs) := (wrap_h_args xs, interp_tm v x);
   }.
@@ -250,12 +250,14 @@ Section Tactics.
     match tac with 
     | tacFun fs => 
       match denote_tac_args (fs.(args_f)) (trim_prefix opt_args) with 
-      | Some wrapped_args => Some (inl (existT _ fs.(ret) (apply_denote_func _ wrapped_args (conv_fun (s.(mod_fns) _ _ _ fs.(deep_f))))))
+      | Some wrapped_args => Some (inl (existT _ fs.(ret) 
+        (apply_denote_func _ wrapped_args (conv_fun (mod_fns s m _ _ fs.(deep_f))))))
       | None => None
       end
     | tacRel rs => 
       match denote_tac_args (rs.(args_r)) (trim_prefix opt_args) with 
-      | Some wrapped_args => Some (inr (apply_denote_rel _ wrapped_args (conv_rel (s.(mod_rels) _ _ rs.(deep_r)))))
+      | Some wrapped_args => Some (inr 
+        (apply_denote_rel _ wrapped_args (conv_rel (mod_rels s m _ rs.(deep_r)))))
       | None => None
       end
     | tacLit lit dt _ _ => 
@@ -529,9 +531,11 @@ Section Tactics.
       inversion H0 as [].
       inversion_sigma.
       subst.
-      erewrite (Eqdep.EqdepTheory.UIP_refl _ _ H2) in *.
-      erewrite (Eqdep.EqdepTheory.UIP_refl _ _ H3) in *.
-      simpl in *.
+      repeat match goal with 
+      | H: _ = _ |- _ => 
+        erewrite (Eqdep.EqdepTheory.UIP_refl _ _ H) in *;
+        simpl in *
+      end.
       erewrite IHh_args; eauto.
   Qed.
 
@@ -797,7 +801,6 @@ Section Tactics.
 
 End Tactics.
 
-Print Assumptions denote_extract_specialized.
 
 
 (* 

@@ -30,10 +30,12 @@ Require Import MirrorSolve.UF.
 Require Import MirrorSolve.Reflection.Core.
 Require Import MirrorSolve.Reflection.FM.
 Require Import MirrorSolve.Reflection.Tactics.
-From Hammer Require Import Hammer.
+(* From Hammer Require Import Hammer.
 
 Set Hammer ATPLimit 5.
-Set Hammer ReconstrLimit 10.
+Set Hammer ReconstrLimit 10. *)
+
+Local Declare ML Module "mirrorsolve.plugin".
 
 Section Trees.
   (* type of values in the tree *)
@@ -99,7 +101,14 @@ Section Trees.
     | _ => false
     end.
 
-  Notation tac_bool := (tacLit sig tree_model bool_lit (fun b => (BS; b)) (fun b _ => (BS; TFun sig (b_lit b) hnil))).
+  Ltac solve_bool_wf := 
+    intros;
+    match goal with
+    | H: _ = _ |- _ => inversion H
+    end;
+    f_equal.
+
+  Notation tac_bool := (tacLit sig tree_model bool_lit (fun b => (BS; b)) (fun b _ => (BS; TFun sig (b_lit b) hnil)) ltac:(solve_bool_wf)).
   Notation tac_fun f := (tacFun _ _ (Mk_fun_sym sig _ _ f)).
   Notation tac_rel f := (tacRel _ _ (Mk_rel_sym sig _ f)).
 
@@ -129,7 +138,7 @@ Section Trees.
     ; (eq_term t_Z, ZS)
   ].
 
-  Local Declare ML Module "mirrorsolve".
+  
   (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
   (*** MS BEGIN {"type": "configuration", "config_type":"plugin"} *)
   RegisterCustomSort TS "A".
@@ -196,40 +205,73 @@ Section Trees.
 
   Ltac prep_proof := pose_tree_axioms; 
     Utils.revert_all; 
-    unfold "<->" in *;
-    intros V.
-
-  Ltac reflect t := reflect_goal_trust FOLTrees.sig tree_model FOLTrees.sorts_eq_dec match_tacs match_inds t.
+    unfold "<->" in *.
+  
   (*** MS END {"type": "configuration", "config_type":"tactics"} *)
 
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  MetaCoq Quote Definition lookup_empty_goal := (
-    (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r)
-   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
- (lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
- (ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
- (gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
- (lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) -> forall (d : V) (k : Z), lookup d k Emp = d
-  ).
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
+  Ltac extract_goal s m sed mt mi t := 
+    let H := fresh "H" in 
+    let H' := fresh "H" in 
+    let f := fresh "fm" in 
+    evar (f: FirstOrder.fm s (SLNil _));
+    time "pose" pose proof (@denote_extract_specialized_rev s m sed mt mi (reindex_vars t) f) as H;
+    match goal with
+    | H: ?Eq -> _ -> _ |- _ => 
+      assert (H': Eq) by (
+        match goal with 
+        | H := ?F |- _ => 
+          change_no_check H with F at 1
+        end;
+        exact eq_refl
+      )
+    end;
+    specialize (H H').
 
+  Ltac reflect_goal s m sed mt mi t := 
+    time "extract" extract_goal s m sed mt mi t;
+    let H' := fresh "H'" in
+    match goal with 
+    | H: interp_fm _ _ -> ?X |- ?G => 
+      time "assert equiv" assert (H': X = G) by exact eq_refl
+    end;
+    time "rewrite" erewrite H' in *;
+    time "apply" match goal with 
+    | H: _ -> ?X |- _ => 
+      eapply H
+    end;
+    match goal with 
+    | H := ?F |- _ => 
+      vm_compute in H
+    end;
+    match goal with 
+    | H := ?F |- _ => 
+      change_no_check H at 1 with F
+    end. 
+
+  Ltac quote_extract s m sed mt mi :=
+    match goal with 
+    | |- ?G => 
+      quote_term G ltac:( fun t => extract_goal s m sed mt mi t)
+    end.
+
+  Ltac quote_reflect s m sed mt mi :=
+    match goal with 
+    | |- ?G => 
+      quote_term G ltac:( fun t => reflect_goal s m sed mt mi t)
+    end.
+  Ltac quote_reflect_tree := quote_reflect FOLTrees.sig tree_model FOLTrees.sorts_eq_dec match_tacs match_inds.
+  Ltac quote_extract_tree := quote_extract FOLTrees.sig tree_model FOLTrees.sorts_eq_dec match_tacs match_inds.
+
+
+  Ltac mirrorsolve := 
+    prep_proof;
+    quote_reflect_tree;
+    check_goal_unsat.
+
+  MetaCoq Quote Definition foo := (
+    (forall (d : V) (x : Z), lookup d x Emp = d) ->
+    forall (d : V) (k : Z), lookup d k Emp = d
+  ).
   (* hammer handles this one (it's easy) *)
   (*** MS BEGIN {"type": "configuration", "config_type":"plugin"} *)
   SetSMTSolver "cvc5".
@@ -247,16 +289,14 @@ ordered Emp ->
     Restart.
   Proof.
     (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":1, "finished":1} *)
-    hammer.
+    (* hammer. *)
     (*** MS END {"type": "proof", "proof_type":"hammer", "total":1, "finished":1} *)
   Restart.
   Proof.
     (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":1} *)
-    prep_proof.
-    reflect lookup_empty_goal; 
-    check_goal_unsat.
+    mirrorsolve.
     (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":1} *)
-  Admitted. (* some weird evaluation issue, can't QED... *)
+  Qed. (* some weird evaluation issue, can't QED... *)
 
   (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
   MetaCoq Quote Definition lookup_insert_emp := (

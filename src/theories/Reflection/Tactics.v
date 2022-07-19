@@ -742,7 +742,6 @@ Section Tactics.
       extract_t2fm s (fun c => @extract_t2tm c match_tacs) (fun c => @extract_t2rel c match_tacs) (i2srt match_inds) sorts_eq_dec _ t = Some fm -> 
       (denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (denote_t2rel match_tacs) (i2srt match_inds) (VEmp _ _) t <-> interp_fm (m := m) (VEmp _ _) fm).
   Proof.
-    (* destruct match_tacs_wf as [? [? [? [? ?]]]]. *)
     intros.
     eapply denote_extract_general; eauto.
     - intros.
@@ -799,80 +798,26 @@ Section Tactics.
       eauto.
   Qed.
 
+  Lemma denote_extract_specialized_forward: 
+    forall t fm,
+      extract_t2fm s (fun c => @extract_t2tm c match_tacs) (fun c => @extract_t2rel c match_tacs) (i2srt match_inds) sorts_eq_dec _ t = Some fm -> 
+      (denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (denote_t2rel match_tacs) (i2srt match_inds) (VEmp _ _) t -> interp_fm (m := m) (VEmp _ _) fm).
+  Proof.
+    intros.
+    eapply denote_extract_specialized;
+    eauto.
+  Qed.
+
+  Lemma denote_extract_specialized_rev: 
+    forall t fm,
+      extract_t2fm s (fun c => @extract_t2tm c match_tacs) (fun c => @extract_t2rel c match_tacs) (i2srt match_inds) sorts_eq_dec _ t = Some fm -> 
+      ( interp_fm (m := m) (VEmp _ _) fm -> 
+        denote_t2fm s m sorts_eq_dec (denote_tm match_tacs) (denote_t2rel match_tacs) (i2srt match_inds) (VEmp _ _) t).
+  Proof.
+    intros.
+    eapply denote_extract_specialized;
+    eauto.
+  Qed.
+
 End Tactics.
 
-
-
-(* 
-Transparent denote_tm.
-
-Ltac simpl_denote_tm :=
-  match goal with 
-  | |- denote_t2fm _ _ _ _ _ _ _ _ = Some _ => 
-    let x := fresh "x" in 
-    set (x := denote_t2fm _ _ _ _ _ _ _ _);
-    
-    simpl in x;
-    unfold eq_rect_r in x;
-    simpl in x;
-    exact eq_refl
-  end.
-
-Ltac simpl_extract_tm := exact eq_refl. 
-
-Ltac discharge_equiv_denote_orig := 
-  split; 
-  intros; [
-    repeat match goal with 
-    | H: exists _, forall (_: ?T), _ |- _ =>
-      let H' := fresh "H" in 
-      destruct H as [? H'];
-      let v := fresh "v" in 
-      evar (v: T);
-      specialize (H' v);
-      subst v
-    | H: forall (_: ?T), exists _, _ |- _ =>
-      let v := fresh "v" in 
-      evar (v: T);
-      specialize (H v);
-      subst v
-    | H: _ /\ _ |- _ => 
-      destruct H
-    | H: exists _, _ |- _ => 
-      destruct H
-    | H: Some _ = Some _ |- _ => 
-      erewrite some_prop in H
-    | H: _ = ?X |- _ => subst X
-    | H: _ = _ |- _ => 
-      erewrite <- H in *;
-      clear H
-    end;
-    intuition eauto | 
-    repeat match goal with
-    | |- exists _: Prop, _ => eexists
-    | |- _ /\ _ => split
-    | |- Some _ = Some _ => exact eq_refl
-    | |- _ => intros
-    end;
-    intuition eauto
-  ].
-
-Ltac reflect_goal sig model srts_eq_dec mtacs minds t' := 
-  match goal with 
-  | |- ?G => 
-    eapply denote_extract_specialized with (s := sig) (m := model) (sorts_eq_dec := srts_eq_dec) (match_tacs := mtacs) (match_inds := minds) (p' := G) (t := t')
-  end; [
-    simpl_denote_tm |
-    simpl_extract_tm |
-    discharge_equiv_denote_orig; autorewrite with mod_fns; eauto | 
-    let v' := fresh "v" in 
-    let f' := fresh "f" in 
-    match goal with 
-    | |- interp_fm ?v ?f => 
-      set (v' := v);
-      set (f' := f)
-    end;
-    vm_compute in f';
-    subst v';
-    subst f'
-  ]. *)

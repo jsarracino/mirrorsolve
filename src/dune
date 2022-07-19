@@ -4,7 +4,7 @@
                                     ; the name of the main OCaml
                                     ; module of your plugin.
 
- (public_name mirrorsolve)     ; This makes the plugin
+ (public_name mirrorsolve.plugin)     ; This makes the plugin
                                     ; installable; recommended, must
                                     ; match opam package name
 

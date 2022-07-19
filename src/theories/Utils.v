@@ -31,9 +31,11 @@ Proof.
 Qed.
 
 Ltac revert_all := 
-  repeat match goal with 
-  | H : _ |- _ => 
-    revert H
+  repeat match goal with
+  | H: _ |- _ => 
+    refine (
+      (_ : _ -> _) H
+    ); clear H
   end.
 
 Ltac pose_all Pfs := 

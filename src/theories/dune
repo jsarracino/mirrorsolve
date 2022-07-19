@@ -4,5 +4,6 @@
 (coq.theory
  (name MirrorSolve)
  (package mirrorsolve)
+ (libraries mirrorsolve.plugin)
  (modules (:standard \ Sum))
 )

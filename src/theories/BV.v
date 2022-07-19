@@ -16,16 +16,50 @@ Import BVList.BITVECTOR_LIST. *)
 Require Import Coq.Numbers.BinNums.
 Require Import Coq.NArith.BinNat.
 
+Require Import Coq.micromega.Lia.
+
 (* A definition of bitvectors using SMTCoq's BV representation  *)
 
+Definition bitvector (w: N) := { bv: list bool | N.of_nat (length bv) = w }.
+Program Definition bv_cons {n} (b: bool) (bv: bitvector n) : bitvector (n + 1) := 
+  b :: bv.
+Next Obligation.
+  destruct bv.
+  simpl in *.
+  lia.
+Defined.
+
+Program Definition bv_nil : bitvector 0 := @nil bool.
+Notation "( x ; y )" := (exist _ x y) (at level 0, format "( x ; '/ ' y )").
+
+Local Obligation Tactic := intros.
+Program Definition bv_concat {n m} (x: bitvector n) (y: bitvector m) : bitvector (n + m) := List.app y x.
+Next Obligation.
+  simpl.
+  destruct x;
+  destruct y.
+  simpl in *.
+  erewrite app_length.
+  lia.
+Defined.
+
+Program Definition bv_extr {n} (hi lo: N) (x: bitvector n) : bitvector (N.min (1 + hi)%N n - lo) := 
+  List.skipn (N.to_nat lo) (List.firstn (1 + N.to_nat hi) x).
+Next Obligation.
+  intros.
+  destruct x.
+  simpl proj1_sig.
+  erewrite skipn_length.
+  erewrite firstn_length.
+  lia.
+Defined.
+
+Program Definition MkBitvector (l: list bool) : bitvector (N.of_nat (length l)) := l.
+Next Obligation.
+  exact eq_refl.
+Defined.
+
 Section BVFOL.
-
-  (* TODO: update smtcoq to coq 8.16, replace axiom with actual smtcoq functions *)
-  Axiom (bitvector: N -> Type).
-  Axiom (bv_concat: forall {n m}, bitvector n -> bitvector m -> bitvector (n + m)).
-  Axiom (bv_extr: forall {n} hi lo, bitvector n -> bitvector (N.min (1 + hi) n - lo)).
-
-  Axiom (MkBitvector : forall (l: list bool), bitvector (N.of_nat (length l))).
   
   Inductive sorts: Set :=
   | BV: forall (width: N), sorts.

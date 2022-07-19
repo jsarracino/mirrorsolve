@@ -1,4 +1,4 @@
-DECLARE PLUGIN "mirrorsolve"
+DECLARE PLUGIN "mirrorsolve.plugin"
 
 {
 

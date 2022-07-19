@@ -101,34 +101,27 @@ Section Trees.
     | _ => false
     end.
 
-  Ltac solve_bool_wf := 
-    intros;
-    match goal with
-    | H: _ = _ |- _ => inversion H
-    end;
-    f_equal.
-
-  Notation tac_bool := (tacLit sig tree_model bool_lit (fun b => (BS; b)) (fun b _ => (BS; TFun sig (b_lit b) hnil)) ltac:(solve_bool_wf)).
-  Notation tac_fun f := (tacFun _ _ (Mk_fun_sym sig _ _ f)).
-  Notation tac_rel f := (tacRel _ _ (Mk_rel_sym sig _ f)).
+  Notation tac_bool_tree := (tacLit sig tree_model bool_lit (fun b => (BS; b)) (fun b _ => (BS; TFun sig (b_lit b) hnil)) ltac:(solve_bool_wf)).
+  Notation tac_fun_tree f := (tac_fun sig f).
+  Notation tac_rel_tree f := (tac_rel sig f).
 
   Definition match_tacs : list ((term -> bool) * tac_syn sig tree_model) := [
-      ( is_emp, tac_fun e_f)
-    ; ( is_node, tac_fun t_f)
-    ; ( is_zlt, tac_fun z_lt)
-    ; ( is_zgt, tac_fun z_gt)
-    ; ( is_cond_b, tac_fun cond_b)
-    ; ( is_cond_t, tac_fun cond_t)
-    ; ( is_cond_tree, tac_fun cond_tree)
-    ; ( is_bool_term, tac_bool )
-    ; ( is_lookup, tac_fun lookup_f)
-    ; ( is_bound, tac_fun bound_f)
-    ; ( is_insert, tac_fun insert_f)
-    ; ( is_lt_t, tac_rel lt_t_r)
-    ; ( is_gt_t, tac_rel gt_t_r)
-    ; ( is_ordered, tac_rel ordered_r) 
-    ; ( is_zlt', tac_rel lt_z)
-    ; ( is_zgt', tac_rel gt_z)
+      ( is_emp, tac_fun_tree e_f)
+    ; ( is_node, tac_fun_tree t_f)
+    ; ( is_zlt, tac_fun_tree z_lt)
+    ; ( is_zgt, tac_fun_tree z_gt)
+    ; ( is_cond_b, tac_fun_tree cond_b)
+    ; ( is_cond_t, tac_fun_tree cond_t)
+    ; ( is_cond_tree, tac_fun_tree cond_tree)
+    ; ( is_bool_term, tac_bool_tree )
+    ; ( is_lookup, tac_fun_tree lookup_f)
+    ; ( is_bound, tac_fun_tree bound_f)
+    ; ( is_insert, tac_fun_tree insert_f)
+    ; ( is_lt_t, tac_rel_tree lt_t_r)
+    ; ( is_gt_t, tac_rel_tree gt_t_r)
+    ; ( is_ordered, tac_rel_tree ordered_r) 
+    ; ( is_zlt', tac_rel_tree lt_z)
+    ; ( is_zgt', tac_rel_tree gt_z)
   ].
 
   Definition match_inds : list ((term -> bool) * FOLTrees.sorts) := [
@@ -203,62 +196,15 @@ Section Trees.
     pose_insert_axioms; 
     pose_ordered_axioms.
 
-  Ltac prep_proof := pose_tree_axioms; 
-    Utils.revert_all; 
-    unfold "<->" in *.
-  
+  Ltac prep_proof := 
+    Utils.revert_all;
+    intros V;
+    pose_tree_axioms; 
+    Utils.revert_all;
+    unfold "<->";
+    intros V.
   (*** MS END {"type": "configuration", "config_type":"tactics"} *)
 
-  Ltac extract_goal s m sed mt mi t := 
-    let H := fresh "H" in 
-    let H' := fresh "H" in 
-    let f := fresh "fm" in 
-    evar (f: FirstOrder.fm s (SLNil _));
-    time "pose" pose proof (@denote_extract_specialized_rev s m sed mt mi (reindex_vars t) f) as H;
-    match goal with
-    | H: ?Eq -> _ -> _ |- _ => 
-      assert (H': Eq) by (
-        match goal with 
-        | H := ?F |- _ => 
-          change_no_check H with F at 1
-        end;
-        exact eq_refl
-      )
-    end;
-    specialize (H H').
-
-  Ltac reflect_goal s m sed mt mi t := 
-    time "extract" extract_goal s m sed mt mi t;
-    let H' := fresh "H'" in
-    match goal with 
-    | H: interp_fm _ _ -> ?X |- ?G => 
-      time "assert equiv" assert (H': X = G) by exact eq_refl
-    end;
-    time "rewrite" erewrite H' in *;
-    time "apply" match goal with 
-    | H: _ -> ?X |- _ => 
-      eapply H
-    end;
-    match goal with 
-    | H := ?F |- _ => 
-      vm_compute in H
-    end;
-    match goal with 
-    | H := ?F |- _ => 
-      change_no_check H at 1 with F
-    end. 
-
-  Ltac quote_extract s m sed mt mi :=
-    match goal with 
-    | |- ?G => 
-      quote_term G ltac:( fun t => extract_goal s m sed mt mi t)
-    end.
-
-  Ltac quote_reflect s m sed mt mi :=
-    match goal with 
-    | |- ?G => 
-      quote_term G ltac:( fun t => reflect_goal s m sed mt mi t)
-    end.
   Ltac quote_reflect_tree := quote_reflect FOLTrees.sig tree_model FOLTrees.sorts_eq_dec match_tacs match_inds.
   Ltac quote_extract_tree := quote_extract FOLTrees.sig tree_model FOLTrees.sorts_eq_dec match_tacs match_inds.
 
@@ -268,10 +214,6 @@ Section Trees.
     quote_reflect_tree;
     check_goal_unsat.
 
-  MetaCoq Quote Definition foo := (
-    (forall (d : V) (x : Z), lookup d x Emp = d) ->
-    forall (d : V) (k : Z), lookup d k Emp = d
-  ).
   (* hammer handles this one (it's easy) *)
   (*** MS BEGIN {"type": "configuration", "config_type":"plugin"} *)
   SetSMTSolver "cvc5".
@@ -296,67 +238,7 @@ Section Trees.
     (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":1} *)
     mirrorsolve.
     (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":1} *)
-  Qed. (* some weird evaluation issue, can't QED... *)
-
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  MetaCoq Quote Definition lookup_insert_emp := (
-    
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-insert x v (Node l y v' r) =
-ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
-(lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
-(ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
-((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
-(gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
-((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
-(lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) ->
-forall (d : V) (k k' : Z) (v : V), k = k' -> lookup d k (insert k' v Emp) = v
-).
-
-  MetaCoq Quote Definition lookup_insert_node := (
-    forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
-(forall (d : V) (k0 k' : Z) (v0 : V), k0 = k' -> lookup d k0 (insert k' v0 t1) = v0) ->
-(forall (d : V) (k0 k' : Z) (v0 : V), k0 = k' -> lookup d k0 (insert k' v0 t2) = v0) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d x (Node l y v0 r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r)
-   (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v0 r)) /\
- (gt_t k0 (Node l k' v0 r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v0 r)) /\
- (lt_t k0 (Node l k' v0 r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-forall (d : V) (k0 k' : Z) (v0 : V), k0 = k' -> lookup d k0 (insert k' v0 (Node t1 k v t2)) = v0
-  ).
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
+  Admitted. (* Crashes? *)
 
   (*** MS BEGIN {"type": "proof_definition"} *)
   Theorem lookup_insert_eq : 
@@ -415,12 +297,13 @@ forall (d : V) (k0 k' : Z) (v0 : V), k0 = k' -> lookup d k0 (insert k' v0 (Node 
     (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":0} *)
     Restart.
   Proof.
-    induction t; 
-    prep_proof.
-    - reflect lookup_insert_emp; 
-      check_goal_unsat.
-    - reflect lookup_insert_node; 
-      check_goal_unsat.
+    induction t.
+    - mirrorsolve.
+    - repeat match goal with 
+      | H: _ |- _ => 
+        Utils.revert_hyp H || revert H
+      end.
+      mirrorsolve.
   Admitted.
 
 (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)

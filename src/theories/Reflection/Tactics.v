@@ -821,3 +821,65 @@ Section Tactics.
 
 End Tactics.
 
+Ltac extract_goal s m sed mt mi t := 
+  let H := fresh "H" in 
+  let H' := fresh "H" in 
+  let f := fresh "fm" in 
+  evar (f: FirstOrder.fm s (SLNil _));
+  time "pose" pose proof (@denote_extract_specialized_rev s m sed mt mi (reindex_vars t) f) as H;
+  match goal with
+  | H: ?Eq -> _ -> _ |- _ => 
+    assert (H': Eq) by (
+      match goal with 
+      | H := ?F |- _ => 
+        change_no_check H with F at 1
+      end;
+      exact eq_refl
+    )
+  end;
+  specialize (H H').
+
+Ltac reflect_goal s m sed mt mi t := 
+  time "extract" extract_goal s m sed mt mi t;
+  let H' := fresh "H'" in
+  match goal with 
+  | H: interp_fm _ _ -> ?X |- ?G => 
+    time "assert equiv" assert (H': X = G) by exact eq_refl
+  end;
+  time "rewrite" erewrite H' in *;
+  time "apply" match goal with 
+  | H: _ -> ?X |- _ => 
+    eapply H
+  end;
+  match goal with 
+  | H := ?F |- _ => 
+    vm_compute in H
+  end;
+  match goal with 
+  | H := ?F |- _ => 
+    change_no_check H at 1 with F
+  end. 
+
+Ltac quote_extract s m sed mt mi :=
+  match goal with 
+  | |- ?G => 
+    quote_term G ltac:( fun t => extract_goal s m sed mt mi t)
+  end.
+
+Ltac quote_reflect s m sed mt mi :=
+  match goal with 
+  | |- ?G => 
+    quote_term G ltac:( fun t => reflect_goal s m sed mt mi t)
+  end.
+
+Ltac solve_bool_wf := 
+  intros;
+  match goal with
+  | H: _ = _ |- _ => inversion H
+  end;
+  f_equal.
+
+Notation tac_bool s m f f' H := (tacLit s m bool_lit f f' H).
+Notation tac_bool_auto s m f f' := (tacLit s m bool_lit f f' ltac:(solve_bool_wf)).
+Notation tac_fun s f := (tacFun _ _ (Mk_fun_sym s _ _ f)).
+Notation tac_rel s f := (tacRel _ _ (Mk_rel_sym s _ f)).

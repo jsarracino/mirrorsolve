@@ -1,4 +1,4 @@
-DECLARE PLUGIN "mirrorsolve.plugin"
+DECLARE PLUGIN "mirrorsolve"
 
 {
 
@@ -96,6 +96,9 @@ TACTIC EXTEND ViewSMTTactic
     Main.dump_query e ;
     Proofview.tclUNIT ()
   }
+END
+
+TACTIC EXTEND CheckInterpPos 
 | [ "check_interp_pos" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
@@ -109,6 +112,9 @@ TACTIC EXTEND ViewSMTTactic
     | Other msg -> fail ("Broken query: " ^ msg)
     end
   }
+END
+
+TACTIC EXTEND CheckInterpNeg
 | [ "check_interp_neg" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
@@ -122,6 +128,9 @@ TACTIC EXTEND ViewSMTTactic
     | Other msg -> fail ("Broken query: " ^ msg)
     end
   }
+END
+
+TACTIC EXTEND CheckUnsatPos 
 | [ "check_unsat_pos" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
@@ -134,6 +143,9 @@ TACTIC EXTEND ViewSMTTactic
     | Other msg -> fail ("Broken query: " ^ msg)
     end
   }
+END
+
+TACTIC EXTEND CheckUnsatNeg 
 | [ "check_unsat_neg" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
@@ -147,7 +159,6 @@ TACTIC EXTEND ViewSMTTactic
     end
   }
 END
-
 
 VERNAC COMMAND EXTEND SetBackend CLASSIFIED AS QUERY
 | [ "SetSMTSolver" string(s) ] -> { 

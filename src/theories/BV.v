@@ -59,6 +59,9 @@ Next Obligation.
   exact eq_refl.
 Defined.
 
+Definition bv_bits {n} (x: bitvector n) := proj1_sig x.
+Definition bv_wf {n} (x: bitvector n) := proj2_sig x.
+
 Section BVFOL.
   
   Inductive sorts: Set :=

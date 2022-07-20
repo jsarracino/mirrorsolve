@@ -363,7 +363,8 @@ Section Meta.
         eauto.
     Unshelve.
     all: eauto.
-    eapply H.
+    (* This is a goal in Coq 8.16 *)
+    (* eapply H. *)
   Qed.
 
   Lemma denote'_extract'_spec_some : 
@@ -494,6 +495,8 @@ Section Meta.
           destruct H
         end; [left; eapply H3 | right; eapply H2]; eauto.
     + intuition.
+      eapply H3;
+      eauto.
     + erewrite H3; eauto.
       eapply iff_refl.
     + erewrite denote_extract_tr_spec with (v := v);

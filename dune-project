@@ -7,10 +7,9 @@
 (package 
  (name mirrorsolve)
  (depends 
-  (coq-smtcoq (>= 8.13.0))
   (coq-equations (>= 1.3))
-  (coq (>= 8.16.0))
-  (coq-metacoq-template (= 1.0~beta2+8.13))
+  (coq-metacoq-template (= 1.0+8.15))
+  (coq (and (>= 8.15) (< 8.16)))
  )
  (synopsis "SMT integration for Coq using reflection")
  (description  "SMT integration for Coq using reflection")

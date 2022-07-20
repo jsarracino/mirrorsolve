@@ -5,6 +5,8 @@ DECLARE PLUGIN "mirrorsolve.plugin"
 open Ltac_plugin
 open Stdarg
 
+let tcl_fail = Tacticals.tclFAIL 0
+
 }
 
 VERNAC COMMAND EXTEND DebugFuns CLASSIFIED AS QUERY
@@ -97,7 +99,7 @@ TACTIC EXTEND ViewSMTTactic
 | [ "check_interp_pos" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
-    let fail s = Tacticals.tclFAIL (Pp.str s) in
+    let fail s = tcl_fail (Pp.str s) in
     let query = Main.check_interp (EConstr.to_constr sigma e) false in
 
     begin match Smt.run_smt query with 
@@ -110,7 +112,7 @@ TACTIC EXTEND ViewSMTTactic
 | [ "check_interp_neg" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
-    let fail s = Tacticals.tclFAIL (Pp.str s) in
+    let fail s = tcl_fail (Pp.str s) in
     let query = Main.check_interp (EConstr.to_constr sigma e) true in
 
     begin match Smt.run_smt query with 
@@ -123,7 +125,7 @@ TACTIC EXTEND ViewSMTTactic
 | [ "check_unsat_pos" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
-    let fail s = Tacticals.tclFAIL (Pp.str s) in
+    let fail s = tcl_fail (Pp.str s) in
     let query = Main.check_interp (EConstr.to_constr sigma e) false in
 
     begin match Smt.run_smt query with 
@@ -135,7 +137,7 @@ TACTIC EXTEND ViewSMTTactic
 | [ "check_unsat_neg" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
-    let fail s = Tacticals.tclFAIL (Pp.str s) in
+    let fail s = tcl_fail (Pp.str s) in
     let query = Main.check_interp (EConstr.to_constr sigma e) true in
 
     begin match Smt.run_smt query with 

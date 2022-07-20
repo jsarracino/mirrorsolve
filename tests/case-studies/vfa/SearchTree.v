@@ -209,8 +209,8 @@ Section Trees.
   Ltac quote_extract_tree := quote_extract FOLTrees.sig tree_model FOLTrees.sorts_eq_dec match_tacs match_inds.
 
 
-  Ltac mirrorsolve := 
-    prep_proof;
+  Ltac mirrorsolve T := 
+    T;
     quote_reflect_tree;
     check_goal_unsat.
 
@@ -236,7 +236,7 @@ Section Trees.
   Restart.
   Proof.
     (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":1} *)
-    mirrorsolve.
+    mirrorsolve prep_proof.
     (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":1} *)
   Admitted. (* Crashes? *)
 
@@ -297,80 +297,11 @@ Section Trees.
     (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":0} *)
     Restart.
   Proof.
-    induction t.
-    - mirrorsolve.
-    - repeat match goal with 
-      | H: _ |- _ => 
-        Utils.revert_hyp H || revert H
-      end.
-      mirrorsolve.
+    (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
+    induction t;
+    mirrorsolve prep_proof.
+    (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   Admitted.
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  MetaCoq Quote Definition lookup_insert_neq_emp := (
-    (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d x (Node l y v r) =
- ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r)
-   (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
- (lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
- (ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
- (gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
- (lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) ->
-forall (d : V) (k k' : Z) (v : V),
-k <> k' -> lookup d k' (insert k v Emp) = lookup d k' Emp
-).
-
-  MetaCoq Quote Definition lookup_insert_neq_node := (
-    forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
-(forall (d : V) (k0 k' : Z) (v0 : V),
- k0 <> k' -> lookup d k' (insert k0 v0 t1) = lookup d k' t1) ->
-(forall (d : V) (k0 k' : Z) (v0 : V),
- k0 <> k' -> lookup d k' (insert k0 v0 t2) = lookup d k' t2) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d x (Node l y v0 r) =
- ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r)
-   (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v0 r)) /\
- (gt_t k0 (Node l k' v0 r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v0 r)) /\
- (lt_t k0 (Node l k' v0 r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-forall (d : V) (k0 k' : Z) (v0 : V),
-k0 <> k' -> lookup d k' (insert k0 v0 (Node t1 k v t2)) = lookup d k' (Node t1 k v t2) 
-).
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
 
   (* hammer does not handle this one *)
   (*** MS BEGIN {"type": "proof_definition"} *)
@@ -426,85 +357,15 @@ k0 <> k' -> lookup d k' (insert k0 v0 (Node t1 k v t2)) = lookup d k' (Node t1 k
   Proof.
     (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
     induction t; 
-    prep_proof.
-    - reflect lookup_insert_neq_emp; 
-      check_goal_unsat.
-    - reflect lookup_insert_neq_node; 
-      check_goal_unsat.
+    mirrorsolve prep_proof.
     (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   Admitted.
-
-
-(** **** Exercise: 3 stars, standard, optional (bound_correct) *)
-
-(** Specify and prove the correctness of [bound]. State and prove
-    three theorems, inspired by those we just proved for [lookup]. *)
-
-(* FILL IN HERE *)
 
 (** **** Exercise: 3 stars, standard, optional (bound_default) *)
 
 (** Prove that if [bound] returns [false], then [lookup] returns
     the default value. Proceed by induction on the tree. *)
 
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-    MetaCoq Quote Definition bound_default_emp := (
-      forall (k : Z) (d : V),
-(forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d0 x (Node l y v r) = ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v)) ->
-(forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k0 : Z) (v : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v r)) /\
- (ordered (Node l k0 v r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v r)) /\
- (gt_t k0 (Node l k' v r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v r)) /\
- (lt_t k0 (Node l k' v r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) -> bound k Emp = false -> lookup d k Emp = d
-    ).
-  
-    MetaCoq Quote Definition bound_default_node := (
-      
-forall (k : Z) (d : V) (t1 : tree V) (k0 : Z) (v : V) (t2 : tree V),
-(bound k t1 = false -> lookup d k t1 = d) ->
-(bound k t2 = false -> lookup d k t2 = d) ->
-(forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d0 x (Node l y v0 r) = ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v0)) ->
-(forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k1 : Z) (v0 : V) (r : tree V),
- (lt_t k1 l /\ gt_t k1 r /\ ordered l /\ ordered r -> ordered (Node l k1 v0 r)) /\
- (ordered (Node l k1 v0 r) -> lt_t k1 l /\ gt_t k1 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k1 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k1)%Z /\ gt_t k1 l /\ gt_t k1 r -> gt_t k1 (Node l k' v0 r)) /\
- (gt_t k1 (Node l k' v0 r) -> (k' > k1)%Z /\ gt_t k1 l /\ gt_t k1 r)) ->
-(forall k1 : Z, gt_t k1 Emp) ->
-(forall (k1 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k1)%Z /\ lt_t k1 l /\ lt_t k1 r -> lt_t k1 (Node l k' v0 r)) /\
- (lt_t k1 (Node l k' v0 r) -> (k' < k1)%Z /\ lt_t k1 l /\ lt_t k1 r)) ->
-(forall k1 : Z, lt_t k1 Emp) -> bound k (Node t1 k0 v t2) = false -> lookup d k (Node t1 k0 v t2) = d
-    ).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-    (* hammer handles this one *)
   (*** MS BEGIN {"type": "proof_definition"} *)
   Theorem bound_default :
     forall k d (t: tree V),
@@ -532,19 +393,14 @@ ordered Emp ->
   Proof.
     (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
     induction t.
-    - try hammer.
-    - admit. (* - try hammer; admit. *)
+    (* - try hammer.
+    - admit.  *)
     (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
     Restart.
-    
   Proof.
     (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
     induction t; 
-    prep_proof. 
-    - reflect bound_default_emp; 
-      check_goal_unsat.
-    - reflect bound_default_node; 
-      check_goal_unsat.
+    mirrorsolve prep_proof.
     (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   Admitted.
 
@@ -564,66 +420,6 @@ ordered Emp ->
     [lookup_insert_neq]. *)
 
 (** **** Exercise: 2 stars, standard, optional (lookup_insert_shadow) *)
-
-
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition lookup_insert_shadow_emp := (
-  (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
- (lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
- (ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
- (gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
- (lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) ->
-forall (v v' d : V) (k k' : Z), lookup d k' (insert k v (insert k v' Emp)) = lookup d k' (insert k v Emp)
-).
-
-MetaCoq Quote Definition lookup_insert_shadow_node := (
-  
-forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
-(forall (v0 v' d : V) (k0 k' : Z), lookup d k' (insert k0 v0 (insert k0 v' t1)) = lookup d k' (insert k0 v0 t1)) ->
-(forall (v0 v' d : V) (k0 k' : Z), lookup d k' (insert k0 v0 (insert k0 v' t2)) = lookup d k' (insert k0 v0 t2)) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d x (Node l y v0 r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v0 r)) /\
- (gt_t k0 (Node l k' v0 r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v0 r)) /\
- (lt_t k0 (Node l k' v0 r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-forall (v0 v' d : V) (k0 k' : Z),
-lookup d k' (insert k0 v0 (insert k0 v' (Node t1 k v t2))) = lookup d k' (insert k0 v0 (Node t1 k v t2))
-).
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
   (* hammer does not handle this one *)
   (*** MS BEGIN {"type": "proof_definition"} *)
@@ -675,71 +471,9 @@ lookup d k' (insert k0 v0 (insert k0 v' (Node t1 k v t2))) = lookup d k' (insert
   Proof.
 (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
     induction t; 
-    prep_proof.
-    - reflect lookup_insert_shadow_emp; 
-      check_goal_unsat.
-    - reflect lookup_insert_shadow_node; 
-      check_goal_unsat.
+    mirrorsolve prep_proof.
 (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   Admitted.
-
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  MetaCoq Quote Definition lookup_insert_same_emp := (
-    forall (k k' : Z) (d : V),
-    (forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-     lookup d0 x (Node l y v r) = ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v)) ->
-    (forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-    (forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-     bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-    (forall x : Z, bound x Emp = false) ->
-    (forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-     insert x v (Node l y v' r) =
-     ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-    (forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-    (forall (l : tree V) (k0 : Z) (v : V) (r : tree V),
-     (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v r)) /\
-     (ordered (Node l k0 v r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-    ordered Emp ->
-    (forall (k0 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
-     ((k'0 > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k'0 v r)) /\
-     (gt_t k0 (Node l k'0 v r) -> (k'0 > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-    (forall k0 : Z, gt_t k0 Emp) ->
-    (forall (k0 : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
-     ((k'0 < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k'0 v r)) /\
-     (lt_t k0 (Node l k'0 v r) -> (k'0 < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-    (forall k0 : Z, lt_t k0 Emp) -> lookup d k' (insert k (lookup d k Emp) Emp) = lookup d k' Emp    
-  ).
-  
-  MetaCoq Quote Definition lookup_insert_same_node := (
-    
-forall (k k' : Z) (d : V) (t1 : tree V) (k0 : Z) (v : V) (t2 : tree V),
-lookup d k' (insert k (lookup d k t1) t1) = lookup d k' t1 ->
-lookup d k' (insert k (lookup d k t2) t2) = lookup d k' t2 ->
-(forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d0 x (Node l y v0 r) = ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v0)) ->
-(forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k1 : Z) (v0 : V) (r : tree V),
- (lt_t k1 l /\ gt_t k1 r /\ ordered l /\ ordered r -> ordered (Node l k1 v0 r)) /\
- (ordered (Node l k1 v0 r) -> lt_t k1 l /\ gt_t k1 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k1 : Z) (l : tree V) (k'0 : Z) (v0 : V) (r : tree V),
- ((k'0 > k1)%Z /\ gt_t k1 l /\ gt_t k1 r -> gt_t k1 (Node l k'0 v0 r)) /\
- (gt_t k1 (Node l k'0 v0 r) -> (k'0 > k1)%Z /\ gt_t k1 l /\ gt_t k1 r)) ->
-(forall k1 : Z, gt_t k1 Emp) ->
-(forall (k1 : Z) (l : tree V) (k'0 : Z) (v0 : V) (r : tree V),
- ((k'0 < k1)%Z /\ lt_t k1 l /\ lt_t k1 r -> lt_t k1 (Node l k'0 v0 r)) /\
- (lt_t k1 (Node l k'0 v0 r) -> (k'0 < k1)%Z /\ lt_t k1 l /\ lt_t k1 r)) ->
-(forall k1 : Z, lt_t k1 Emp) ->
-lookup d k' (insert k (lookup d k (Node t1 k0 v t2)) (Node t1 k0 v t2)) = lookup d k' (Node t1 k0 v t2)
-  ).
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
   (** **** Exercise: 2 stars, standard, optional (lookup_insert_same) *)
 
@@ -794,74 +528,9 @@ lookup d k' (insert k (lookup d k (Node t1 k0 v t2)) (Node t1 k0 v t2)) = lookup
   Proof. 
     (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
     induction t; 
-    prep_proof.
-    - reflect lookup_insert_same_emp; 
-      check_goal_unsat.
-    - reflect lookup_insert_same_node; 
-      check_goal_unsat.
+    mirrorsolve prep_proof.
     (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   Admitted.
-
-
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  MetaCoq Quote Definition lookup_insert_permute_emp := (
-    forall (v1 v2 d : V) (k1 k2 k' : Z),
-(forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d0 x (Node l y v r) = ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v)) ->
-(forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
- (lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
- (ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
- ((k'0 > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k'0 v r)) /\
- (gt_t k (Node l k'0 v r) -> (k'0 > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k'0 : Z) (v : V) (r : tree V),
- ((k'0 < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k'0 v r)) /\
- (lt_t k (Node l k'0 v r) -> (k'0 < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) ->
-k1 <> k2 -> lookup d k' (insert k1 v1 (insert k2 v2 Emp)) = lookup d k' (insert k2 v2 (insert k1 v1 Emp))
-).
-  
-  MetaCoq Quote Definition lookup_insert_permute_node := (
-    
-forall (v1 v2 d : V) (k1 k2 k' : Z) (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
-(k1 <> k2 -> lookup d k' (insert k1 v1 (insert k2 v2 t1)) = lookup d k' (insert k2 v2 (insert k1 v1 t1))) ->
-(k1 <> k2 -> lookup d k' (insert k1 v1 (insert k2 v2 t2)) = lookup d k' (insert k2 v2 (insert k1 v1 t2))) ->
-(forall (d0 : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d0 x (Node l y v0 r) = ite (x <? y)%Z (lookup d0 x l) (ite (x >? y)%Z (lookup d0 x r) v0)) ->
-(forall (d0 : V) (x : Z), lookup d0 x Emp = d0) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k'0 : Z) (v0 : V) (r : tree V),
- ((k'0 > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k'0 v0 r)) /\
- (gt_t k0 (Node l k'0 v0 r) -> (k'0 > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k'0 : Z) (v0 : V) (r : tree V),
- ((k'0 < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k'0 v0 r)) /\
- (lt_t k0 (Node l k'0 v0 r) -> (k'0 < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-k1 <> k2 ->
-lookup d k' (insert k1 v1 (insert k2 v2 (Node t1 k v t2))) = lookup d k' (insert k2 v2 (insert k1 v1 (Node t1 k v t2)))
-  ).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
   (** **** Exercise: 2 stars, standard, optional (lookup_insert_permute) *)
 
@@ -1017,11 +686,7 @@ lookup d k' (insert k1 v1 (insert k2 v2 (Node t1 k v t2))) = lookup d k' (insert
   Restart.
   (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
     induction t; 
-    prep_proof.
-    - reflect lookup_insert_permute_emp; 
-      check_goal_unsat.
-    - reflect lookup_insert_permute_node; 
-      check_goal_unsat.
+    mirrorsolve prep_proof.
   (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   Admitted.
 
@@ -1036,64 +701,6 @@ lookup d k' (insert k1 v1 (insert k2 v2 (Node t1 k v t2))) = lookup d k' (insert
 
     Could we state the tree lemmas with direct equalities?  For
     [insert_shadow], the answer is yes: *)
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-    MetaCoq Quote Definition insert_shadow_equality_emp := (
-      (forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
- (lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
- (ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
- (gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
- (lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) -> forall (k : Z) (v v' : V), insert k v (insert k v' Emp) = insert k v Emp
-  ).
-    
-    MetaCoq Quote Definition insert_shadow_equality_node := (
-      
-forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
-(forall (k0 : Z) (v0 v' : V), insert k0 v0 (insert k0 v' t1) = insert k0 v0 t1) ->
-(forall (k0 : Z) (v0 v' : V), insert k0 v0 (insert k0 v' t2) = insert k0 v0 t2) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d x (Node l y v0 r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v0 r)) /\
- (gt_t k0 (Node l k' v0 r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v0 r)) /\
- (lt_t k0 (Node l k' v0 r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-forall (k0 : Z) (v0 v' : V), insert k0 v0 (insert k0 v' (Node t1 k v t2)) = insert k0 v0 (Node t1 k v t2)
-    ).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
 
   (* hammer does not handle this one *)
   (*** MS BEGIN {"type": "proof_definition"} *)
@@ -1144,11 +751,7 @@ forall (k0 : Z) (v0 v' : V), insert k0 v0 (insert k0 v' (Node t1 k v t2)) = inse
   Proof.
     (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
     induction t; 
-    prep_proof.
-    - reflect insert_shadow_equality_emp; 
-      check_goal_unsat.
-    - reflect insert_shadow_equality_node; 
-      check_goal_unsat.
+    mirrorsolve prep_proof.
     (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   Admitted.
 
@@ -1178,64 +781,6 @@ Proof.
 
 (** some custom stuff, about balance and that insert preserves the balance of the tree **)
 
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition insert_left_lt_emp := (
-  
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-insert x v (Node l y v' r) =
-ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
-(lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
-(ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
-((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
-(gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
-((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
-(lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) -> forall (k k' : Z) (v : V), (k < k')%Z -> lt_t k' Emp -> lt_t k' (insert k v Emp)
-).
-
-MetaCoq Quote Definition insert_left_lt_node := (
-  forall (l1 : tree V) (k : Z) (v : V) (l2 : tree V),
-(forall (k0 k' : Z) (v0 : V), (k0 < k')%Z -> lt_t k' l1 -> lt_t k' (insert k0 v0 l1)) ->
-(forall (k0 k' : Z) (v0 : V), (k0 < k')%Z -> lt_t k' l2 -> lt_t k' (insert k0 v0 l2)) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d x (Node l y v0 r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v0 r)) /\
- (gt_t k0 (Node l k' v0 r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v0 r)) /\
- (lt_t k0 (Node l k' v0 r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-forall (k0 k' : Z) (v0 : V), (k0 < k')%Z -> lt_t k' (Node l1 k v l2) -> lt_t k' (insert k0 v0 (Node l1 k v l2))
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-(* unfortunately we can't handle the recursive case *)
 SetSMTSolver "cvc5".
 (*** MS BEGIN {"type": "proof_definition"} *)
 Lemma insert_left_lt : 
@@ -1263,78 +808,16 @@ Proof.
 Proof.
   (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
   induction l.
-  - hammer.
+  (* - hammer. *)
   - admit. (* hammer. *)
   (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
   Restart.
 Proof.
   (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   induction l;
-  prep_proof.
-  - reflect insert_left_lt_emp; 
-    check_goal_unsat.
-  - reflect insert_left_lt_node;
-    check_goal_unsat.
+  mirrorsolve prep_proof.
 (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
 Admitted.
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition insert_right_lt_emp := (
-  
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
-bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
-insert x v (Node l y v' r) =
-ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
-(lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
-(ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
-((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
-(gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
-((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
-(lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) -> forall (k k' : Z) (v : V), (k' < k)%Z -> gt_t k' Emp -> gt_t k' (insert k v Emp)
-).
-
-MetaCoq Quote Definition insert_right_lt_node := (
-  
-forall (r1 : tree V) (k : Z) (v : V) (r2 : tree V),
-(forall (k0 k' : Z) (v0 : V), (k' < k0)%Z -> gt_t k' r1 -> gt_t k' (insert k0 v0 r1)) ->
-(forall (k0 k' : Z) (v0 : V), (k' < k0)%Z -> gt_t k' r2 -> gt_t k' (insert k0 v0 r2)) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d x (Node l y v0 r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v0 r)) /\
- (gt_t k0 (Node l k' v0 r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v0 r)) /\
- (lt_t k0 (Node l k' v0 r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-forall (k0 k' : Z) (v0 : V), (k' < k0)%Z -> gt_t k' (Node r1 k v r2) -> gt_t k' (insert k0 v0 (Node r1 k v r2))
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
 (*** MS BEGIN {"type": "proof_definition"} *)
 Lemma insert_right_lt : 
@@ -1369,81 +852,15 @@ Proof.
 Proof.
   (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   induction r;
-  prep_proof.
-  - reflect insert_right_lt_emp; 
-    check_goal_unsat.
-  - reflect insert_right_lt_node; 
-    check_goal_unsat.
+  mirrorsolve prep_proof.
   (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
 Admitted.
+
 (*** MS BEGIN {"type": "configuration", "config_type":"tactics"} *)
 Ltac prep_proof' := Utils.pose_all (tt, insert_left_lt, insert_right_lt); 
   prep_proof.
+
 (*** MS END {"type": "configuration", "config_type":"tactics"} *)
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition insert_ordered_left_emp := (
-  
-(forall (r : tree V) (k k' : Z) (v : V), (k' < k)%Z -> gt_t k' r -> gt_t k' (insert k v r)) ->
-(forall (l : tree V) (k k' : Z) (v : V), (k < k')%Z -> lt_t k' l -> lt_t k' (insert k v l)) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
- (lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
- (ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
- (gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
- (lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) ->
-forall (k k' : Z) (v : V), (k < k')%Z -> lt_t k' Emp -> ordered Emp -> ordered (insert k v Emp)
-).
-
-MetaCoq Quote Definition insert_ordered_left_node := (
-  forall (l1 : tree V) (k : Z) (v : V) (l2 : tree V),
-(forall (k0 k' : Z) (v0 : V), (k0 < k')%Z -> lt_t k' l1 -> ordered l1 -> ordered (insert k0 v0 l1)) ->
-(forall (k0 k' : Z) (v0 : V), (k0 < k')%Z -> lt_t k' l2 -> ordered l2 -> ordered (insert k0 v0 l2)) ->
-(forall (r : tree V) (k0 k' : Z) (v0 : V), (k' < k0)%Z -> gt_t k' r -> gt_t k' (insert k0 v0 r)) ->
-(forall (l : tree V) (k0 k' : Z) (v0 : V), (k0 < k')%Z -> lt_t k' l -> lt_t k' (insert k0 v0 l)) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d x (Node l y v0 r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v0 r)) /\
- (gt_t k0 (Node l k' v0 r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v0 r)) /\
- (lt_t k0 (Node l k' v0 r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-forall (k0 k' : Z) (v0 : V),
-(k0 < k')%Z -> lt_t k' (Node l1 k v l2) -> ordered (Node l1 k v l2) -> ordered (insert k0 v0 (Node l1 k v l2))
-).
-
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
 (*** MS BEGIN {"type": "proof_definition"} *)
 Lemma insert_ordered_left :
@@ -1481,82 +898,16 @@ Proof.
 Proof.
   (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
   induction l.
-  - hammer.
-  - admit. (* hammer. *)
+  (* - hammer.
+  - admit. *)
   (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
   Restart.
 Proof.
   (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   induction l;
-  prep_proof'.
-  - reflect insert_ordered_left_emp; 
-    check_goal_unsat.
-  - reflect insert_ordered_left_node; 
-    check_goal_unsat. 
+  mirrorsolve prep_proof'.
 (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
 Admitted.
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition insert_ordered_right_emp := (
-  (forall (r : tree V) (k k' : Z) (v : V), (k' < k)%Z -> gt_t k' r -> gt_t k' (insert k v r)) ->
-(forall (l : tree V) (k k' : Z) (v : V), (k < k')%Z -> lt_t k' l -> lt_t k' (insert k v l)) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
- (lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
- (ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
- (gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
- (lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) ->
-forall (k k' : Z) (v : V), (k > k')%Z -> gt_t k' Emp -> ordered Emp -> ordered (insert k v Emp)
-).
-
-MetaCoq Quote Definition insert_ordered_right_node := (
-  forall (r1 : tree V) (k : Z) (v : V) (r2 : tree V),
-(forall (k0 k' : Z) (v0 : V), (k0 > k')%Z -> gt_t k' r1 -> ordered r1 -> ordered (insert k0 v0 r1)) ->
-(forall (k0 k' : Z) (v0 : V), (k0 > k')%Z -> gt_t k' r2 -> ordered r2 -> ordered (insert k0 v0 r2)) ->
-(forall (r : tree V) (k0 k' : Z) (v0 : V), (k' < k0)%Z -> gt_t k' r -> gt_t k' (insert k0 v0 r)) ->
-(forall (l : tree V) (k0 k' : Z) (v0 : V), (k0 < k')%Z -> lt_t k' l -> lt_t k' (insert k0 v0 l)) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d x (Node l y v0 r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v0 r)) /\
- (gt_t k0 (Node l k' v0 r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v0 r)) /\
- (lt_t k0 (Node l k' v0 r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-forall (k0 k' : Z) (v0 : V),
-(k0 > k')%Z -> gt_t k' (Node r1 k v r2) -> ordered (Node r1 k v r2) -> ordered (insert k0 v0 (Node r1 k v r2))
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
 (*** MS BEGIN {"type": "proof_definition"} *)
 Lemma insert_ordered_right :
@@ -1594,18 +945,14 @@ Proof.
 Proof.
   (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
   induction r.
-  - hammer.
-  - admit. (* hammer. *)
+  (* - hammer.
+  - admit.  *)
 (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
   Restart.
 Proof.
   (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   induction r;
-  prep_proof'.
-  - reflect insert_ordered_right_emp; 
-    check_goal_unsat.
-  - reflect insert_ordered_right_node; 
-    check_goal_unsat.
+  mirrorsolve prep_proof'.
 (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
 Admitted.
   
@@ -1613,71 +960,6 @@ Admitted.
 Ltac prep_proof'' := Utils.pose_all (tt, insert_ordered_left, insert_ordered_right);
   prep_proof'.
 (*** MS END {"type": "configuration", "config_type":"tactics"} *)
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition insert_ordered_emp := (
-  
-(forall (r : tree V) (k k' : Z) (v : V), (k > k')%Z -> gt_t k' r -> ordered r -> ordered (insert k v r)) ->
-(forall (l : tree V) (k k' : Z) (v : V), (k < k')%Z -> lt_t k' l -> ordered l -> ordered (insert k v l)) ->
-(forall (r : tree V) (k k' : Z) (v : V), (k' < k)%Z -> gt_t k' r -> gt_t k' (insert k v r)) ->
-(forall (l : tree V) (k k' : Z) (v : V), (k < k')%Z -> lt_t k' l -> lt_t k' (insert k v l)) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- lookup d x (Node l y v r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v : V) (r : tree V),
- bound x (Node l y v r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v r)) (Node l x v r))) ->
-(forall (x : Z) (v : V), insert x v Emp = Node Emp x v Emp) ->
-(forall (l : tree V) (k : Z) (v : V) (r : tree V),
- (lt_t k l /\ gt_t k r /\ ordered l /\ ordered r -> ordered (Node l k v r)) /\
- (ordered (Node l k v r) -> lt_t k l /\ gt_t k r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' > k)%Z /\ gt_t k l /\ gt_t k r -> gt_t k (Node l k' v r)) /\
- (gt_t k (Node l k' v r) -> (k' > k)%Z /\ gt_t k l /\ gt_t k r)) ->
-(forall k : Z, gt_t k Emp) ->
-(forall (k : Z) (l : tree V) (k' : Z) (v : V) (r : tree V),
- ((k' < k)%Z /\ lt_t k l /\ lt_t k r -> lt_t k (Node l k' v r)) /\
- (lt_t k (Node l k' v r) -> (k' < k)%Z /\ lt_t k l /\ lt_t k r)) ->
-(forall k : Z, lt_t k Emp) -> forall (k : Z) (v : V), ordered Emp -> ordered (insert k v Emp)
-).
-
-MetaCoq Quote Definition insert_ordered_node := (
-  forall (t1 : tree V) (k : Z) (v : V) (t2 : tree V),
-(forall (k0 : Z) (v0 : V), ordered t1 -> ordered (insert k0 v0 t1)) ->
-(forall (k0 : Z) (v0 : V), ordered t2 -> ordered (insert k0 v0 t2)) ->
-(forall (r : tree V) (k0 k' : Z) (v0 : V), (k0 > k')%Z -> gt_t k' r -> ordered r -> ordered (insert k0 v0 r)) ->
-(forall (l : tree V) (k0 k' : Z) (v0 : V), (k0 < k')%Z -> lt_t k' l -> ordered l -> ordered (insert k0 v0 l)) ->
-(forall (r : tree V) (k0 k' : Z) (v0 : V), (k' < k0)%Z -> gt_t k' r -> gt_t k' (insert k0 v0 r)) ->
-(forall (l : tree V) (k0 k' : Z) (v0 : V), (k0 < k')%Z -> lt_t k' l -> lt_t k' (insert k0 v0 l)) ->
-(forall (d : V) (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- lookup d x (Node l y v0 r) = ite (x <? y)%Z (lookup d x l) (ite (x >? y)%Z (lookup d x r) v0)) ->
-(forall (d : V) (x : Z), lookup d x Emp = d) ->
-(forall (x : Z) (l : tree V) (y : Z) (v0 : V) (r : tree V),
- bound x (Node l y v0 r) = ite (x <? y)%Z (bound x l) (ite (x >? y)%Z (bound x r) true)) ->
-(forall x : Z, bound x Emp = false) ->
-(forall (x : Z) (v0 : V) (l : tree V) (y : Z) (v' : V) (r : tree V),
- insert x v0 (Node l y v' r) =
- ite (x <? y)%Z (Node (insert x v0 l) y v' r) (ite (x >? y)%Z (Node l y v' (insert x v0 r)) (Node l x v0 r))) ->
-(forall (x : Z) (v0 : V), insert x v0 Emp = Node Emp x v0 Emp) ->
-(forall (l : tree V) (k0 : Z) (v0 : V) (r : tree V),
- (lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r -> ordered (Node l k0 v0 r)) /\
- (ordered (Node l k0 v0 r) -> lt_t k0 l /\ gt_t k0 r /\ ordered l /\ ordered r)) ->
-ordered Emp ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r -> gt_t k0 (Node l k' v0 r)) /\
- (gt_t k0 (Node l k' v0 r) -> (k' > k0)%Z /\ gt_t k0 l /\ gt_t k0 r)) ->
-(forall k0 : Z, gt_t k0 Emp) ->
-(forall (k0 : Z) (l : tree V) (k' : Z) (v0 : V) (r : tree V),
- ((k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r -> lt_t k0 (Node l k' v0 r)) /\
- (lt_t k0 (Node l k' v0 r) -> (k' < k0)%Z /\ lt_t k0 l /\ lt_t k0 r)) ->
-(forall k0 : Z, lt_t k0 Emp) ->
-forall (k0 : Z) (v0 : V), ordered (Node t1 k v t2) -> ordered (insert k0 v0 (Node t1 k v t2))
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
 (*** MS BEGIN {"type": "proof_definition"} *)
 Theorem insert_ordered : 
@@ -1712,17 +994,13 @@ Proof.
 Proof.
   (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
   induction t.
-  - hammer.
-  - admit. (* hammer. *)
+  (* - hammer.
+  - admit.  *)
 (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
   Restart.
 Proof.
   (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
   induction t;
-  prep_proof''.
-  - reflect insert_ordered_emp; 
-    check_goal_unsat.
-  - reflect insert_ordered_node; 
-    check_goal_unsat.
+  mirrorsolve prep_proof''.
 (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
 Admitted.

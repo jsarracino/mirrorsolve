@@ -122,7 +122,7 @@ let c_bv_lit = get_coq "ms.bv.f_lit"
 let c_bv_cat = get_coq "ms.bv.f_cat"
 let c_bv_extr = get_coq "ms.bv.f_extr"
 
-let c_smt_bv_ctor = get_coq "ms.bv.smt_bv_ctor"
+let c_smt_bv_ctor = get_coq "core.sig.intro"
 
 
 let c_builtin_bool_lit () = get_coq "ms.core.bool_lit"
@@ -671,8 +671,10 @@ let pretty_bv (e: C.t) : string =
   begin match C.kind e with 
   | C.App(f, es) -> 
     if f = c_smt_bv_ctor then 
-      (* arg 1 is a list of bools *)
-      Pp.string_of_ppcmds @@ print_bools @@ extract_list c_bool_to_bool es.(1)
+      (* exist type is: 
+          exist: forall (A: Type) (P: A -> Prop) (a: A), P a -> Type *)
+      (* so argument 2 is the list of bools *)
+      Pp.string_of_ppcmds @@ print_bools @@ extract_list c_bool_to_bool es.(2)
     else  
       let _ = debug_pp @@ Pp.str "unrecognized function argument for bv arg" in
       let _ = debug_pp @@ C.debug_print f in 

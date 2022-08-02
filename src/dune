@@ -17,10 +17,11 @@
 
  (libraries                         ; ML Libraries we want to link
                                     ; with, your choice here.
-
+   coq-core.tactics
    coq-core.vernac                       ; needed for vernac extend
    coq-core.plugins.ltac                 ; needed for tactic extend
  )
+ (modules (:standard \ Hint))
 )
 
 ; This will let Dune know about Coq's .mlg grammar files.

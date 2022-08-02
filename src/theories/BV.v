@@ -20,20 +20,24 @@ Require Import Coq.micromega.Lia.
 
 (* A definition of bitvectors using SMTCoq's BV representation  *)
 
-Definition bitvector (w: N) := { bv: list bool | N.of_nat (length bv) = w }.
-Program Definition bv_cons {n} (b: bool) (bv: bitvector n) : bitvector (n + 1) := 
-  b :: bv.
+Record bitvector (w: N) := MkBitvector { bits: list bool; wf: N.of_nat (length bits) = w }.
+Program Definition bv_cons {n} (b: bool) (bv: bitvector n) : bitvector (n + 1) :=  {|
+  bits := b :: bv.(bits _);
+|}.
 Next Obligation.
   destruct bv.
   simpl in *.
   lia.
 Defined.
 
-Program Definition bv_nil : bitvector 0 := @nil bool.
-Notation "( x ; y )" := (exist _ x y) (at level 0, format "( x ; '/ ' y )").
+Program Definition bv_nil : bitvector 0 := {| 
+  bits := nil;
+|}.
 
 Local Obligation Tactic := intros.
-Program Definition bv_concat {n m} (x: bitvector n) (y: bitvector m) : bitvector (n + m) := List.app y x.
+Program Definition bv_concat {n m} (x: bitvector n) (y: bitvector m) : bitvector (n + m) := {|
+  bits := List.app y.(bits _) x.(bits _)
+|}.
 Next Obligation.
   simpl.
   destruct x;
@@ -43,24 +47,36 @@ Next Obligation.
   lia.
 Defined.
 
-Program Definition bv_extr {n} (hi lo: N) (x: bitvector n) : bitvector (N.min (1 + hi)%N n - lo) := 
-  List.skipn (N.to_nat lo) (List.firstn (1 + N.to_nat hi) x).
+Program Definition bv_extr {n} (hi lo: N) (x: bitvector n) : bitvector (N.min (1 + hi)%N n - lo) := {| 
+  bits := List.skipn (N.to_nat lo) (List.firstn (1 + N.to_nat hi) x.(bits _))
+|}.
 Next Obligation.
   intros.
   destruct x.
-  simpl proj1_sig.
   erewrite skipn_length.
   erewrite firstn_length.
+  simpl bits.
   lia.
 Defined.
 
-Program Definition MkBitvector (l: list bool) : bitvector (N.of_nat (length l)) := l.
-Next Obligation.
-  exact eq_refl.
-Defined.
+Lemma bv_equal : 
+  forall n m (x: bitvector n) (y: bitvector m), 
+    n ~= m -> 
+    x.(bits _ ) ~= y.(bits _) -> 
+    x ~= y.
+Proof.
+  intros.
+  subst.
+  destruct x.
+  destruct y.
+  simpl in *.
+  subst.
+  erewrite (Eqdep_dec.UIP_dec N.eq_dec wf1 eq_refl).
+  econstructor.
+Qed.
 
-Definition bv_bits {n} (x: bitvector n) := proj1_sig x.
-Definition bv_wf {n} (x: bitvector n) := proj2_sig x.
+Definition bv_bits {n} (x: bitvector n) := x.(bits _).
+Definition bv_wf {n} (x: bitvector n) := x.(wf _).
 
 Section BVFOL.
   

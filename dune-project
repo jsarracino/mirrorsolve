@@ -9,6 +9,7 @@
  (depends 
   (coq-equations (>= 1.3))
   (coq-metacoq-template (= 1.0+8.15))
+  (coq-metacoq (= 1.0+8.15))
   (coq (and (>= 8.15) (< 8.16)))
  )
  (synopsis "SMT integration for Coq using reflection")

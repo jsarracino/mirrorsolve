@@ -20,8 +20,9 @@
    coq-core.tactics
    coq-core.vernac                       ; needed for vernac extend
    coq-core.plugins.ltac                 ; needed for tactic extend
+   ; coq-metacoq-template
  )
- (modules (:standard \ Hint))
+ ; (modules (:standard \ Hint))
 )
 
 ; This will let Dune know about Coq's .mlg grammar files.

@@ -35,7 +35,23 @@ Require Import MirrorSolve.Reflection.Tactics.
 Set Hammer ATPLimit 5.
 Set Hammer ReconstrLimit 10. *)
 
-Local Declare ML Module "mirrorsolve.plugin".
+Local Declare ML Module "mirrorsolve".
+
+Create HintDb ms_db.
+
+Lemma foo : 1 = 1.
+Proof.
+  exact eq_refl.
+Qed.
+
+Hint Immediate foo : ms_db.
+
+
+
+Goal False.
+  hints_foreach (fun x => pose proof x) "ms_db".
+Abort.
+
 
 Section Trees.
   (* type of values in the tree *)

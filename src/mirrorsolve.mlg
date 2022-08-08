@@ -4,6 +4,7 @@ DECLARE PLUGIN "mirrorsolve"
 
 open Ltac_plugin
 open Stdarg
+open Tacarg
 
 let tcl_fail = Tacticals.tclFAIL 0
 
@@ -184,4 +185,11 @@ TACTIC EXTEND DebugMemory
   Feedback.msg_info msg;
   Proofview.tclUNIT ()
 }
+END
+
+
+TACTIC EXTEND MapHintTbl 
+| [ "hints_foreach" tactic(f) string(name) ] -> { 
+    Hint.apply_hints f (Hint.lookup_tbl name)
+  }
 END

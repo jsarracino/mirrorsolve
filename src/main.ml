@@ -944,6 +944,15 @@ let set_backend_solver name =
       Feedback.msg_warning (Pp.str "Expected z3/cvc4/cvc5/boolector")
   end
 
+let set_smt_language lang_s = 
+  let open Smt in 
+  begin match Smt.str_to_language lang_s with 
+  | Some l -> set_language l
+  | None -> 
+    let _ = Feedback.msg_warning (Pp.str ("Unrecognized smt language: " ^ lang_s)) in
+      Feedback.msg_warning (Pp.str "Expected BV/ALL")
+  end
+
 let reg_sym (e: EConstr.t) (sym: string) (ar: int) : unit = 
   let env = Global.env () in 
   let sigma = Evd.from_env env in 

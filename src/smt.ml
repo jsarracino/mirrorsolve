@@ -1,5 +1,5 @@
 type solver_t = Z3 | CVC4 | Boolector | CVC5
-let show_solver_t s = 
+let show_solver s = 
   begin match s with 
   | Z3 -> "z3"
   | CVC4 -> "cvc4"
@@ -25,7 +25,25 @@ let solver = ref CVC4
 let set_solver = (:=) solver
 let get_solver _ = !solver
 
-let lang = {|(set-logic ALL)|}
+type language_t = All | BV
+let show_language l = 
+  begin match l with 
+  | All -> "ALL"
+  | BV -> "BV"
+  end
+let str_to_language l = 
+  begin match l with 
+  | "ALL" -> Some All
+  | "BV" -> Some BV
+  | _ -> None
+  end
+  
+let language = ref All
+
+let set_language = (:=) language
+let get_language _ = !language
+
+let lang () = Printf.sprintf {|(set-logic %s)|} (show_language @@ get_language ())
 let preamble = {|
 
 (declare-datatypes ((sum 2)) 
@@ -96,7 +114,7 @@ let trailer = {|
 
 let gen_query names vars query include_vars = 
   String.concat "\n" [
-    lang;
+    lang ();
     preamble; 
     gen_enum_decl names; 
     conf_definitions; 
@@ -118,14 +136,14 @@ let gen_binders len query =
 
 let gen_bv_query query = 
   String.concat "\n" [
-    lang; 
+    lang (); 
     query; 
     trailer;
   ]
 
 let gen_env_query query bindings = 
   String.concat "\n" [
-    lang;
+    lang ();
     (* gen_record_decl "Env" bindings;  *)
     query; 
     trailer;
@@ -149,7 +167,7 @@ let run_smt query =
   let out_in, out_out = pipe ~cloexec:true () in 
   let err_in, err_out = pipe ~cloexec:true () in 
 
-  let cmd = show_solver_t (get_solver ()) in
+  let cmd = show_solver (get_solver ()) in
   let s_args = make_args (get_solver()) in 
 
   let args = Array.concat [[| cmd |]; Array.of_list s_args; [| query_file |]] in

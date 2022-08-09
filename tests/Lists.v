@@ -389,8 +389,6 @@ Section ListFuncs.
 
   Hint Immediate tail_rev_sound : list_eqns.
 
-  SetSMTSolver "z3".
-
   Lemma app_len : 
     forall (l r : list A), 
       my_len (my_app l r) = (my_len l + my_len r)%Z.
@@ -416,7 +414,7 @@ Section ListFuncs.
   Qed.
 
   Hint Immediate app_In : list_eqns.
-  
+
   Lemma in_rev : 
     forall x l,
       my_In x l <-> my_In x (my_rev l).

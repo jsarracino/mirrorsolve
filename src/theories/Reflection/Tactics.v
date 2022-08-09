@@ -179,8 +179,7 @@ Section Tactics.
 
   Definition is_bool_term (t: term) : bool := 
     orb (eq_term t c_tru) (eq_term t c_fls).
-
-    
+  
 
   Fixpoint denote_nat (t: term) : option nat := 
     if eq_term t c_nzero then Some 0
@@ -217,6 +216,9 @@ Section Tactics.
   MetaCoq Quote Definition c_zzero := BinNums.Z0.
   MetaCoq Quote Definition c_zpos := BinNums.Zpos.
   MetaCoq Quote Definition c_zneg := BinNums.Zneg.
+
+  Definition is_z_term (t: term) : bool :=
+    orb (orb (eq_ctor t c_zpos) (eq_ctor t c_zneg)) (eq_term t c_zzero).
 
   Definition denote_Z (t: term) : option BinNums.Z := 
     if eq_term t c_zzero then Some BinNums.Z0 else
@@ -872,7 +874,7 @@ Ltac quote_reflect s m sed mt mi :=
     quote_term G ltac:( fun t => reflect_goal s m sed mt mi t)
   end.
 
-Ltac solve_bool_wf := 
+Ltac solve_lit_wf := 
   intros;
   match goal with
   | H: _ = _ |- _ => inversion H
@@ -880,6 +882,6 @@ Ltac solve_bool_wf :=
   f_equal.
 
 Notation tac_bool s m f f' H := (tacLit s m bool_lit f f' H).
-Notation tac_bool_auto s m f f' := (tacLit s m bool_lit f f' ltac:(solve_bool_wf)).
+(* Notation tac_bool_auto s m f f' := (tacLit s m bool_lit f f' ltac:(solve_bool_wf)). *)
 Notation tac_fun s f := (tacFun _ _ (Mk_fun_sym s _ _ f)).
 Notation tac_rel s f := (tacRel _ _ (Mk_rel_sym s _ f)).

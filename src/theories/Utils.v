@@ -30,7 +30,8 @@ Proof.
   eapply iff_refl.
 Qed.
 
-Ltac revert_hyp H := refine ((_ : _ -> _) H); clear H.
+Ltac revert_hyp H := 
+  refine ((_ : _ -> _) H); clear H.
 
 Ltac revert_hyps := 
   repeat match goal with
@@ -39,7 +40,7 @@ Ltac revert_hyps :=
 
 Ltac revert_all := 
   repeat match goal with
-  | H: _ |- _ => revert_hyp H || revert H
+  | H: _ |- _ => revert_hyp H || clear H || revert H
   end.
 
 Ltac pose_all Pfs := 

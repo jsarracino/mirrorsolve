@@ -117,7 +117,7 @@ Section Trees.
     | _ => false
     end.
 
-  Notation tac_bool_tree := (tacLit sig tree_model bool_lit (fun b => (BS; b)) (fun b _ => (BS; TFun sig (b_lit b) hnil)) ltac:(solve_bool_wf)).
+  Notation tac_bool_tree := (tacLit sig tree_model bool_lit (fun b => (BS; b)) (fun b _ => (BS; TFun sig (b_lit b) hnil)) ltac:(solve_lit_wf)).
   Notation tac_fun_tree f := (tac_fun sig f).
   Notation tac_rel_tree f := (tac_rel sig f).
 

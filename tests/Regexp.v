@@ -376,22 +376,19 @@ Qed.
 Hint Immediate app_nil_l : regexp_eqns.
 Hint Immediate app_cons_l : regexp_eqns.
 
+Lemma app_nil_r: 
+  forall (x: list ascii), x ++ [] = x.
+Proof.
+  induction x; mirrorsolve.
+Qed.
+
+Hint Immediate app_nil_r : regexp_eqns.
+
+SetSMTSolver "cvc5".
+
 Lemma emp_is_emp' : forall R, is_emp R = true -> matches (emp R) nil.
 Proof.
-  induction R ; try timeout 10 mirrorsolve.
-
-Admitted.
-  
-  (* induction R ; simpl ; intros ; autorewrite with is_emp in * ; autorewrite with emp in * ;
-    try discriminate.
-  constructor.
-  destruct (is_emp R1) ; destruct (is_emp R2) ; simpl in *.
-  constructor ; auto.
-  constructor ; auto.
-  apply m_r_Plus ; auto.
-  discriminate.
-  destruct (is_emp R1) ; destruct (is_emp R2) ; simpl in * ; try discriminate.
-  replace [] with (@nil ascii ++ nil).
-  constructor ; auto. auto.
-  constructor. *)
-(* Qed. *)
+  assert (@nil ascii = @nil ascii ++ []) by mirrorsolve.
+  induction R ; 
+  mirrorsolve.
+Qed.

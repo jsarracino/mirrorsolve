@@ -324,9 +324,15 @@ Proof.
 Qed.
 *)
 
-Lemma matches_times1 : forall r1 r2 s1 s2, matches r1 s1 /\ matches r2 s2 -> matches (Times r1 r2) (s1 ++ s2).
+Lemma matches_times1 : forall r1 r2 s1 s2 s3, 
+  matches r1 s1 -> 
+  matches r2 s2 -> 
+  s3 = s1 ++ s2 ->
+  matches (Times r1 r2) s3.
 Proof.
-  intros. destruct H ; constructor ; auto.
+  intros;
+  subst.
+  constructor ; auto.
 Qed.
 Hint Resolve matches_times1 : regexp_eqns.
 
@@ -390,5 +396,5 @@ Lemma emp_is_emp' : forall R, is_emp R = true -> matches (emp R) nil.
 Proof.
   assert (@nil ascii = @nil ascii ++ []) by mirrorsolve.
   induction R ; 
-  mirrorsolve.
+  try mirrorsolve.
 Qed.

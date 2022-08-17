@@ -262,17 +262,16 @@ Section ListFuncs.
     We do this with the RegisterSMTUF vernacular. 
     The syntax for this vernacular is:
 
-    RegisterSMTUF "<function name>" return_sort argument_sorts.
+    RegisterSMTUF "<function name>" sorts.
 
-    Where argument_sorts is a list of sort syntaxes. 
-    It's reversed to make parsing the vernacular easier.
+    where sorts is a list of sort symbols, argument sorts followed by the return sort.
   *)
 
   RegisterSMTUF "my_app" sort_lA sort_lA sort_lA.
   RegisterSMTUF "my_rev" sort_lA sort_lA.
-  RegisterSMTUF "my_len" sort_Z sort_lA.
+  RegisterSMTUF "my_len" sort_lA sort_Z.
   RegisterSMTUF "tail_rev" sort_lA sort_lA sort_lA.
-  RegisterSMTUF "my_In" sort_bool sort_A sort_lA.
+  RegisterSMTUF "my_In" sort_A sort_lA sort_bool.
 
   RegisterSMTFun cons_f "cons" 2.
   RegisterSMTFun nil_f "nil" 0.

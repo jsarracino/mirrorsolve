@@ -192,6 +192,7 @@ Require Import MirrorSolve.Reflection.Tactics.
 Notation tac_fun_regexp f := (tac_fun regexp_sig f).
 Notation tac_rel_regexp f := (tac_rel regexp_sig f).
 
+
 Definition match_tacs : list ((term -> bool) * tac_syn regexp_sig fm_model) := [
 ( fun t => eq_ctor t t_nil, tac_fun_regexp nil_f) ; 
 ( fun t => eq_ctor t t_cons,tac_fun_regexp cons_f) ; 
@@ -241,8 +242,8 @@ RegisterSMTSort sort_bool SBool.
 
 RegisterSMTUF "app" sort_list_ascii sort_list_ascii sort_list_ascii.
 RegisterSMTUF "emp" sort_regexp sort_regexp.
-RegisterSMTUF "is_emp" sort_bool sort_regexp.
-RegisterSMTUF "matches" sort_bool sort_regexp sort_list_ascii.
+RegisterSMTUF "is_emp" sort_regexp sort_bool.
+RegisterSMTUF "matches" sort_regexp sort_list_ascii sort_bool.
 
 
 

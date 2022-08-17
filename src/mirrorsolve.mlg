@@ -51,11 +51,16 @@ VERNAC COMMAND EXTEND RegisterFun CLASSIFIED AS QUERY
     let _, decl_e' = Constrintern.interp_constr_evars env sigma decl_e in 
       Main.reg_ind_decl s c_e' decl_e'
   }
-| [ "RegisterSMTUF" string(nme) constr(ret) constr_list(args) ] -> {
+| [ "RegisterSMTUF" string(nme) constr_list(args_and_ret) ] -> {
     let env = Global.env () in
     let sigma = Evd.from_env env in
     let force e = snd (Constrintern.interp_constr_evars env sigma e) in 
-      Main.reg_uf_decl nme (force ret) (List.map force args)
+    begin match Util.split_last args_and_ret with 
+    | Some (args, ret) -> Main.reg_uf_decl nme (force ret) (List.map force args)
+    | None ->
+      Feedback.msg_info @@ Pp.str "need to provide argument and return sorts for UF functions";
+      assert false
+    end
   }
 END
 

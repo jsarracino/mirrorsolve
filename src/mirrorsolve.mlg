@@ -178,6 +178,12 @@ VERNAC COMMAND EXTEND SetLanguage CLASSIFIED AS QUERY
   }
 END
 
+VERNAC COMMAND EXTEND ReflectSort CLASSIFIED AS QUERY
+| [ "Mirror" "Reflect" "Sort" constr(e) ] -> { 
+    ()
+  }
+END
+
 TACTIC EXTEND DebugMemory
 | ["print_mem"] ->  {
   let stats = Gc.stat () in

@@ -30,18 +30,12 @@ val reg_uf_decl : string -> EConstr.constr -> EConstr.constr list -> unit
 val reg_custom_sort : EConstr.constr -> string -> unit
 
 
-type sort = 
-  | Smt_bv of int option
-  | Smt_int
-  | Smt_bool 
-  | Custom_sort of string
-
 (* sum of constructor names and sort products *)
-type ind_decl = Ind_decl of (string * sort list) list
+type ind_decl = Ind_decl of (string * Sorts.srt_smt list) list
 
 type func_decl = {
-  arg_tys : sort list;
-  ret_ty : sort;
+  arg_tys : Sorts.srt_smt list;
+  ret_ty : Sorts.srt_smt;
   name: string;
 }
 
@@ -56,7 +50,7 @@ type bexpr =
   | Tru | Fls
   | Bop of bop * bexpr * bexpr
   | Uop of uop * bexpr
-  | Forall of string * sort * bexpr
+  | Forall of string * Sorts.srt_smt * bexpr
   | App of string * (bexpr list)
   | TSym of string
 
@@ -80,7 +74,6 @@ val build_query : Constr.t -> query_opts -> string
 val dump_query : EConstr.t -> unit
 val check_interp : Constr.t -> bool -> string
 val extract_ctx : Constr.t -> Constr.t list
-val pretty_sort : sort -> string
 
 val pretty_func_decl : func_decl -> string
 

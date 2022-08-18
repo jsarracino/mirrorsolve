@@ -286,37 +286,15 @@ let rec extract_str_list (e: C.t) : char list =
 let extract_str (e: C.t) : string = 
   String.of_seq @@ List.to_seq @@ extract_str_list e
 
-type sort = 
-  | Smt_bv of int option
-  | Smt_int
-  | Smt_bool 
-  | Custom_sort of string
+open Sorts
 
 type func_decl = {
-  arg_tys : sort list;
-  ret_ty : sort;
+  arg_tys : srt_smt list;
+  ret_ty : srt_smt;
   name: string;
 }
 
-let valid_sort (s: sort) : bool = 
-  begin match s with 
-  | Smt_bv (Some n) -> n > 0
-  | Smt_bv None -> false
-  | Custom_sort s -> 
-    String.length s > 0 && s.[0] = Char.uppercase_ascii s.[0]
-  | Smt_int 
-  | Smt_bool -> true
-  end
-let pretty_sort (s: sort) : string = 
-  begin match s with 
-  | Smt_bv (Some n) -> Format.sprintf "(_ BitVec %n)" n
-  | Smt_bv None -> raise bedef
-  | Smt_int -> "Int"
-  | Smt_bool -> "Bool"
-  | Custom_sort s -> s
-  end
-
-  let conv_sort (e: C.t) (args: C.t Array.t) : sort option = 
+  let conv_sort (e: C.t) (args: C.t Array.t) : srt_smt option = 
     if equal_ctor e c_cust_sort then Some (Custom_sort (extract_str @@ a_last args))
     else if equal_ctor e (fun _ -> c_int_sort) then Some Smt_int 
     else if equal_ctor e (fun _ -> c_bool_sort) then Some Smt_bool
@@ -326,7 +304,7 @@ let pretty_sort (s: sort) : string =
       let _ = Feedback.msg_debug @@ Constr.debug_print e in 
       None
 
-let sort_tbl : (Names.constructor, sort) Hashtbl.t = 
+let sort_tbl : (Names.constructor, srt_smt) Hashtbl.t = 
   Hashtbl.create 5 
   ;;
   let bv_sort = c_bv_sort() in 
@@ -337,7 +315,7 @@ let sort_tbl : (Names.constructor, sort) Hashtbl.t =
     | e -> raise e
   end
 
-let lookup_sort (ctor: Names.constructor) : sort option = Hashtbl.find_opt sort_tbl ctor
+let lookup_sort (ctor: Names.constructor) : srt_smt option = Hashtbl.find_opt sort_tbl ctor
 let add_sort (e: C.t) v = 
   if C.isConstruct e then 
     let (k, _) = C.destConstruct e in 
@@ -356,7 +334,7 @@ let custom_sorts () : string list =
   let sorts = Hashtbl.to_seq_values sort_tbl in
     List.filter_map worker (List.of_seq sorts)
 
-type ind_decl = Ind_decl of (string * sort list) list
+type ind_decl = Ind_decl of (string * srt_smt list) list
 let ind_tbl : (string, ind_decl) Hashtbl.t = Hashtbl.create 5
 
 let add_ind (name: string) (ctor: C.t) (decl: ind_decl) = 
@@ -478,7 +456,7 @@ type bexpr =
   | Tru | Fls
   | Bop of bop * bexpr * bexpr
   | Uop of uop * bexpr
-  | Forall of string * sort * bexpr
+  | Forall of string * srt_smt * bexpr
   | App of string * (bexpr list)
   | TSym of string
 
@@ -551,7 +529,7 @@ let rec extract_list (inner: C.t -> 'a) (e: C.t) : 'a list =
 
 
 
-let extract_ind_base (base: sort) (e: C.t) = 
+let extract_ind_base (base: srt_smt) (e: C.t) = 
   let _ = debug_pp @@ Pp.str "extracting ind base from:" in
   let _ = debug_pp @@ Constr.debug_print e in  
   if C.isApp e then 
@@ -571,7 +549,7 @@ let extract_ind_base (base: sort) (e: C.t) =
       let _ = Feedback.msg_debug (Constr.debug_print e) in
         raise bedef
 
-let extract_ind_case (base: sort) (e: C.t) : string * sort list =
+let extract_ind_case (base: srt_smt) (e: C.t) : string * srt_smt list =
     (* the overall structure is string * list sort *)
   let _ = debug_pp @@ Pp.str "extracting ind case..." in 
   if C.isApp e then 
@@ -584,7 +562,7 @@ let extract_ind_case (base: sort) (e: C.t) : string * sort list =
     let _ = Feedback.msg_debug (Constr.debug_print e) in
       raise bedef
 
-let extract_ind_decl (base: sort) (e: C.t) = 
+let extract_ind_decl (base: srt_smt) (e: C.t) = 
   let _ = debug_pp @@ Pp.str "extracting ind decl..." in 
   if C.isApp e then 
     (* SICases <cases> *)

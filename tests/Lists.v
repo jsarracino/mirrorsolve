@@ -246,6 +246,9 @@ Section ListFuncs.
   Mirror Reflect Add Sort bool.
 
   Mirror Reflect Print Sorts.
+  (* Prints: 
+      Inductive sorts := sorts_Z | sorts_bool | sorts_list.
+  *)
 
   (* The section variable A is an uninterpreted sort in SMT. *)
   RegisterCustomSort sort_A "A".

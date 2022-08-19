@@ -179,11 +179,11 @@ VERNAC COMMAND EXTEND SetLanguage CLASSIFIED AS QUERY
 END
 
 VERNAC COMMAND EXTEND ReflectAddSort CLASSIFIED AS QUERY
-| [ "Mirror" "Reflect" "Add" "Sort" constr(e) ] -> { 
+| [ "Mirror" "Reflect" "Add" "Sort" constr(e) string_opt(opt_name) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
     let sigma', e' = Constrintern.interp_constr_evars env sigma e in 
-      Sorts.add_sort (EConstr.to_constr sigma' e')
+      Sorts.add_sort (EConstr.to_constr sigma' e') opt_name
   }
 END
 

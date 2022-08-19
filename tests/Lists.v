@@ -241,9 +241,10 @@ Section ListFuncs.
 
   Declare ML Module "mirrorsolve".
 
-  Mirror Reflect Add Sort list.
+  Mirror Reflect Add Sort (list A) "list_A".
   Mirror Reflect Add Sort Z.
   Mirror Reflect Add Sort bool.
+  Mirror Reflect Add Sort A.
 
   Mirror Reflect Print Sorts.
   (* Prints: 

@@ -7,11 +7,10 @@ type srt_smt =
 val valid_sort : srt_smt -> bool
 val pretty_sort : srt_smt -> string
 
-(* module ConstrCompare : Set.OrderedType *)
 
-module ConstrSet : Set.S with type elt = Constr.types
+val sort_names : (Constr.t, string) Hashtbl.t
 
-val get_current_sorts : unit -> ConstrSet.t
-val add_sort : Constr.types -> unit
+val get_current_sorts : unit -> (Constr.t * string) Seq.t
+val add_sort : Constr.types -> string option -> unit
 val print_sorts_decl : unit -> string
 val add_sorts_decl : unit Proofview.tactic

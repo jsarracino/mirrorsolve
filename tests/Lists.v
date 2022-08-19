@@ -241,6 +241,12 @@ Section ListFuncs.
 
   Declare ML Module "mirrorsolve".
 
+  Mirror Reflect Add Sort list.
+  Mirror Reflect Add Sort Z.
+  Mirror Reflect Add Sort bool.
+
+  Mirror Reflect Print Sorts.
+
   (* The section variable A is an uninterpreted sort in SMT. *)
   RegisterCustomSort sort_A "A".
 

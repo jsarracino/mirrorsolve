@@ -178,9 +178,19 @@ VERNAC COMMAND EXTEND SetLanguage CLASSIFIED AS QUERY
   }
 END
 
-VERNAC COMMAND EXTEND ReflectSort CLASSIFIED AS QUERY
-| [ "Mirror" "Reflect" "Sort" constr(e) ] -> { 
-    ()
+VERNAC COMMAND EXTEND ReflectAddSort CLASSIFIED AS QUERY
+| [ "Mirror" "Reflect" "Add" "Sort" constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let sigma', e' = Constrintern.interp_constr_evars env sigma e in 
+      Sorts.add_sort (EConstr.to_constr sigma' e')
+  }
+END
+
+VERNAC COMMAND EXTEND PrintSorts CLASSIFIED AS QUERY
+| [ "Mirror" "Reflect" "Print" "Sorts" ] -> { 
+    let out = Sorts.print_sorts_decl () in 
+      Feedback.msg_info (Pp.(++) (Pp.str "sorts syntax and semantics:\n") @@ Pp.str out)
   }
 END
 

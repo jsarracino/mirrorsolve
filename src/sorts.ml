@@ -60,18 +60,36 @@ let print_sorts_decl _ =
 
 let get_doc_id () = 0 
 
+let dest_ind_ctors x = 
+  begin match x with
+  | Vernacexpr.Constructors xs -> xs
+  | _ -> assert false
+  end
+
 let exec_cmd (cmd: string) = 
   let doc = Stm.get_doc @@ get_doc_id () in 
   let sid : Stateid.t = Stm.get_current_state ~doc in
   let c_cmd : Pcoq.Parsable.t = Pcoq.Parsable.make @@ Stream.of_string cmd in 
   begin match Stm.parse_sentence ~doc ~entry:Pvernac.main_entry sid c_cmd with
   | None -> ()
-  | Some stmt -> (
-    Feedback.msg_debug @@ Pp.(++) (Pp.str "interpreting command: ") @@ Pp.str cmd;
-    let _ = Stm.add ~doc ~ontop:(Stm.get_current_state ~doc) false stmt in 
-      ()
-    (* Vernac.process_expr *)
-  )
+  | Some { v = { expr = Vernacexpr.VernacInductive (v_kind, [(ind_e, notations)]); _}; _} -> (
+    Feedback.msg_debug @@ Pp.(++) (Pp.str "interpreting command as inductive: ") @@ Pp.str cmd;
+    let template = Some false in 
+    let udecl = None in 
+    let cumulative = false in 
+    let poly = true in 
+    let typing_flags = None in 
+    let private_ind = false in 
+    let uniform = ComInductive.UniformParameters in 
+    let finite = Declarations.Finite in 
+    let ((_, (name, _)), iparams, x, y) = ind_e in 
+    let ind_expr : Vernacexpr.one_inductive_expr = (name, iparams, x, dest_ind_ctors y) in (
+      ComInductive.do_mutual_inductive ~template udecl [(ind_expr, notations)] ~cumulative ~poly ?typing_flags ~private_ind ~uniform finite;
+      Feedback.msg_debug @@ Pp.str @@ "added inductive type " ^ Names.Id.to_string name.v
+      )
+    )
+  | Some _ -> 
+    Feedback.msg_warning @@ Pp.str "unrecognized command"
   end
 
 

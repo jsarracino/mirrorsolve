@@ -248,7 +248,7 @@ Section ListFuncs.
 
   Mirror Reflect Print Sorts.
 
-  Mirror Interp Command "Inductive sorts := sorts_Z | sorts_bool.".
+  Mirror Interp Command "Inductive sorts : nat -> Type := sorts_Z : sorts 0 | sorts_bool : sorts 1.".
 
   Print sorts.
   Mirror Reflect Add Sorts.

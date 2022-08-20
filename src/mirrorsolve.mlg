@@ -194,6 +194,18 @@ VERNAC COMMAND EXTEND PrintSorts CLASSIFIED AS QUERY
   }
 END
 
+VERNAC COMMAND EXTEND InterpRegisteredSorts CLASSIFIED AS QUERY
+| [ "Mirror" "Reflect" "Add" "Sorts" ] -> { 
+    Sorts.add_sorts_decl ()
+  }
+END
+
+VERNAC COMMAND EXTEND InterpCmd CLASSIFIED AS QUERY
+| [ "Mirror" "Interp" "Command" string(cmd) ] -> { 
+    Sorts.exec_cmd cmd
+  }
+END
+
 TACTIC EXTEND DebugMemory
 | ["print_mem"] ->  {
   let stats = Gc.stat () in

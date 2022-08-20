@@ -247,6 +247,11 @@ Section ListFuncs.
   Mirror Reflect Add Sort A.
 
   Mirror Reflect Print Sorts.
+
+  Mirror Interp Command "Inductive sorts := sorts_Z | sorts_bool.".
+
+  Print sorts.
+  Mirror Reflect Add Sorts.
   (* Prints: 
       Inductive sorts := sorts_Z | sorts_bool | sorts_list.
   *)

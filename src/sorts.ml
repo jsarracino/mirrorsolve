@@ -45,11 +45,11 @@ let add_sort srt opt_name =
     | None -> default_sort_name srt
     end in 
   Hashtbl.add sort_names srt nme
-    
-(* assumes all the elements of curr_sorts are inductives *)
+
+let sort_name_str = "sorts"
 let print_sorts_decl _ = 
   let worker (_, nme) = "sorts_" ^ nme in
-  let pref = "Inductive sorts := " in
+  let pref = Format.sprintf "Inductive %s := " sort_name_str in
   let mid = String.concat " | " @@ List.map worker (List.of_seq @@ get_current_sorts () ) in 
     pref ^ mid ^ "."
 
@@ -92,31 +92,4 @@ let exec_cmd (cmd: string) =
     Feedback.msg_warning @@ Pp.str "unrecognized command"
   end
 
-
-
-
-let get_sort_ctor_name (ctor, name) : Constrexpr.local_binder_expr = 
-  CLocalPattern (CAst.make @@ Constrexpr.CPatAtom None )
-    (* (Some (Libnames.qualid_of_string @@ make_sort_name name))) *)
-
-let gen_sorts_inductives () : (Vernacexpr.one_inductive_expr * Vernacexpr.decl_notation list) * string = 
-  let name_str = "sorts" in 
-  let name = CAst.make (Names.Id.of_string name_str) in 
-  let ind_params = List.map get_sort_ctor_name @@ (List.of_seq @@ get_current_sorts () ), None in
-  let constrexpr = None in 
-  let vernacexpr = [] in 
-    ((name, ind_params, constrexpr, vernacexpr), []), name_str
-
-let add_sorts_decl () = 
-  let template = Some false in 
-  let udecl = None in 
-  let inductives, sorts_name = gen_sorts_inductives () in 
-  let cumulative = false in 
-  let poly = true in 
-  let typing_flags = None in 
-  let private_ind = false in 
-  let uniform = ComInductive.UniformParameters in 
-  let finite = Declarations.Finite in (
-    ComInductive.do_mutual_inductive ~template udecl [inductives] ~cumulative ~poly ?typing_flags ~private_ind ~uniform finite;
-    Feedback.msg_info @@ Pp.str @@ Format.sprintf "Added new sorts inductive: %s" sorts_name
-  )
+let add_sorts_decl () = exec_cmd @@ print_sorts_decl ()

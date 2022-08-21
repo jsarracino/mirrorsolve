@@ -244,14 +244,11 @@ Section ListFuncs.
   Mirror Reflect Add Sort (list A) "list_A".
   Mirror Reflect Add Sort Z.
   Mirror Reflect Add Sort bool.
-  Mirror Reflect Add Sort A.
+  Mirror Reflect Add Sort A "A".
 
-  Mirror Reflect Print Sorts.
-
-  Mirror Interp Command "Inductive sorts : nat -> Type := sorts_Z : sorts 0 | sorts_bool : sorts 1.".
-
-  Print sorts.
   Mirror Reflect Add Sorts.
+  Print sorts.
+
   (* Prints: 
       Inductive sorts := sorts_Z | sorts_bool | sorts_list.
   *)

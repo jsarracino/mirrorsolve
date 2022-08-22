@@ -87,6 +87,16 @@ Section ListFuncs.
   (* Next we set up a first-order logic for lists, my_app, my_rev, tail_rev, my_In, and my_len.
    *)
 
+   Declare ML Module "mirrorsolve".
+
+  Mirror Reflect Add Sort (list A) "list_A".
+  Mirror Reflect Add Sort Z.
+  Mirror Reflect Add Sort bool.
+  Mirror Reflect Add Sort A "A".
+
+  Mirror Reflect Add Sorts.
+  Mirror Reflect Add Interp Sorts.
+
   (* First we need a syntax and semantics for sorts. Our three sorts are A, list A, and Z,
     and we'll need a bool sort for my_In's Prop down the road. *)
   Inductive fol_sorts := sort_A | sort_lA | sort_Z | sort_bool.
@@ -247,6 +257,13 @@ Section ListFuncs.
   Mirror Reflect Add Sort A "A".
 
   Mirror Reflect Add Sorts.
+  Mirror Reflect Add Interp Sorts.
+
+  MetaCoq Quote Definition typ := Type.
+
+  Print typ.
+
+
   Print sorts.
 
   (* Prints: 

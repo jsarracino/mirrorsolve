@@ -23,8 +23,6 @@ let format_args (es: C.t array) : Pp.t =
 
     
 
-exception MissingGlobConst of string
-
 type ('a, 'b) sum = Inl of 'a | Inr of 'b
 
 let a_last a = a.(Array.length a - 1)
@@ -37,20 +35,8 @@ let debug msg : unit Proofview.tactic =
   Proofview.tclLIFT (Proofview.NonLogical.make (fun () ->
   Feedback.msg_debug (Pp.str msg)))
 
-let get_coq ref : C.t = 
-  try 
-    let gref = Coqlib.lib_ref ref in
-    let env = Global.env () in
-    let sigma = Evd.from_env env in
-    let sigma', evd = EConstr.fresh_global env sigma gref in 
-      EConstr.to_constr sigma' evd
-  with e ->
-    let lib_refs = Coqlib.get_lib_refs () in 
-    let needle = List.find_opt (fun (name, _) -> name = ref) lib_refs in
-      begin match needle with 
-      | Some (_, x) -> raise @@ MissingGlobConst ("polymorphic global: " ^ ref)
-      | None -> raise @@ MissingGlobConst ("unregistered global: " ^ ref)
-      end
+open Util
+
 let c_eq () = get_coq "ms.core.eq"
 let c_impl () = get_coq "ms.core.impl"
 let c_and () = get_coq "ms.core.and"
@@ -286,7 +272,7 @@ let rec extract_str_list (e: C.t) : char list =
 let extract_str (e: C.t) : string = 
   String.of_seq @@ List.to_seq @@ extract_str_list e
 
-open Sorts
+open Ms_sorts
 
 type func_decl = {
   arg_tys : srt_smt list;

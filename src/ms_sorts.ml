@@ -93,3 +93,15 @@ let exec_cmd (cmd: string) =
   end
 
 let add_sorts_decl () = exec_cmd @@ print_sorts_decl ()
+let add_interp_decl () = 
+  let name : Names.Id.t = Names.Id.of_string @@ "interp_"^sort_name_str ^"'" in
+  let body : Evd.econstr = EConstr.mkSort @@ Sorts.set in 
+  let typ: Evd.econstr option = None in 
+  let info : Declare.Info.t = Declare.Info.make () in 
+  let cinfo:Evd.econstr option Declare.CInfo.t = Declare.CInfo.make ~name ~typ () in 
+  let opaque = false in 
+  let env = Global.env () in
+  let sigma = Evd.from_env env in
+  let _ = Declare.declare_definition ~info ~cinfo ~opaque ~body sigma 
+  in 
+    Feedback.msg_debug @@ Pp.str @@ "added sort interpretation " ^ Names.Id.to_string name

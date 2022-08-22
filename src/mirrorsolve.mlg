@@ -183,26 +183,32 @@ VERNAC COMMAND EXTEND ReflectAddSort CLASSIFIED AS QUERY
     let env = Global.env () in
     let sigma = Evd.from_env env in
     let sigma', e' = Constrintern.interp_constr_evars env sigma e in 
-      Sorts.add_sort (EConstr.to_constr sigma' e') opt_name
+      Ms_sorts.add_sort (EConstr.to_constr sigma' e') opt_name
   }
 END
 
 VERNAC COMMAND EXTEND PrintSorts CLASSIFIED AS QUERY
 | [ "Mirror" "Reflect" "Print" "Sorts" ] -> { 
-    let out = Sorts.print_sorts_decl () in 
+    let out = Ms_sorts.print_sorts_decl () in 
       Feedback.msg_info (Pp.(++) (Pp.str "sorts syntax and semantics:\n") @@ Pp.str out)
   }
 END
 
-VERNAC COMMAND EXTEND InterpRegisteredSorts CLASSIFIED AS QUERY
+VERNAC COMMAND EXTEND DeclareRegisteredSorts CLASSIFIED AS QUERY
 | [ "Mirror" "Reflect" "Add" "Sorts" ] -> { 
-    Sorts.add_sorts_decl ()
+    Ms_sorts.add_sorts_decl ()
+  }
+END
+
+VERNAC COMMAND EXTEND InterpRegisteredSorts CLASSIFIED AS QUERY
+| [ "Mirror" "Reflect" "Add" "Interp" ] -> { 
+    Ms_sorts.add_interp_decl ()
   }
 END
 
 VERNAC COMMAND EXTEND InterpCmd CLASSIFIED AS QUERY
 | [ "Mirror" "Interp" "Command" string(cmd) ] -> { 
-    Sorts.exec_cmd cmd
+    Ms_sorts.exec_cmd cmd
   }
 END
 

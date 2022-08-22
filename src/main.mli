@@ -6,8 +6,6 @@ val bedef : exn
 val warn : string -> unit Proofview.tactic
 val debug: string -> unit Proofview.tactic
 
-val get_coq : string -> Constr.t
-
 val c_inl : unit -> Constr.t
 val c_inr : unit -> Constr.t
 val c_bits : unit -> Constr.t
@@ -29,13 +27,12 @@ val reg_builtin : EConstr.constr -> EConstr.constr -> unit
 val reg_uf_decl : string -> EConstr.constr -> EConstr.constr list -> unit
 val reg_custom_sort : EConstr.constr -> string -> unit
 
-
 (* sum of constructor names and sort products *)
-type ind_decl = Ind_decl of (string * Sorts.srt_smt list) list
+type ind_decl = Ind_decl of (string * Ms_sorts.srt_smt list) list
 
 type func_decl = {
-  arg_tys : Sorts.srt_smt list;
-  ret_ty : Sorts.srt_smt;
+  arg_tys : Ms_sorts.srt_smt list;
+  ret_ty : Ms_sorts.srt_smt;
   name: string;
 }
 
@@ -50,7 +47,7 @@ type bexpr =
   | Tru | Fls
   | Bop of bop * bexpr * bexpr
   | Uop of uop * bexpr
-  | Forall of string * Sorts.srt_smt * bexpr
+  | Forall of string * Ms_sorts.srt_smt * bexpr
   | App of string * (bexpr list)
   | TSym of string
 

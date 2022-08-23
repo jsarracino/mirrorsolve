@@ -77,7 +77,7 @@ let exec_cmd (cmd: string) =
     let template = Some false in 
     let udecl = None in 
     let cumulative = false in 
-    let poly = true in 
+    let poly = false in 
     let typing_flags = None in 
     let private_ind = false in 
     let uniform = ComInductive.UniformParameters in 
@@ -92,13 +92,57 @@ let exec_cmd (cmd: string) =
     Feedback.msg_warning @@ Pp.str "unrecognized command"
   end
 
+let sorts_case_info () : Constr.case_info = 
+  let sort_ind : Names.inductive = 
+    begin match Nametab.locate (Libnames.qualid_of_string sort_name_str) with 
+    | IndRef x -> x 
+    | _ -> assert false
+    end in {
+    ci_ind = sort_ind;
+    ci_npar = 0;
+    ci_cstr_ndecls = [| |];
+    ci_cstr_nargs = [||];
+    ci_relevance = Sorts.Relevant;
+    ci_pp_info = {
+      ind_tags = [];
+      cstr_tags = [| |];
+      style = RegularStyle
+    };
+  }
+
+let mk_univ_instance (ci: Constr.case_info) : Univ.Instance.t = 
+  let env = Global.env () in 
+  let ((i, u), _) = Inductive.find_inductive env (Constr.mkInd ci.ci_ind) in 
+  let _ = Feedback.msg_debug @@ Pp.(++) (Pp.str "coerced sorts inductive to:") (Univ.Instance.pr Univ.Level.pr u ) in 
+  let _ = Feedback.msg_debug @@ Pp.(++) (Pp.str "underlying inductive:") (Constr.debug_print @@ (Constr.mkInd ci.ci_ind) ) in 
+    u
+
+let build_interp_case () : EConstr.case = 
+  (* (ci,u,params,p,iv,c,brs) *)
+  let ci = sorts_case_info () in 
+  let u : EConstr.EInstance.t =  EConstr.EInstance.make @@ mk_univ_instance ci in 
+  let params : Evd.econstr array = [| |] in 
+  let ret_type : Evd.econstr Constr.pcase_return = ([||], EConstr.mkSort @@ Sorts.type1) in 
+  let iv = Constr.NoInvert in 
+  let scrutinee : Evd.econstr = EConstr.mkRel 0 in 
+  let branches : Evd.econstr Constr.pcase_branch array = [| 
+    ([| Context.anonR |], EConstr.mkSort @@ Sorts.set)
+  |] in 
+    (ci, u, params, ret_type, iv, scrutinee, branches)
+
 let add_sorts_decl () = exec_cmd @@ print_sorts_decl ()
 let add_interp_decl () = 
-  let name : Names.Id.t = Names.Id.of_string @@ "interp_"^sort_name_str ^"'" in
-  let body : Evd.econstr = EConstr.mkSort @@ Sorts.set in 
+  let name : Names.Id.t = Names.Id.of_string @@ "interp_"^sort_name_str in
+  (* let body : Evd.econstr = EConstr.mkSort @@ Sorts.set in  *)
+  let udecl = UState.default_univ_decl in 
+  let body : Evd.econstr = EConstr.mkCase @@ build_interp_case () in 
   let typ: Evd.econstr option = None in 
-  let info : Declare.Info.t = Declare.Info.make () in 
-  let cinfo:Evd.econstr option Declare.CInfo.t = Declare.CInfo.make ~name ~typ () in 
+  let poly = false in 
+  let scope = Locality.Global Locality.ImportDefaultBehavior in
+  let kind = Decls.(IsDefinition Definition) in
+  let info : Declare.Info.t = Declare.Info.make ~scope ~kind  ~udecl ~poly  () in 
+  let args : Names.Name.t list = [Names.Name.mk_name @@ Names.Id.of_string "s" ] in 
+  let cinfo:Evd.econstr option Declare.CInfo.t = Declare.CInfo.make ~name ~typ ~args () in 
   let opaque = false in 
   let env = Global.env () in
   let sigma = Evd.from_env env in

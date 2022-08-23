@@ -94,7 +94,80 @@ Section ListFuncs.
   Mirror Reflect Add Sort bool.
   Mirror Reflect Add Sort A "A".
 
-  Mirror Reflect Add Sorts.
+  From MetaCoq.Template Require Import All Loader.
+  Import MCMonadNotation.
+
+  Require Import Coq.Strings.String.
+
+  Definition mk_ctor_body (x: ident) : constructor_body := {| 
+    cstr_name := x;
+    cstr_args := [];
+    cstr_indices := [];
+    cstr_type := tRel 0;
+    cstr_arity := 0;
+  |}.
+
+  MetaCoq Quote Definition set_term := (Set).
+  MetaCoq Quote Definition typ_term := (Type).
+
+  Open Scope bs.
+
+  Definition sorts_one_body : one_inductive_body := {|
+    ind_name := "sorts";
+    ind_indices := [];
+    ind_sort := Universe.type1;
+    ind_type := set_term;
+    ind_kelim := IntoAny;
+    ind_ctors := List.map mk_ctor_body ["sorts_A"; "sorts_lA"; "sorts_Z"; "sorts_bool"];
+    ind_projs := [];
+    ind_relevance := Relevant
+  |}.
+
+  Definition sorts_body : mutual_inductive_body := {| 
+    ind_finite := Finite;
+    ind_npars := 0;
+    ind_params := [];
+    ind_bodies := [
+      sorts_one_body
+    ];
+    ind_universes := Monomorphic_ctx;
+    ind_variance := None;
+  |}.
+
+  (* adds in a sorts inductive definition *)
+  MetaCoq Run (tmMkInductive' sorts_body).
+
+  MetaCoq Quote Definition sort_term := sorts.
+
+
+
+  Definition part_two := 
+    tmMkDefinition "interp_sorts" (tLambda 
+      (mkBindAnn (nNamed "srt") Relevant)
+      sort_term
+      sort_term
+    ).
+
+  MetaCoq Run part_two.
+
+  Print interp_sorts.
+  Check interp_sorts.
+
+
+
+  MetaCoq Quote Definition foo := ( fun (n : nat) => 
+    match n with 
+    | 0 => true
+    | S n' => false
+    end
+  ).
+
+  Print foo.
+
+  (* Mirror Reflect Add Sorts. *)
+  (* Print sorts. *)
+  Mirror Reflect Add Interp.
+  Print foo.
   Mirror Reflect Add Interp Sorts.
 
   (* First we need a syntax and semantics for sorts. Our three sorts are A, list A, and Z,

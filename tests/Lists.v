@@ -99,8 +99,10 @@ Section ListFuncs.
 
   Require Import Coq.Strings.String.
 
+  Open Scope bs.
+
   Definition mk_ctor_body (x: ident) : constructor_body := {| 
-    cstr_name := x;
+    cstr_name := "sort_" ++ x;
     cstr_args := [];
     cstr_indices := [];
     cstr_type := tRel 0;
@@ -118,7 +120,7 @@ Section ListFuncs.
     ind_sort := Universe.type1;
     ind_type := set_term;
     ind_kelim := IntoAny;
-    ind_ctors := List.map mk_ctor_body ["sorts_A"; "sorts_lA"; "sorts_Z"; "sorts_bool"];
+    ind_ctors := List.map mk_ctor_body ["A"; "lA"; "Z"; "bool"];
     ind_projs := [];
     ind_relevance := Relevant
   |}.
@@ -137,49 +139,77 @@ Section ListFuncs.
   (* adds in a sorts inductive definition *)
   MetaCoq Run (tmMkInductive' sorts_body).
 
+  Print inductive.
+
   MetaCoq Quote Definition sort_term := sorts.
 
+  (* Variable (x: sorts).
+  Print sorts.
+
+  MetaCoq Quote Definition foo := (
+    match x with 
+    | sort_A => A
+    | sort_lA => list A
+    | sort_Z => Z
+    | sort_bool => bool
+    end
+  ).
+
+  Print foo. *)
 
 
   Definition part_two := 
     tmMkDefinition "interp_sorts" (tLambda 
       (mkBindAnn (nNamed "srt") Relevant)
       sort_term
-      sort_term
+      (tCase {| 
+        ci_ind := {| inductive_mind := (MPfile ["Lists"], "sorts"); inductive_ind := 0 |};
+        ci_npar := 0;
+        ci_relevance := Relevant;
+        |} {|
+          puinst := [];
+          pparams := [];
+          pcontext := [(mkBindAnn (nNamed "srt") Relevant)];
+          preturn := tSort (Universe.of_levels (inr (Level.Level "Lists.213")))
+        |} 
+        (tRel 0)
+        [{| bcontext := []; bbody := tVar "A" |};
+  {|
+    bcontext := [];
+    bbody :=
+      tApp
+        (tInd
+           {|
+             inductive_mind := (MPfile ["Datatypes"; "Init"; "Coq"], "list");
+             inductive_ind := 0
+           |} []) ([tVar "A"])
+  |};
+  {|
+    bcontext := [];
+    bbody :=
+      tInd
+        {|
+          inductive_mind := (MPfile ["BinNums"; "Numbers"; "Coq"], "Z");
+          inductive_ind := 0
+        |} []
+  |};
+  {|
+    bcontext := [];
+    bbody :=
+      tInd
+        {|
+          inductive_mind := (MPfile ["Datatypes"; "Init"; "Coq"], "bool");
+          inductive_ind := 0
+        |} []
+  |}]
+      )
     ).
+
+  Unset MetaCoq Strict Unquote Universe Mode.
 
   MetaCoq Run part_two.
 
-  Print interp_sorts.
-  Check interp_sorts.
 
-
-
-  MetaCoq Quote Definition foo := ( fun (n : nat) => 
-    match n with 
-    | 0 => true
-    | S n' => false
-    end
-  ).
-
-  Print foo.
-
-  (* Mirror Reflect Add Sorts. *)
-  (* Print sorts. *)
-  Mirror Reflect Add Interp.
-  Print foo.
-  Mirror Reflect Add Interp Sorts.
-
-  (* First we need a syntax and semantics for sorts. Our three sorts are A, list A, and Z,
-    and we'll need a bool sort for my_In's Prop down the road. *)
-  Inductive fol_sorts := sort_A | sort_lA | sort_Z | sort_bool.
-  Definition interp_sorts (x: fol_sorts) : Type := 
-    match x with 
-    | sort_A => A
-    | sort_lA => list A
-    | sort_Z => Z
-    | sort_bool => bool
-    end.
 
   (* Next we define function symbols for everything mentioned in the functions:
     nil, cons, my_app, my_rev, tail_rev, my_len, Z plus, Z constants
@@ -192,7 +222,7 @@ Section ListFuncs.
   *)
 
 
-  Inductive fol_list_funs : list fol_sorts -> fol_sorts -> Type := 
+  Inductive fol_list_funs : list sorts -> sorts -> Type := 
     | nil_f : fol_list_funs [] sort_lA
     | cons_f : fol_list_funs [sort_A; sort_lA] sort_lA
     | my_app_f : fol_list_funs [sort_lA; sort_lA] sort_lA
@@ -202,7 +232,7 @@ Section ListFuncs.
     | plus_f : fol_list_funs [sort_Z; sort_Z] sort_Z
     | z_const_f : forall (z: Z), fol_list_funs [] sort_Z.
 
-  Inductive fol_list_rels : list fol_sorts -> Type := 
+  Inductive fol_list_rels : list sorts -> Type := 
     | my_In_r : fol_list_rels [sort_A; sort_lA].
 
   (* We package these up into a first-order logic *signature* for lists: the type symbols + function + relation symbols. 
@@ -210,7 +240,7 @@ Section ListFuncs.
   *)
 
   Definition list_sig: signature := {| 
-    sig_sorts := fol_sorts;
+    sig_sorts := sorts;
     sig_funs := fol_list_funs;
     sig_rels := fol_list_rels 
   |}.
@@ -313,35 +343,13 @@ Section ListFuncs.
   ].
 
   (* Analogous reflection matches for sorts *)
-  Definition match_inds : list ((term -> bool) * fol_sorts) := [
+  Definition match_inds : list ((term -> bool) * sorts) := [
       (eq_term t_lA, sort_lA)
     ; (eq_term t_A, sort_A)
     ; (eq_term t_Z, sort_Z)
     ; (eq_term t_bool, sort_bool)
   ].
 
-  (* Next we configure the backend SMT plugin. *)
-
-  Declare ML Module "mirrorsolve".
-
-  Mirror Reflect Add Sort (list A) "list_A".
-  Mirror Reflect Add Sort Z.
-  Mirror Reflect Add Sort bool.
-  Mirror Reflect Add Sort A "A".
-
-  Mirror Reflect Add Sorts.
-  Mirror Reflect Add Interp Sorts.
-
-  MetaCoq Quote Definition typ := Type.
-
-  Print typ.
-
-
-  Print sorts.
-
-  (* Prints: 
-      Inductive sorts := sorts_Z | sorts_bool | sorts_list.
-  *)
 
   (* The section variable A is an uninterpreted sort in SMT. *)
   RegisterCustomSort sort_A "A".
@@ -413,10 +421,10 @@ Section ListFuncs.
     Utils.revert_all;
     unfold "<->" in *.
 
-  Scheme Equality for fol_sorts.
+  Scheme Equality for sorts.
 
-  Ltac quote_reflect_list := quote_reflect list_sig fm_model fol_sorts_eq_dec match_tacs match_inds.
-  Ltac quote_extract_list := quote_extract list_sig fm_model fol_sorts_eq_dec match_tacs match_inds.
+  Ltac quote_reflect_list := quote_reflect list_sig fm_model sorts_eq_dec match_tacs match_inds.
+  Ltac quote_extract_list := quote_extract list_sig fm_model sorts_eq_dec match_tacs match_inds.
 
 
   Ltac mirrorsolve :=

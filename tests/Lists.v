@@ -87,129 +87,17 @@ Section ListFuncs.
   (* Next we set up a first-order logic for lists, my_app, my_rev, tail_rev, my_In, and my_len.
    *)
 
-   Declare ML Module "mirrorsolve".
-
-  Mirror Reflect Add Sort (list A) "list_A".
-  Mirror Reflect Add Sort Z.
-  Mirror Reflect Add Sort bool.
-  Mirror Reflect Add Sort A "A".
+  Declare ML Module "mirrorsolve".
 
   From MetaCoq.Template Require Import All Loader.
   Import MCMonadNotation.
 
-  Require Import Coq.Strings.String.
-
+  Require Import MirrorSolve.Config.
   Open Scope bs.
 
-  Definition mk_ctor_body (x: ident) : constructor_body := {| 
-    cstr_name := "sort_" ++ x;
-    cstr_args := [];
-    cstr_indices := [];
-    cstr_type := tRel 0;
-    cstr_arity := 0;
-  |}.
 
-  MetaCoq Quote Definition set_term := (Set).
-  MetaCoq Quote Definition typ_term := (Type).
-
-  Open Scope bs.
-
-  Definition sorts_one_body : one_inductive_body := {|
-    ind_name := "sorts";
-    ind_indices := [];
-    ind_sort := Universe.type1;
-    ind_type := set_term;
-    ind_kelim := IntoAny;
-    ind_ctors := List.map mk_ctor_body ["A"; "lA"; "Z"; "bool"];
-    ind_projs := [];
-    ind_relevance := Relevant
-  |}.
-
-  Definition sorts_body : mutual_inductive_body := {| 
-    ind_finite := Finite;
-    ind_npars := 0;
-    ind_params := [];
-    ind_bodies := [
-      sorts_one_body
-    ];
-    ind_universes := Monomorphic_ctx;
-    ind_variance := None;
-  |}.
-
-  (* adds in a sorts inductive definition *)
-  MetaCoq Run (tmMkInductive' sorts_body).
-
-  Print inductive.
-
-  MetaCoq Quote Definition sort_term := sorts.
-
-  (* Variable (x: sorts).
-  Print sorts.
-
-  MetaCoq Quote Definition foo := (
-    match x with 
-    | sort_A => A
-    | sort_lA => list A
-    | sort_Z => Z
-    | sort_bool => bool
-    end
-  ).
-
-  Print foo. *)
-
-
-  Definition part_two := 
-    tmMkDefinition "interp_sorts" (tLambda 
-      (mkBindAnn (nNamed "srt") Relevant)
-      sort_term
-      (tCase {| 
-        ci_ind := {| inductive_mind := (MPfile ["Lists"], "sorts"); inductive_ind := 0 |};
-        ci_npar := 0;
-        ci_relevance := Relevant;
-        |} {|
-          puinst := [];
-          pparams := [];
-          pcontext := [(mkBindAnn (nNamed "srt") Relevant)];
-          preturn := tSort (Universe.of_levels (inr (Level.Level "Lists.213")))
-        |} 
-        (tRel 0)
-        [{| bcontext := []; bbody := tVar "A" |};
-  {|
-    bcontext := [];
-    bbody :=
-      tApp
-        (tInd
-           {|
-             inductive_mind := (MPfile ["Datatypes"; "Init"; "Coq"], "list");
-             inductive_ind := 0
-           |} []) ([tVar "A"])
-  |};
-  {|
-    bcontext := [];
-    bbody :=
-      tInd
-        {|
-          inductive_mind := (MPfile ["BinNums"; "Numbers"; "Coq"], "Z");
-          inductive_ind := 0
-        |} []
-  |};
-  {|
-    bcontext := [];
-    bbody :=
-      tInd
-        {|
-          inductive_mind := (MPfile ["Datatypes"; "Init"; "Coq"], "bool");
-          inductive_ind := 0
-        |} []
-  |}]
-      )
-    ).
-
-  Unset MetaCoq Strict Unquote Universe Mode.
-
-  MetaCoq Run part_two.
-
-
+  MetaCoq Run (add_sorts ["A"; "lA"; "bool"; "Z"]).
+  MetaCoq Run (add_interp_sorts [A; list A] [bool; Z] sorts).
 
   (* Next we define function symbols for everything mentioned in the functions:
     nil, cons, my_app, my_rev, tail_rev, my_len, Z plus, Z constants
@@ -220,6 +108,15 @@ Section ListFuncs.
     and relations are indexed by the argument types. The argument types are encoded as a list of fol_sorts symbols.
   
   *)
+
+  MetaCoq Quote Definition ta := ([sort_lA]).
+  MetaCoq Quote Definition tr := (sort_Z).
+
+  MetaCoq Run (
+    add_funs_type sorts [[ta; tr]]
+  ).
+
+  Print fol_funs.
 
 
   Inductive fol_list_funs : list sorts -> sorts -> Type := 

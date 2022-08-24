@@ -109,6 +109,7 @@ Section ListFuncs.
 
   MetaCoq Quote Definition typ_term := Type@{foo}.
 
+  (* Autogeneration TODO *)
   MetaCoq Run (
     add_funs typ_term [pack ListFuncs.rev; pack ListFuncs.app; pack ListFuncs.In]
   ).
@@ -126,17 +127,6 @@ Section ListFuncs.
     and relations are indexed by the argument types. The argument types are encoded as a list of fol_sorts symbols.
   
   *)
-  Variable (a: A).
-
-  MetaCoq Quote Recursively Definition foo := (forall (xs: list A), my_len (my_rev xs) = my_len xs).
-
-  Eval vm_compute in (fst foo).(declarations).
-
-  Print foo.
-
-
-  Print fol_funs.
-
 
   Inductive fol_list_funs : list sorts -> sorts -> Type := 
     | nil_f : fol_list_funs [] sort_lA

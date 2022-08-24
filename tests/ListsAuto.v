@@ -28,6 +28,7 @@ Require Import Coq.ZArith.BinInt.
 
 Section ListFuncs.
   Variable (A: Type).
+  Unset Universe Polymorphism.
 
   Inductive list_A := | nil_A | cons_A : A -> list_A -> list_A.
 
@@ -98,51 +99,21 @@ Section ListFuncs.
   Require Import MirrorSolve.Config.
   Open Scope bs.
 
+  (* MetaCoq Run (add_sorts ["A"; "lA"; "bool"; "Z"]).
+  MetaCoq Run (add_interp_sorts [pack A; pack (list_A); pack bool; pack Z] sorts). *)
+
   Notation pack x := (existT _ _ x).
-
-  MetaCoq Run (add_sorts ["A"; "lA"; "bool"; "Z"]).
-  MetaCoq Run (add_interp_sorts [pack A; pack (list_A); pack bool; pack Z] sorts).
-
-  Definition sorts_constant_body (x: constant_body) : list term := 
-    normalize_sort_term x.(cst_type).
-
-  Definition gather_sorts (t: packed_ty) : TemplateMonad (list term) := 
-    match t with 
-    | pack x => 
-      t' <- tmQuote x ;;
-      match t' with 
-      | tInd ind _ => 
-        y <- tmQuoteInductive ind.(inductive_mind) ;;
-        tmMsg "unimplemented gather for inductive" ;;
-        tmReturn nil
-      | tConst name _ => 
-        y <- tmQuoteConstant name true ;;
-        x <- tmEval all (sorts_constant_body y) ;;
-        tmReturn x
-      | _ => 
-        tmMsg "unrecognized term" ;;
-        tmPrint t' ;;
-        tmFail "unrecognized term in gather sorts"
-      end
-    end.
-  
-  Fixpoint gather_sorts_all (xs: list packed_ty) : TemplateMonad (list (list term)) := 
-    match xs with 
-    | nil => tmReturn nil
-    | (x :: xs')%list => 
-      t <- gather_sorts x ;;
-      t' <- gather_sorts_all xs' ;;
-      tmReturn (t :: t')%list
-    end.
-
-  
-
   (* Check tmEval. *)
 
+  Universe foo.
+
+  MetaCoq Quote Definition typ_term := Type@{foo}.
+
   MetaCoq Run (
-    srts <- gather_sorts_all [pack ListFuncs.rev; pack ListFuncs.app] ;;
-    tmReturn (Utils.uniq term eq_term srts) 
+    add_funs typ_term [pack ListFuncs.rev; pack ListFuncs.app; pack ListFuncs.In]
   ).
+
+  Print sorts.
 
   Check cst_type.
 
@@ -195,7 +166,6 @@ Section ListFuncs.
   (* We package these up into a first-order logic *signature* for lists: the type symbols + function + relation symbols. 
   
   *)
-
   Definition list_sig: signature := {| 
     sig_sorts := sorts;
     sig_funs := fol_list_funs;

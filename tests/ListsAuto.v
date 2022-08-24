@@ -114,19 +114,7 @@ Section ListFuncs.
   ).
 
   Print sorts.
-
-  Check cst_type.
-
-  MetaCoq Run (
-    add_funs_type sorts [
-        ([], sort_lA) (* nil *)
-      ; ([sort_A; sort_lA], sort_lA) (* cons *)
-      ; ([sort_lA; sort_lA], sort_lA) (* app *)
-      ; ([sort_lA], sort_lA) (* rev *)
-      ; ([sort_lA; sort_lA], sort_lA) (* tail_rev *)
-    ]
-  ).
-
+  Print interp_sorts.
   Print fol_funs.
 
   (* Next we define function symbols for everything mentioned in the functions:

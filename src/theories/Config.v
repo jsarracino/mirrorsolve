@@ -286,8 +286,8 @@ Section Config.
     tmMkInductive' (funs_body arg_term ret_term indices' funs_ty_term).
 
 
-  Definition make_names (prefix: ident) (xs: list term) : list ident := 
-    map_with_index (fun i _ => prefix ++ "_" ++ (String.of_string (n_to_str i))) xs.
+  Definition make_names (xs: list term) : list ident := 
+    map_with_index (fun i _ => String.of_string (n_to_str i)) xs.
 
   Definition uniq_term := uniq _ Core.eq_term.
 
@@ -333,7 +333,7 @@ Section Config.
 
   Definition add_funs_indices (indices: list (list term)) := 
     let sort_ty_terms := uniq_term (concat indices) in 
-    let sort_names := make_names "srt" sort_ty_terms in 
+    let sort_names := make_names sort_ty_terms in 
       sort_terms <- add_sorts sort_names ;;
       tmReturn (combine sort_ty_terms sort_terms).
 
@@ -357,22 +357,36 @@ Section Config.
     | _ => t
     end.
 
+  Fixpoint subst_terms (env: list (term * term)) (t: term) := 
+    match find _ _ Core.eq_term t env with 
+    | Some t' => t'
+    | None => 
+      match t with 
+      | tApp f args => 
+        tApp (subst_terms env f) (map (subst_terms env) args)
+      | tProd x ty bod => 
+        tProd x (subst_terms env ty) (subst_terms env bod)
+      | _ => t 
+      end
+    end.
+
   Definition add_funs (typ_term: term) (funs: list packed) : TemplateMonad unit := 
-    indices <- ((gather_sorts_all funs) >>= add_funs_indices) ;; 
+    normal_indices <- gather_sorts_all funs ;;
+    sorted_indices <- add_funs_indices normal_indices ;; 
     srts <- tmLocate "sorts" ;;
     match srts with 
     | [] => tmFail "error making sorts"
     | srt :: _ =>
       srt <- tmUnquoteTyped Type (monomorph_globref_term srt) ;;
-      add_interp_sorts (fst (split indices)) srt
-      (* arg_term <- tmQuote (list srt) ;;
+      add_interp_sorts (fst (split sorted_indices)) srt ;;
+      arg_term <- tmQuote (list srt) ;;
       ret_term <- tmQuote srt ;;
       funs_ty_term <- tmQuote (list srt -> srt -> Type) ;;
-      idx' <- unquote_indices srt indices ;;
+      idx' <- unquote_indices srt (map (map (subst_terms sorted_indices)) normal_indices) ;;
       idx'' <- quote_indices srt idx' ;;
       tmPrint idx'' ;;
       tmMkInductive' (funs_body arg_term ret_term idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
-      tmMsg "added function symbol inductive fol_funs" *)
+      tmMsg "added function symbol inductive fol_funs"
     end.
 
 

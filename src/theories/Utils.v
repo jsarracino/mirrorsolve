@@ -48,3 +48,43 @@ Ltac pose_all Pfs :=
   | (?Pfs', ?Pf) => pose proof Pf; pose_all Pfs'
   | _ => idtac
   end.
+
+Section SetList.
+  Require Import Coq.Lists.List.
+  Variable (V: Type).
+  Variable (eqb: V -> V -> bool).
+
+  Fixpoint inb (x: V) (xs: list V) : bool := 
+    match xs with 
+    | nil => false
+    | x' :: xs' => 
+      if eqb x x' then true else inb x xs'
+    end.
+
+  Fixpoint uniq (xs: list V) : list V := 
+    match xs with 
+    | nil => nil
+    | x :: xs' => 
+      let r := uniq xs' in 
+      if inb x r then r else x :: r
+    end.
+
+End SetList.
+
+Section AssocList.
+
+  Require Import Coq.Lists.List.
+
+  Variable (K V: Type).
+  Variable (eqb: K -> K -> bool).
+
+  Fixpoint find (k: K) (xs: list (K * V)) : option V := 
+    match xs with 
+    | (k', v) :: xs' => 
+      if eqb k k' then Some v else find k xs'
+    | nil => None
+    end.
+  
+  Definition assoc (k : K) (v : V) xs := (k, v) :: xs.
+
+End AssocList.

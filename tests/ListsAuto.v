@@ -7,10 +7,8 @@ Require Import MirrorSolve.UF.
 Require Import MirrorSolve.FOList.
 
 Require Import MirrorSolve.HLists.
-Require Import Coq.Lists.List.
 
 Import HListNotations.
-Import ListNotations.
 
 Require Import Coq.Strings.String.
 
@@ -31,60 +29,65 @@ Require Import Coq.ZArith.BinInt.
 Section ListFuncs.
   Variable (A: Type).
 
+  Inductive list_A := | nil_A | cons_A : A -> list_A -> list_A.
+
+  Infix "::" := cons_A.
+  Notation "[]" := nil_A.
+
   (* We will make use of a hint database to reflect recursive coq functions into SMT logic.
      For now, don't worry about it, but it's handy to use Equations for recursion to make use of the generated equations.
    *)
 
-  Equations my_app (l: list A) (r: list A) : list A := {
-    my_app nil r := r;
-    my_app (x :: l') r := x :: my_app l' r;
+  Equations app (l: list_A) (r: list_A) : list_A := {
+    app [] r := r;
+    app (x :: l') r := x :: app l' r;
   }.
 
-  Check my_app_equation_1. (* forall r : list A, my_app [] r = r *)
-  Check my_app_equation_2. (* forall (x : A) (l' r : list A), my_app (x :: l') r = x :: my_app l' r *)
+  Check app_equation_1. (* forall r : list A, app [] r = r *)
+  Check app_equation_2. (* forall (x : A) (l' r : list A), app (x :: l') r = x :: app l' r *)
   
-  Equations my_rev (xs: list A) : list A := {
-    my_rev nil := nil;
-    my_rev (x :: l') := my_app (my_rev l') [x];
+  Equations rev (xs: list_A) : list_A := {
+    rev [] := [];
+    rev (x :: l') := app (rev l') (x :: []);
   }.
 
-  Equations tail_rev (xs: list A) (acc: list A) : list A := {
-    tail_rev nil acc := acc;
+  Equations tail_rev (xs: list_A) (acc: list_A) : list_A := {
+    tail_rev [] acc := acc;
     tail_rev (x :: xs') acc := tail_rev xs' (x :: acc);
   }.
 
-  Equations my_In (x: A) (l: list A) : Prop := {
-    my_In x nil := False;
-    my_In x (x' :: l') := x = x' \/ my_In x l';
+  Equations In (x: A) (l: list_A) : Prop := {
+    In x [] := False;
+    In x (x' :: l') := x = x' \/ In x l';
   }.
 
-  Lemma my_In_equation_1' : 
-    forall x, ~ my_In x [].
+  Lemma In_equation_1' : 
+    forall x, ~ In x [].
   Proof.
     intros.
-    autorewrite with my_In.
+    autorewrite with In.
     intuition eauto.
   Qed.
 
-  Lemma my_In_equation_2' : 
-    forall (x x' : A) (l' : list A),
-      my_In x (x' :: l') <-> (x = x' \/ my_In x l').
+  Lemma In_equation_2' : 
+    forall (x x' : A) (l' : list_A),
+      In x (x' :: l') <-> (x = x' \/ In x l').
   Proof.
     intros.
     (* simpl. *)
-    autorewrite with my_In.
+    autorewrite with In.
     intuition eauto.
   Qed.
 
   (* For simplicity we use Z instead of nat or N, because Z translates directly to SMT. 
      We could also use nat or N and use the N2Z functor to convert goals from nat/N to Z. 
   *)
-  Equations my_len (xs: list A) : Z := {
-    my_len nil := 0;
-    my_len (_ :: xs) := my_len xs + 1;
+  Equations len (xs: list_A) : Z := {
+    len [] := 0;
+    len (_ :: xs) := len xs + 1;
   }.
 
-  (* Next we set up a first-order logic for lists, my_app, my_rev, tail_rev, my_In, and my_len.
+  (* Next we set up a first-order logic for lists, app, rev, tail_rev, In, and len.
    *)
 
   Declare ML Module "mirrorsolve".
@@ -95,9 +98,65 @@ Section ListFuncs.
   Require Import MirrorSolve.Config.
   Open Scope bs.
 
+  Notation pack x := (existT _ _ x).
 
   MetaCoq Run (add_sorts ["A"; "lA"; "bool"; "Z"]).
-  MetaCoq Run (add_interp_sorts [A; list A] [bool; Z] sorts).
+  MetaCoq Run (add_interp_sorts [pack A; pack (list_A); pack bool; pack Z] sorts).
+
+  Definition sorts_constant_body (x: constant_body) : list term := 
+    normalize_sort_term x.(cst_type).
+
+  Definition gather_sorts (t: packed_ty) : TemplateMonad (list term) := 
+    match t with 
+    | pack x => 
+      t' <- tmQuote x ;;
+      match t' with 
+      | tInd ind _ => 
+        y <- tmQuoteInductive ind.(inductive_mind) ;;
+        tmMsg "unimplemented gather for inductive" ;;
+        tmReturn nil
+      | tConst name _ => 
+        y <- tmQuoteConstant name true ;;
+        x <- tmEval all (sorts_constant_body y) ;;
+        tmReturn x
+      | _ => 
+        tmMsg "unrecognized term" ;;
+        tmPrint t' ;;
+        tmFail "unrecognized term in gather sorts"
+      end
+    end.
+  
+  Fixpoint gather_sorts_all (xs: list packed_ty) : TemplateMonad (list (list term)) := 
+    match xs with 
+    | nil => tmReturn nil
+    | (x :: xs')%list => 
+      t <- gather_sorts x ;;
+      t' <- gather_sorts_all xs' ;;
+      tmReturn (t :: t')%list
+    end.
+
+  
+
+  (* Check tmEval. *)
+
+  MetaCoq Run (
+    srts <- gather_sorts_all [pack ListFuncs.rev; pack ListFuncs.app] ;;
+    tmReturn (Utils.uniq term eq_term srts) 
+  ).
+
+  Check cst_type.
+
+  MetaCoq Run (
+    add_funs_type sorts [
+        ([], sort_lA) (* nil *)
+      ; ([sort_A; sort_lA], sort_lA) (* cons *)
+      ; ([sort_lA; sort_lA], sort_lA) (* app *)
+      ; ([sort_lA], sort_lA) (* rev *)
+      ; ([sort_lA; sort_lA], sort_lA) (* tail_rev *)
+    ]
+  ).
+
+  Print fol_funs.
 
   (* Next we define function symbols for everything mentioned in the functions:
     nil, cons, my_app, my_rev, tail_rev, my_len, Z plus, Z constants
@@ -108,10 +167,14 @@ Section ListFuncs.
     and relations are indexed by the argument types. The argument types are encoded as a list of fol_sorts symbols.
   
   *)
+  Variable (a: A).
 
-  MetaCoq Run (
-    add_funs_type sorts [([sort_lA], sort_A)]
-  ).
+  MetaCoq Quote Recursively Definition foo := (forall (xs: list A), my_len (my_rev xs) = my_len xs).
+
+  Eval vm_compute in (fst foo).(declarations).
+
+  Print foo.
+
 
   Print fol_funs.
 

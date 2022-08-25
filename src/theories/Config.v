@@ -50,6 +50,9 @@ Polymorphic Fixpoint mapM {A B} (f: A -> TemplateMonad B) (xs: list A) : Templat
 Polymorphic Definition liftM {A B} (f: A -> B) : A -> TemplateMonad B := 
   fun a => tmReturn (f a).
 
+Polymorphic Definition tmQuote2 {X} (x: X) := 
+  tmQuote x >>= tmQuote.
+
 Section Config.
 
   Set Universe Polymorphism.
@@ -420,7 +423,11 @@ Section Config.
     | _ => t
     end.
 
-  
+  (* Generate sorts, sort interpretation, and function symbols for an 
+     input list of either top-level function definitions, or top-level inductive definitions.
+     For inductive definitions, treat the constructors of the inductive as function definitions.
+     Generates syntax and semantics for the types of the input functions (but does not examine their bodies).
+  *)
 
   Definition add_funs (typ_term: term) (funs: list packed) : TemplateMonad unit := 
     names_indices <- gather_sorts_all funs ;;
@@ -446,5 +453,63 @@ Section Config.
     end.
 
 
-  (* MetaCoq Run (add_funs_indices [[tRel 0; tRel 1]]). *)
+  (* code for autogenerating boolean term tests *)
+
+  Definition mk_test_lambda (t: term) : term := 
+    tLambda {| binder_name := BasicAst.nNamed "t"; binder_relevance := Relevant |}
+  (tInd
+	 {|
+       inductive_mind := (MPfile ["Ast"; "Template"; "MetaCoq"]%list, "term");
+       inductive_ind := 0
+     |} nil)
+  (tApp (tConst (MPfile ["Datatypes"; "Init"; "Coq"]%list, "orb") nil)
+     [tApp
+        (tConst
+           (MPfile ["Core"; "Reflection"; "MirrorSolve"]%list, "eq_ctor")
+           nil)
+        [tRel 0; t];
+     tApp
+       (tConst (MPfile ["Core"; "Reflection"; "MirrorSolve"]%list, "eq_term")
+          nil)
+       [tRel 0; t]]).
+
+  Definition mk_test (name: ident) (t: packed) := 
+    match t with 
+    | pack x =>
+      t' <- tmQuote2 x ;;
+      let name' := ("is_" ++ name ++ "_t") in 
+      tmMkDefinition name' (mk_test_lambda t') ;;
+      tmMsg ("added definition for " ++ name')
+    end.
+    
+  (* Add boolean term tests for a list of input definitions. 
+    Names using the Coq name of the definition.  
+    *)
+  Definition add_test (x: packed) := 
+    match x with 
+    | pack x' => 
+      t <- tmQuote x' ;;
+      match t with 
+      | tConst name _ => 
+        mk_test (snd name) x
+      | tConstruct ind idx _ => 
+        inds <- tmQuoteInductive ind.(inductive_mind) ;;
+        match nth_error inds.(ind_bodies) ind.(inductive_ind)  with 
+        | Some ind' =>
+          match nth_error ind'.(ind_ctors) idx with 
+          | Some ctor => 
+            mk_test ctor.(cstr_name) x
+          | None => tmFail "incorrect index into ctors??"
+          end
+        | None => tmFail "incorrect index into inds??"
+        end
+      | _ => 
+        tmPrint t ;;
+        tmFail "unhandled term for getting name in add_test"
+      end
+    end.
+
+  Definition add_tests (xs: list packed) :=
+    mapM add_test xs.
+
 End Config.

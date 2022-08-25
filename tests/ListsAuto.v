@@ -173,32 +173,15 @@ Section ListFuncs.
     So we're going to connect the first-order logic syntax and semantics with Coq's AST in MetaCoq. 
   *)
 
-  (* First we use MetaCoq to get quoted ASTs for the function symbols.
-     If a term has implicit arguments (such as nil: forall A, list A),
-     we need to quote a coq term that *doesn't* have implicits (for example @nil).
-     A safe rule of thumb is to use @ before every quoted term.
-  *)
-
-  MetaCoq Quote Definition t_cons := @ListFuncs.cons_A.
-  MetaCoq Quote Definition t_nil := @ListFuncs.nil_A.
-  MetaCoq Quote Definition t_app := @ListFuncs.app.
-  MetaCoq Quote Definition t_rev := @ListFuncs.rev.
-  MetaCoq Quote Definition t_tail_rev := @tail_rev.
-  MetaCoq Quote Definition t_len := @ListFuncs.len.
-  MetaCoq Quote Definition t_plus := @Z.add.
-  MetaCoq Quote Definition t_In := @ListFuncs.In.
-
-  (* TODO Z constants *)
-
-  (* Next we need boolean tests for checking whether a metacoq AST term is a particular quoted value *)
-  Definition is_t_cons t :=  eq_ctor t t_cons.
-  Definition is_t_nil t :=  eq_term t t_nil.
-  Definition is_t_app t :=  eq_ctor t t_app.
-  Definition is_t_rev t :=  eq_ctor t t_rev.
-  Definition is_t_tail_rev t :=  eq_ctor t t_tail_rev.
-  Definition is_t_len t :=  eq_ctor t t_len.
-  Definition is_t_plus t :=  eq_ctor t t_plus.
-  Definition is_t_In t :=  eq_term t t_In.
+  MetaCoq Run ( add_tests [
+       pack ListFuncs.cons_A
+    ; pack ListFuncs.nil_A
+    ; pack ListFuncs.app
+    ; pack ListFuncs.rev
+    ; pack tail_rev
+    ; pack ListFuncs.len
+    ; pack Z.add
+  ]).
 
   (* We also need to quote the types: Z, A, and list A *)
   MetaCoq Quote Definition t_Z := (Z).
@@ -220,19 +203,17 @@ Section ListFuncs.
   Notation tac_fun_list f := (tac_fun list_sig f).
   Notation tac_rel_list f := (tac_rel list_sig f).
 
-  Print fol_funs.
-
   (* List of reflection matches; the first element is a test function and the second is a conversion tactic to apply.
    *)
   Definition match_tacs : list ((term -> bool) * tac_syn list_sig fm_model) := [
-      ( is_t_In, tac_rel_list In_r)
-    ; ( is_t_cons, tac_fun_list cons_A_f)
-    ; ( is_t_nil, tac_fun_list nil_A_f)
-    ; ( is_t_app, tac_fun_list app_f)
-    ; ( is_t_rev, tac_fun_list rev_f)
-    ; ( is_t_tail_rev, tac_fun_list tail_rev_f)
-    ; ( is_t_len, tac_fun_list len_f)
-    ; ( is_t_plus, tac_fun_list add_f)
+      (* ( is_t_In, tac_rel_list In_r) *)
+      ( is_cons_A_t, tac_fun_list cons_A_f)
+    ; ( is_nil_A_t, tac_fun_list nil_A_f)
+    ; ( is_app_t, tac_fun_list app_f)
+    ; ( is_rev_t, tac_fun_list rev_f)
+    ; ( is_tail_rev_t, tac_fun_list tail_rev_f)
+    ; ( is_len_t, tac_fun_list len_f)
+    ; ( is_add_t, tac_fun_list add_f)
   ].
 
   (* Analogous reflection matches for sorts *)

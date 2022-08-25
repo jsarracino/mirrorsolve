@@ -38,20 +38,26 @@ Fixpoint subst_terms (env: list (term * term)) (t: term) :=
     end
   end.
 
-Polymorphic Fixpoint mapM {A B} (f: A -> TemplateMonad B) (xs: list A) : TemplateMonad (list B) :=
-  match xs with 
-  | nil => tmReturn nil
-  | a :: xs' => 
-    x <- f a ;;
-    r <- mapM f xs' ;;
+Polymorphic Fixpoint sequence {A} (acts: list (TemplateMonad A)) : TemplateMonad (list A) := 
+  match acts with 
+  | [] => tmReturn []
+  | a :: acts' => 
+    x <- a ;;
+    r <- sequence acts' ;;
     tmReturn (x :: r)
   end.
+
+Polymorphic Definition mapM {A B} (f: A -> TemplateMonad B) (xs: list A) : TemplateMonad (list B) :=
+  sequence (map f xs).
 
 Polymorphic Definition liftM {A B} (f: A -> B) : A -> TemplateMonad B := 
   fun a => tmReturn (f a).
 
 Polymorphic Definition tmQuote2 {X} (x: X) := 
   tmQuote x >>= tmQuote.
+
+Polymorphic Definition make_ind_ctor (ind: inductive) (u: Instance.t) (idx: nat) (x: constructor_body) : term := 
+    tConstruct ind idx u.
 
 Section Config.
 
@@ -112,14 +118,16 @@ Section Config.
   Definition packed := {T & T}.
   Notation pack x := (existT _ _ x).
 
+  Definition tmQuotePacked (x: packed) := 
+    match x with 
+    | pack x' => tmQuote x'
+    end.
+
   Definition tm_make_interp_branches (xs: list term) : TemplateMonad (list (branch term)) := 
     tmReturn (map make_interp_branch xs).
 
   Definition do_one_branch (x: packed) : TemplateMonad (branch term) :=
-    match x with 
-    | pack x' => 
-      tmQuote x' >>= (liftM make_interp_branch)
-    end.
+    tmQuotePacked x >>= (liftM make_interp_branch).
 
   Definition tm_make_interp_branches_p (xs: list packed) : TemplateMonad (list (branch term)) := 
     mapM do_one_branch xs.
@@ -363,20 +371,17 @@ Section Config.
     end.
 
   Definition gather_sorts (t: packed) : TemplateMonad (list (ident * list term)) := 
-    match t with 
-    | pack x => 
-      t' <- tmQuote x ;;
-      match t' with 
-      | tInd _ _ => sorts_mind_body t'
-      | tConst name _ => 
-        y <- tmQuoteConstant name true ;;
-        x <- tmEval all (sorts_constant_body y) ;;
-        tmReturn [(snd name, x)]
-      | _ => 
-        tmMsg "unrecognized term" ;;
-        tmPrint t' ;;
-        tmFail "unrecognized term in gather sorts"
-      end
+    t' <- tmQuotePacked t ;;
+    match t' with 
+    | tInd _ _ => sorts_mind_body t'
+    | tConst name _ => 
+      y <- tmQuoteConstant name true ;;
+      x <- tmEval all (sorts_constant_body y) ;;
+      tmReturn [(snd name, x)]
+    | _ => 
+      tmMsg "unrecognized term" ;;
+      tmPrint t' ;;
+      tmFail "unrecognized term in gather sorts"
     end.
 
 
@@ -429,7 +434,24 @@ Section Config.
      Generates syntax and semantics for the types of the input functions (but does not examine their bodies).
   *)
 
-  Definition add_funs (typ_term: term) (funs: list packed) : TemplateMonad unit := 
+  Print one_inductive_body.
+
+  Definition get_ind_ctors (i: inductive) (u: Instance.t) : TemplateMonad (list term) :=
+    x' <- tmQuoteInductive i.(inductive_mind) ;;
+    match nth_error x'.(ind_bodies) i.(inductive_ind) with 
+    | None => tmFail "get_ind_ctors"
+    | Some bod => 
+      tmReturn (map_with_index (make_ind_ctor i u) bod.(ind_ctors))
+    end.
+
+  Definition get_orig_funs (x: packed) : TemplateMonad (list (term)) := 
+    x <- tmQuotePacked x ;;
+    match x with 
+    | tInd ind u => get_ind_ctors ind u 
+    | _ => tmReturn [x]
+    end.
+
+  Definition add_funs (typ_term: term) (funs: list packed) : TemplateMonad (list (term * term)) := 
     names_indices <- gather_sorts_all funs ;;
     let '(names, normal_indices) := List.split names_indices in 
     sorted_indices <- add_sorts_indices normal_indices ;; 
@@ -449,7 +471,19 @@ Section Config.
       idx'' <- quote_indices srt idx' ;;
       foo <- tmEval all normal_indices ;;
       tmMkInductive' (funs_body arg_term ret_term names idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
-      tmMsg "added function symbol inductive fol_funs"
+      tmMsg "added function symbol inductive fol_funs" ;;
+      funs' <- tmLocate "fol_funs" ;;
+      match funs' with 
+      | (IndRef ind) :: _ => 
+        x <- tmQuoteInductive ind.(inductive_mind) ;;
+        match x.(ind_bodies) with 
+        | [x'] => 
+          origs <- mapM get_orig_funs funs ;;
+          tmReturn (List.combine (concat origs) (map_with_index (make_ind_ctor ind []) x'.(ind_ctors)))
+        | _ => tmFail "unexpected size of funs inductive"
+        end
+      | _ => tmFail "error making funs"
+      end
     end.
 
 
@@ -473,6 +507,11 @@ Section Config.
           nil)
        [tRel 0; t]]).
 
+  Definition mk_test_plain (name: ident) (t: term) := 
+    t' <- tmQuote t ;;
+    let name' := ("is_" ++ name ++ "_t") in 
+    tmMkDefinition name' (mk_test_lambda t').
+
   Definition mk_test (name: ident) (t: packed) := 
     match t with 
     | pack x =>
@@ -485,31 +524,33 @@ Section Config.
   (* Add boolean term tests for a list of input definitions. 
     Names using the Coq name of the definition.  
     *)
-  Definition add_test (x: packed) := 
+  Definition add_test (x: term) := 
     match x with 
-    | pack x' => 
-      t <- tmQuote x' ;;
-      match t with 
-      | tConst name _ => 
-        mk_test (snd name) x
-      | tConstruct ind idx _ => 
-        inds <- tmQuoteInductive ind.(inductive_mind) ;;
-        match nth_error inds.(ind_bodies) ind.(inductive_ind)  with 
-        | Some ind' =>
-          match nth_error ind'.(ind_ctors) idx with 
-          | Some ctor => 
-            mk_test ctor.(cstr_name) x
-          | None => tmFail "incorrect index into ctors??"
-          end
-        | None => tmFail "incorrect index into inds??"
+    | tConst name _ => 
+      mk_test_plain (snd name) x
+    | tConstruct ind idx _ => 
+      inds <- tmQuoteInductive ind.(inductive_mind) ;;
+      match nth_error inds.(ind_bodies) ind.(inductive_ind)  with 
+      | Some ind' =>
+        match nth_error ind'.(ind_ctors) idx with 
+        | Some ctor => 
+          mk_test_plain ctor.(cstr_name) x
+        | None => tmFail "incorrect index into ctors??"
         end
-      | _ => 
-        tmPrint t ;;
-        tmFail "unhandled term for getting name in add_test"
+      | None => tmFail "incorrect index into inds??"
       end
+    | _ => 
+      tmPrint t ;;
+      tmFail "unhandled term for getting name in add_test"
     end.
 
-  Definition add_tests (xs: list packed) :=
+  Definition add_test_packed x := 
+    tmQuotePacked x >>= add_test.
+
+  Definition add_tests xs := 
     mapM add_test xs.
+
+  Definition add_tests_packed xs :=
+    mapM add_test_packed xs.
 
 End Config.

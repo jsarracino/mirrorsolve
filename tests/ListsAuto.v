@@ -115,18 +115,19 @@ Section ListFuncs.
 
   (* TODO: rels, bool, Z and constants *)
   MetaCoq Run (
-    add_funs typ_term [
+    xs <- add_funs typ_term [
         pack ListFuncs.rev
       ; pack ListFuncs.app
       ; pack ListFuncs.list_A
       ; pack ListFuncs.tail_rev
       ; pack ListFuncs.len
       ; pack Z.add
-    ]
+    ] ;;
+    xs' <- tmEval all (fst (List.split xs)) ;;
+    add_tests xs'
   ).
 
   (* Print fol_funs. *)
-  Print sorts.
 
   Inductive fol_list_rels : list sorts -> Type := 
     | In_r : fol_list_rels [sort_A; sort_list_A].
@@ -172,16 +173,6 @@ Section ListFuncs.
   (* Next we configure the reflection logic for mirrorsolve. 
     So we're going to connect the first-order logic syntax and semantics with Coq's AST in MetaCoq. 
   *)
-
-  MetaCoq Run ( add_tests [
-       pack ListFuncs.cons_A
-    ; pack ListFuncs.nil_A
-    ; pack ListFuncs.app
-    ; pack ListFuncs.rev
-    ; pack tail_rev
-    ; pack ListFuncs.len
-    ; pack Z.add
-  ]).
 
   (* We also need to quote the types: Z, A, and list A *)
   MetaCoq Quote Definition t_Z := (Z).

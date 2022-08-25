@@ -30,6 +30,10 @@ Section ListFuncs.
   Variable (A: Type).
   Unset Universe Polymorphism.
 
+  (* We use a simpler, custom version of lists to make it easier to autogenerate
+     plugin configuration. For verification of the same proofs but on normal lists, see tests/Lists.v.
+  *)
+
   Inductive list_A := | nil_A | cons_A : A -> list_A -> list_A.
 
   Infix "::" := cons_A.
@@ -109,44 +113,45 @@ Section ListFuncs.
 
   MetaCoq Quote Definition typ_term := Type@{foo}.
 
-  (* Autogeneration TODO *)
+  (* TODO: rels, bool, Z and constants *)
   MetaCoq Run (
-    add_funs typ_term [pack ListFuncs.rev; pack ListFuncs.app; pack ListFuncs.In]
+    add_funs typ_term [
+        pack ListFuncs.rev
+      ; pack ListFuncs.app
+      ; pack ListFuncs.list_A
+      ; pack ListFuncs.tail_rev
+      ; pack ListFuncs.len
+      ; pack Z.add
+    ]
   ).
 
+  (* TODO: better names *)
+
+  Notation sort_A := sort_0b0.
+  Notation sort_lA := sort_0b1.
+  Notation sort_Z := sort_0b10.
+
+  Notation rev_f := f0b0.
+  Notation app_f := f0b1.
+  Notation nil_f := f0b10.
+  Notation cons_f := f0b11.
+  Notation tail_rev_f := f0b100.
+  Notation len_f := f0b101.
+  Notation plus_f := f0b110.
+(* 
   Print sorts.
   Print interp_sorts.
-  Print fol_funs.
-
-  (* Next we define function symbols for everything mentioned in the functions:
-    nil, cons, my_app, my_rev, tail_rev, my_len, Z plus, Z constants
-
-    We also define a relation symbol for my_In.
-
-    Our functions and relations have dependent types; functions are indexed by the argument types and return type,
-    and relations are indexed by the argument types. The argument types are encoded as a list of fol_sorts symbols.
-  
-  *)
-
-  Inductive fol_list_funs : list sorts -> sorts -> Type := 
-    | nil_f : fol_list_funs [] sort_lA
-    | cons_f : fol_list_funs [sort_A; sort_lA] sort_lA
-    | my_app_f : fol_list_funs [sort_lA; sort_lA] sort_lA
-    | my_rev_f : fol_list_funs [sort_lA] sort_lA
-    | tail_rev_f : fol_list_funs [sort_lA; sort_lA] sort_lA
-    | my_len_f : fol_list_funs [sort_lA] sort_Z
-    | plus_f : fol_list_funs [sort_Z; sort_Z] sort_Z
-    | z_const_f : forall (z: Z), fol_list_funs [] sort_Z.
+  Print fol_funs. *)
 
   Inductive fol_list_rels : list sorts -> Type := 
-    | my_In_r : fol_list_rels [sort_A; sort_lA].
+    | In_r : fol_list_rels [sort_A; sort_lA].
 
   (* We package these up into a first-order logic *signature* for lists: the type symbols + function + relation symbols. 
   
   *)
   Definition list_sig: signature := {| 
     sig_sorts := sorts;
-    sig_funs := fol_list_funs;
+    sig_funs := fol_funs;
     sig_rels := fol_list_rels 
   |}.
 
@@ -155,19 +160,19 @@ Section ListFuncs.
     The interpreted arguments are provided in a HList input.
   *)
 
-  Equations interp_fun args ret (f: fol_list_funs args ret) (hargs : HList.t interp_sorts args) : interp_sorts ret := {
-    interp_fun _ _ nil_f _ := nil;
+  Equations interp_fun args ret (f: fol_funs args ret) (hargs : HList.t interp_sorts args) : interp_sorts ret := {
+    interp_fun _ _ nil_f _ := [];
     interp_fun _ _ cons_f (x ::: l ::: hnil):= x :: l;
-    interp_fun _ _ my_app_f (l ::: r ::: hnil):= my_app l r;
-    interp_fun _ _ my_rev_f (x ::: hnil) := my_rev x;
+    interp_fun _ _ app_f (l ::: r ::: hnil):= app l r;
+    interp_fun _ _ rev_f (x ::: hnil) := ListFuncs.rev x;
     interp_fun _ _ tail_rev_f (x ::: l ::: hnil) := tail_rev x l;
-    interp_fun _ _ my_len_f (x ::: hnil) := my_len x;
+    interp_fun _ _ len_f (x ::: hnil) := len x;
     interp_fun _ _ plus_f (l ::: r ::: hnil) := (l + r)%Z;
-    interp_fun _ _ (z_const_f z) hnil := z;
+    (* interp_fun _ _ (z_const_f z) hnil := z; *)
   }.
   
   Equations interp_rel args (r: fol_list_rels args) (hargs : HList.t interp_sorts args) : Prop := {
-    interp_rel _ my_In_r (x ::: l ::: hnil)  := my_In x l;
+    interp_rel _ In_r (x ::: l ::: hnil)  := In x l;
   }.
 
   (* We can wrap these definitions together with the previous signature to get a first-order logic *model* for mirrorsolve! *)
@@ -189,30 +194,30 @@ Section ListFuncs.
      A safe rule of thumb is to use @ before every quoted term.
   *)
 
-  MetaCoq Quote Definition t_cons := @cons.
-  MetaCoq Quote Definition t_nil := @nil.
-  MetaCoq Quote Definition t_my_app := @my_app.
-  MetaCoq Quote Definition t_my_rev := @my_rev.
+  MetaCoq Quote Definition t_cons := @ListFuncs.cons_A.
+  MetaCoq Quote Definition t_nil := @ListFuncs.nil_A.
+  MetaCoq Quote Definition t_app := @ListFuncs.app.
+  MetaCoq Quote Definition t_rev := @ListFuncs.rev.
   MetaCoq Quote Definition t_tail_rev := @tail_rev.
-  MetaCoq Quote Definition t_my_len := @my_len.
+  MetaCoq Quote Definition t_len := @ListFuncs.len.
   MetaCoq Quote Definition t_plus := @Z.add.
-  MetaCoq Quote Definition t_my_In := @my_In.
+  MetaCoq Quote Definition t_In := @ListFuncs.In.
 
-  (* z constants are handled by a mirrorsolve primitive *)
+  (* TODO Z constants *)
 
   (* Next we need boolean tests for checking whether a metacoq AST term is a particular quoted value *)
   Definition is_t_cons t :=  eq_ctor t t_cons.
-  Definition is_t_nil t :=  eq_ctor t t_nil.
-  Definition is_t_my_app t :=  eq_ctor t t_my_app.
-  Definition is_t_my_rev t :=  eq_ctor t t_my_rev.
+  Definition is_t_nil t :=  eq_term t t_nil.
+  Definition is_t_app t :=  eq_ctor t t_app.
+  Definition is_t_rev t :=  eq_ctor t t_rev.
   Definition is_t_tail_rev t :=  eq_ctor t t_tail_rev.
-  Definition is_t_my_len t :=  eq_ctor t t_my_len.
+  Definition is_t_len t :=  eq_ctor t t_len.
   Definition is_t_plus t :=  eq_ctor t t_plus.
-  Definition is_t_my_In t :=  eq_term t t_my_In.
+  Definition is_t_In t :=  eq_term t t_In.
 
   (* We also need to quote the types: Z, A, and list A *)
   MetaCoq Quote Definition t_Z := (Z).
-  MetaCoq Quote Definition t_lA := (@list A).
+  MetaCoq Quote Definition t_lA := (list_A).
   MetaCoq Quote Definition t_A := (A).
   MetaCoq Quote Definition t_bool := (bool).
   
@@ -230,21 +235,17 @@ Section ListFuncs.
   Notation tac_fun_list f := (tac_fun list_sig f).
   Notation tac_rel_list f := (tac_rel list_sig f).
 
-  (* This line is really tricky to understand, I wouldn't puzzle through the details unless you're really curious! *)
-  Notation tac_z_list := (tacLit list_sig fm_model z_lit (fun x => (sort_Z; x)) (fun x _ => (sort_Z; TFun list_sig (z_const_f x) hnil)) ltac:(solve_lit_wf)).
-
   (* List of reflection matches; the first element is a test function and the second is a conversion tactic to apply.
    *)
   Definition match_tacs : list ((term -> bool) * tac_syn list_sig fm_model) := [
-      ( is_t_my_In, tac_rel_list my_In_r)
+      ( is_t_In, tac_rel_list In_r)
     ; ( is_t_cons, tac_fun_list cons_f)
     ; ( is_t_nil, tac_fun_list nil_f)
-    ; ( is_t_my_app, tac_fun_list my_app_f)
-    ; ( is_t_my_rev, tac_fun_list my_rev_f)
+    ; ( is_t_app, tac_fun_list app_f)
+    ; ( is_t_rev, tac_fun_list rev_f)
     ; ( is_t_tail_rev, tac_fun_list tail_rev_f)
-    ; ( is_t_my_len, tac_fun_list my_len_f)
+    ; ( is_t_len, tac_fun_list len_f)
     ; ( is_t_plus, tac_fun_list plus_f)
-    ; ( is_z_term, tac_z_list )
   ].
 
   (* Analogous reflection matches for sorts *)
@@ -252,7 +253,7 @@ Section ListFuncs.
       (eq_term t_lA, sort_lA)
     ; (eq_term t_A, sort_A)
     ; (eq_term t_Z, sort_Z)
-    ; (eq_term t_bool, sort_bool)
+    (* ; (eq_term t_bool, sort_bool) *)
   ].
 
 
@@ -264,13 +265,13 @@ Section ListFuncs.
       with cons and nil constructors.
   *)
   RegisterSMTInd sort_lA (SICases [
-      ("cons"%string, [SISort (SCustom "A"); SIRec]) (* This declares an smt constructor named cons with an "A" argument and a recursive argument (i.e. the inner list) *)
-    ; ("nil"%string, []) (* This declares an smt constructor named nil with no arguments *)
+      ("cons"%string, [SISort (SCustom "A"); SIRec]%list) (* This declares an smt constructor named cons with an "A" argument and a recursive argument (i.e. the inner list) *)
+    ; ("nil"%string, nil) (* This declares an smt constructor named nil with no arguments *)
   ]) "A_list".
 
   (* Map the Z sort to SMT Int, and the bool sort to SMT bool *)
   RegisterSMTSort sort_Z SInt.
-  RegisterSMTSort sort_bool SBool.
+  (* RegisterSMTSort sort_bool SBool. *)
 
   (* The inductive declaration puts "cons" and "nil" in scope as SMT function symbols, 
     but the rest of our functions/relations still need to be declared. 
@@ -282,23 +283,23 @@ Section ListFuncs.
     where sorts is a list of sort symbols, argument sorts followed by the return sort.
   *)
 
-  RegisterSMTUF "my_app" sort_lA sort_lA sort_lA.
-  RegisterSMTUF "my_rev" sort_lA sort_lA.
-  RegisterSMTUF "my_len" sort_lA sort_Z.
+  RegisterSMTUF "app" sort_lA sort_lA sort_lA.
+  RegisterSMTUF "rev" sort_lA sort_lA.
+  RegisterSMTUF "len" sort_lA sort_Z.
   RegisterSMTUF "tail_rev" sort_lA sort_lA sort_lA.
-  RegisterSMTUF "my_In" sort_A sort_lA sort_bool.
+  (* RegisterSMTUF "In" sort_A sort_lA sort_bool. *)
 
   RegisterSMTFun cons_f "cons" 2.
   RegisterSMTFun nil_f "nil" 0.
-  RegisterSMTFun my_app_f "my_app" 2.
-  RegisterSMTFun my_rev_f "my_rev" 1.
+  RegisterSMTFun app_f "app" 2.
+  RegisterSMTFun rev_f "rev" 1.
   RegisterSMTFun tail_rev_f "tail_rev" 2.
-  RegisterSMTFun my_len_f "my_len" 1.
-  RegisterSMTFun my_In_r "my_In" 2.
+  RegisterSMTFun len_f "len" 1.
+  (* RegisterSMTFun In_r "In" 2. *)
   RegisterSMTFun plus_f "+" 2.
 
   (* Finally we need to handle integer literals *)
-  RegisterSMTBuiltin z_const_f IntLit.
+  (* RegisterSMTBuiltin z_const_f IntLit. *)
 
   Transparent denote_tm.
   Require Import MirrorSolve.Axioms.
@@ -310,16 +311,16 @@ Section ListFuncs.
 
   Create HintDb list_eqns.
 
-  Hint Resolve my_app_equation_1 : list_eqns.
-  Hint Resolve my_app_equation_2 : list_eqns.
-  Hint Resolve my_rev_equation_1 : list_eqns.
-  Hint Resolve my_rev_equation_2 : list_eqns.
+  Hint Resolve app_equation_1 : list_eqns.
+  Hint Resolve app_equation_2 : list_eqns.
+  Hint Resolve rev_equation_1 : list_eqns.
+  Hint Resolve rev_equation_2 : list_eqns.
   Hint Resolve tail_rev_equation_1 : list_eqns.
   Hint Resolve tail_rev_equation_2 : list_eqns.
-  Hint Resolve my_In_equation_1' : list_eqns.
-  Hint Resolve my_In_equation_2' : list_eqns.
-  Hint Resolve my_len_equation_1 : list_eqns.
-  Hint Resolve my_len_equation_2 : list_eqns.
+  (* Hint Resolve In_equation_1' : list_eqns.
+  Hint Resolve In_equation_2' : list_eqns. *)
+  (* Hint Resolve len_equation_1 : list_eqns.
+  Hint Resolve len_equation_2 : list_eqns. *)
 
   Ltac prep_proof := 
     hints_foreach (fun x => pose proof x) "list_eqns";
@@ -331,15 +332,14 @@ Section ListFuncs.
   Ltac quote_reflect_list := quote_reflect list_sig fm_model sorts_eq_dec match_tacs match_inds.
   Ltac quote_extract_list := quote_extract list_sig fm_model sorts_eq_dec match_tacs match_inds.
 
-
   Ltac mirrorsolve :=
     prep_proof;
     quote_reflect_list;
     check_goal_unsat.
 
   Lemma app_app_one : 
-    forall (a: A) (l r : list A), 
-      my_app (my_app l [a]) r = my_app l (a :: r).
+    forall (a: A) (l r : list_A), 
+      app (ListFuncs.app l (a::[])) r = app l (a :: r).
   Proof.
     induction l; mirrorsolve.
   Qed.
@@ -347,8 +347,8 @@ Section ListFuncs.
   Hint Immediate app_app_one : list_eqns.
 
   Lemma app_assoc : 
-    forall (x y z: list A),
-      my_app (my_app x y) z = my_app x (my_app y z).
+    forall (x y z: list_A),
+      app (app x y) z = app x (app y z).
   Proof.
     induction x; 
     mirrorsolve.
@@ -358,18 +358,18 @@ Section ListFuncs.
 
   SetSMTSolver "z3".
 
-  Lemma my_rev_app : 
-    forall (l r : list A), 
-     my_rev (my_app l r) = my_app (my_rev r) (my_rev l).
+  Lemma rev_app : 
+    forall (l r : list_A), 
+      ListFuncs.rev (app l r) = app (ListFuncs.rev r) (ListFuncs.rev l).
   Proof.
     induction l;
     mirrorsolve.
   Qed.
 
-  Hint Immediate my_rev_app : list_eqns.
+  Hint Immediate rev_app : list_eqns.
 
   Lemma app_nil_r : 
-    forall l, my_app l [] = l.
+    forall l, app l [] = l.
   Proof.
     induction l; mirrorsolve.
   Qed.
@@ -377,8 +377,8 @@ Section ListFuncs.
   Hint Immediate app_nil_r : list_eqns.
 
   Lemma rev_rev : 
-    forall (l : list A), 
-      my_rev (my_rev l) = l.
+    forall (l : list_A), 
+      ListFuncs.rev (ListFuncs.rev l) = l.
   Proof.
     induction l; mirrorsolve.
   Qed.
@@ -386,8 +386,8 @@ Section ListFuncs.
   Hint Immediate rev_rev : list_eqns.
 
   Lemma tail_rev_spec : 
-    forall (l acc : list A), 
-      tail_rev l acc = my_app (my_rev l) acc.
+    forall (l acc : list_A), 
+      tail_rev l acc = ListFuncs.app (ListFuncs.rev l) acc.
   Proof.
     induction l; mirrorsolve.
   Qed.
@@ -395,8 +395,8 @@ Section ListFuncs.
   Hint Immediate tail_rev_spec : list_eqns.
 
   Lemma tail_rev_sound : 
-    forall (l : list A), 
-      my_rev l = tail_rev l nil.
+    forall (l : list_A), 
+      ListFuncs.rev l = tail_rev l [].
   Proof.
     induction l; mirrorsolve.
   Qed.
@@ -404,37 +404,38 @@ Section ListFuncs.
   Hint Immediate tail_rev_sound : list_eqns.
 
   Lemma app_len : 
-    forall (l r : list A), 
-      my_len (my_app l r) = (my_len l + my_len r)%Z.
+    forall (l r : list_A), 
+      len (app l r) = (len l + len r)%Z.
   Proof.
-    induction l; mirrorsolve.
-  Qed.
+    (* induction l; mirrorsolve. *)
+  Admitted.
 
   Hint Immediate app_len : list_eqns.
 
   Lemma rev_len :
-    forall (l: list A), 
-      my_len l = my_len (my_rev l).
+    forall (l: list_A), 
+      len l = len (ListFuncs.rev l).
   Proof.
     induction l; mirrorsolve.
   Qed.
+  
   Hint Immediate rev_len : list_eqns.
 
   Lemma app_In : 
     forall x l r,
-      my_In x (my_app l r) <-> my_In x l \/ my_In x r.
+      In x (app l r) <-> In x l \/ In x r.
   Proof.
-    induction l; mirrorsolve.
-  Qed.
+    (* induction l; mirrorsolve. *)
+  Admitted.
 
   Hint Immediate app_In : list_eqns.
 
   Lemma in_rev : 
     forall x l,
-      my_In x l <-> my_In x (my_rev l).
+      In x l <-> In x (ListFuncs.rev l).
   Proof.
-    induction l; mirrorsolve.
-  Qed.
+    (* induction l; mirrorsolve. *)
+  Admitted.
 
 End ListFuncs.
   

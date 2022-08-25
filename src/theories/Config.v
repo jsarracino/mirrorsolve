@@ -16,6 +16,28 @@ Definition map_with_index {A B} (f: nat -> A -> B) (xs: list A) : list B :=
     end
   ) xs 0.
 
+Require MirrorSolve.Reflection.Core.
+Require Import MirrorSolve.Utils.
+
+Definition inc_var : term * term -> term * term := fun '(k, v) => 
+  match k with 
+  | tRel n => (tRel (S n), v)
+  | _ => (k, v)
+  end.
+
+Fixpoint subst_terms (env: list (term * term)) (t: term) := 
+  match find _ _ Core.eq_term t env with 
+  | Some t' => t'
+  | None => 
+    match t with 
+    | tApp f args => 
+      tApp (subst_terms env f) (map (subst_terms env) args)
+    | tProd x ty bod => 
+      tProd x (subst_terms env ty) (subst_terms (map inc_var env) bod)
+    | _ => t 
+    end
+  end.
+
 Section Config.
 
   Set Universe Polymorphism.
@@ -66,8 +88,6 @@ Section Config.
     | (IndRef i) :: _ => tmReturn (map_with_index (mk_sorts_ctor i []) names)
     | _ => tmFail "sorts is not an inductive!"
     end.
-
-  
 
   Definition make_interp_branch (r: term) : branch term :=  {|
     bcontext := [];
@@ -141,8 +161,6 @@ Section Config.
       )
     ).
 
-  
-
   Require Coq.Strings.BinaryString.
 
   Definition n_to_str (n: nat) : string := 
@@ -200,6 +218,7 @@ Section Config.
     | tVar _ => [t]
     | tApp l rs => 
       normalize_sort_term l ++ concat (map normalize_sort_term rs)
+    (* | tRel _ => [t] *)
     | _ => []
     end.
 
@@ -294,19 +313,37 @@ Section Config.
   Definition sorts_constant_body (x: constant_body) : list term := 
     normalize_sort_term x.(cst_type).
 
-  Definition gather_sorts (t: packed) : TemplateMonad (list term) := 
+  (* sadly this subst needs to normalize variables for the binder as it goes.
+     The proper thing is probably to tweak subst so that it properly reasons about variable indices as it does the substitution.
+  *)
+  Definition get_ctor_type (t: term) (x: constructor_body) : list term :=
+    normalize_sort_term (subst_terms [(tRel 0, t)] x.(cstr_type)).
+
+  Definition sorts_mind_body (t: term) : TemplateMonad (list (list term)) := 
+    match t with 
+    | tInd ind  _ => 
+      x <- tmQuoteInductive ind.(inductive_mind) ;;
+      match x.(ind_bodies) with 
+      | [i] => 
+        tmPrint "ctor types:" ;; 
+        x <- tmEval all (map (fun c => c.(cstr_type)) i.(ind_ctors)) ;;
+        tmPrint x ;;
+        tmReturn (map (get_ctor_type t) i.(ind_ctors))
+      | _ => tmFail "mutually inductive inds are not currently supported"
+      end
+    | _ => tmFail "sorts_mind_body called with non-ind input"
+    end.
+
+  Definition gather_sorts (t: packed) : TemplateMonad (list (list term)) := 
     match t with 
     | pack x => 
       t' <- tmQuote x ;;
       match t' with 
-      | tInd ind _ => 
-        y <- tmQuoteInductive ind.(inductive_mind) ;;
-        tmMsg "unimplemented gather for inductive" ;;
-        tmReturn nil
+      | tInd _ _ => sorts_mind_body t'
       | tConst name _ => 
         y <- tmQuoteConstant name true ;;
         x <- tmEval all (sorts_constant_body y) ;;
-        tmReturn x
+        tmReturn [x]
       | _ => 
         tmMsg "unrecognized term" ;;
         tmPrint t' ;;
@@ -320,7 +357,7 @@ Section Config.
     | (x :: xs')%list => 
       t <- gather_sorts x ;;
       t' <- gather_sorts_all xs' ;;
-      tmReturn (t :: t')%list
+      tmReturn (t ++ t')%list
     end.
 
 
@@ -357,22 +394,14 @@ Section Config.
     | _ => t
     end.
 
-  Fixpoint subst_terms (env: list (term * term)) (t: term) := 
-    match find _ _ Core.eq_term t env with 
-    | Some t' => t'
-    | None => 
-      match t with 
-      | tApp f args => 
-        tApp (subst_terms env f) (map (subst_terms env) args)
-      | tProd x ty bod => 
-        tProd x (subst_terms env ty) (subst_terms env bod)
-      | _ => t 
-      end
-    end.
+  
 
   Definition add_funs (typ_term: term) (funs: list packed) : TemplateMonad unit := 
     normal_indices <- gather_sorts_all funs ;;
     sorted_indices <- add_funs_indices normal_indices ;; 
+    tmPrint "lookup table for interp sorts:" ;;
+    v <- tmEval all sorted_indices ;;
+    tmPrint v;;
     srts <- tmLocate "sorts" ;;
     match srts with 
     | [] => tmFail "error making sorts"
@@ -384,7 +413,9 @@ Section Config.
       funs_ty_term <- tmQuote (list srt -> srt -> Type) ;;
       idx' <- unquote_indices srt (map (map (subst_terms sorted_indices)) normal_indices) ;;
       idx'' <- quote_indices srt idx' ;;
-      tmPrint idx'' ;;
+      foo <- tmEval all normal_indices ;;
+      tmMsg "normal indices:" ;;
+      tmPrint foo ;;
       tmMkInductive' (funs_body arg_term ret_term idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
       tmMsg "added function symbol inductive fol_funs"
     end.

@@ -125,26 +125,11 @@ Section ListFuncs.
     ]
   ).
 
-  (* TODO: better names *)
-
-  Notation sort_A := sort_0b0.
-  Notation sort_lA := sort_0b1.
-  Notation sort_Z := sort_0b10.
-
-  Notation rev_f := f0b0.
-  Notation app_f := f0b1.
-  Notation nil_f := f0b10.
-  Notation cons_f := f0b11.
-  Notation tail_rev_f := f0b100.
-  Notation len_f := f0b101.
-  Notation plus_f := f0b110.
-(* 
+  (* Print fol_funs. *)
   Print sorts.
-  Print interp_sorts.
-  Print fol_funs. *)
 
   Inductive fol_list_rels : list sorts -> Type := 
-    | In_r : fol_list_rels [sort_A; sort_lA].
+    | In_r : fol_list_rels [sort_A; sort_list_A].
 
   (* We package these up into a first-order logic *signature* for lists: the type symbols + function + relation symbols. 
   
@@ -161,13 +146,13 @@ Section ListFuncs.
   *)
 
   Equations interp_fun args ret (f: fol_funs args ret) (hargs : HList.t interp_sorts args) : interp_sorts ret := {
-    interp_fun _ _ nil_f _ := [];
-    interp_fun _ _ cons_f (x ::: l ::: hnil):= x :: l;
+    interp_fun _ _ nil_A_f _ := [];
+    interp_fun _ _ cons_A_f (x ::: l ::: hnil):= x :: l;
     interp_fun _ _ app_f (l ::: r ::: hnil):= app l r;
     interp_fun _ _ rev_f (x ::: hnil) := ListFuncs.rev x;
     interp_fun _ _ tail_rev_f (x ::: l ::: hnil) := tail_rev x l;
     interp_fun _ _ len_f (x ::: hnil) := len x;
-    interp_fun _ _ plus_f (l ::: r ::: hnil) := (l + r)%Z;
+    interp_fun _ _ add_f (l ::: r ::: hnil) := (l + r)%Z;
     (* interp_fun _ _ (z_const_f z) hnil := z; *)
   }.
   
@@ -235,22 +220,24 @@ Section ListFuncs.
   Notation tac_fun_list f := (tac_fun list_sig f).
   Notation tac_rel_list f := (tac_rel list_sig f).
 
+  Print fol_funs.
+
   (* List of reflection matches; the first element is a test function and the second is a conversion tactic to apply.
    *)
   Definition match_tacs : list ((term -> bool) * tac_syn list_sig fm_model) := [
       ( is_t_In, tac_rel_list In_r)
-    ; ( is_t_cons, tac_fun_list cons_f)
-    ; ( is_t_nil, tac_fun_list nil_f)
+    ; ( is_t_cons, tac_fun_list cons_A_f)
+    ; ( is_t_nil, tac_fun_list nil_A_f)
     ; ( is_t_app, tac_fun_list app_f)
     ; ( is_t_rev, tac_fun_list rev_f)
     ; ( is_t_tail_rev, tac_fun_list tail_rev_f)
     ; ( is_t_len, tac_fun_list len_f)
-    ; ( is_t_plus, tac_fun_list plus_f)
+    ; ( is_t_plus, tac_fun_list add_f)
   ].
 
   (* Analogous reflection matches for sorts *)
   Definition match_inds : list ((term -> bool) * sorts) := [
-      (eq_term t_lA, sort_lA)
+      (eq_term t_lA, sort_list_A)
     ; (eq_term t_A, sort_A)
     ; (eq_term t_Z, sort_Z)
     (* ; (eq_term t_bool, sort_bool) *)
@@ -264,7 +251,7 @@ Section ListFuncs.
       specified as a sum (coq list) of products (also a coq list),
       with cons and nil constructors.
   *)
-  RegisterSMTInd sort_lA (SICases [
+  RegisterSMTInd sort_list_A (SICases [
       ("cons"%string, [SISort (SCustom "A"); SIRec]%list) (* This declares an smt constructor named cons with an "A" argument and a recursive argument (i.e. the inner list) *)
     ; ("nil"%string, nil) (* This declares an smt constructor named nil with no arguments *)
   ]) "A_list".
@@ -283,20 +270,20 @@ Section ListFuncs.
     where sorts is a list of sort symbols, argument sorts followed by the return sort.
   *)
 
-  RegisterSMTUF "app" sort_lA sort_lA sort_lA.
-  RegisterSMTUF "rev" sort_lA sort_lA.
-  RegisterSMTUF "len" sort_lA sort_Z.
-  RegisterSMTUF "tail_rev" sort_lA sort_lA sort_lA.
-  (* RegisterSMTUF "In" sort_A sort_lA sort_bool. *)
+  RegisterSMTUF "app" sort_list_A sort_list_A sort_list_A.
+  RegisterSMTUF "rev" sort_list_A sort_list_A.
+  RegisterSMTUF "len" sort_list_A sort_Z.
+  RegisterSMTUF "tail_rev" sort_list_A sort_list_A sort_list_A.
+  (* RegisterSMTUF "In" sort_A sort_list_A sort_bool. *)
 
-  RegisterSMTFun cons_f "cons" 2.
-  RegisterSMTFun nil_f "nil" 0.
+  RegisterSMTFun cons_A_f "cons" 2.
+  RegisterSMTFun nil_A_f "nil" 0.
   RegisterSMTFun app_f "app" 2.
   RegisterSMTFun rev_f "rev" 1.
   RegisterSMTFun tail_rev_f "tail_rev" 2.
   RegisterSMTFun len_f "len" 1.
   (* RegisterSMTFun In_r "In" 2. *)
-  RegisterSMTFun plus_f "+" 2.
+  RegisterSMTFun add_f "+" 2.
 
   (* Finally we need to handle integer literals *)
   (* RegisterSMTBuiltin z_const_f IntLit. *)

@@ -38,6 +38,18 @@ Fixpoint subst_terms (env: list (term * term)) (t: term) :=
     end
   end.
 
+Polymorphic Fixpoint mapM {A B} (f: A -> TemplateMonad B) (xs: list A) : TemplateMonad (list B) :=
+  match xs with 
+  | nil => tmReturn nil
+  | a :: xs' => 
+    x <- f a ;;
+    r <- mapM f xs' ;;
+    tmReturn (x :: r)
+  end.
+
+Polymorphic Definition liftM {A B} (f: A -> B) : A -> TemplateMonad B := 
+  fun a => tmReturn (f a).
+
 Section Config.
 
   Set Universe Polymorphism.
@@ -100,14 +112,14 @@ Section Config.
   Definition tm_make_interp_branches (xs: list term) : TemplateMonad (list (branch term)) := 
     tmReturn (map make_interp_branch xs).
 
-  Fixpoint tm_make_interp_branches_p (xs: list packed) : TemplateMonad (list (branch term)) := 
-    match xs with 
-    | nil => tmReturn nil
-    | pack x :: xs' => 
-      t <- tmQuote x ;;
-      r <- tm_make_interp_branches_p xs' ;;
-      tmReturn (make_interp_branch t :: r)
+  Definition do_one_branch (x: packed) : TemplateMonad (branch term) :=
+    match x with 
+    | pack x' => 
+      tmQuote x' >>= (liftM make_interp_branch)
     end.
+
+  Definition tm_make_interp_branches_p (xs: list packed) : TemplateMonad (list (branch term)) := 
+    mapM do_one_branch xs.
 
   Definition quote_dest_ind (t: Type) := 
     sorts_term <- tmQuote t ;;
@@ -166,15 +178,16 @@ Section Config.
   Definition n_to_str (n: nat) : string := 
     BinaryString.of_nat n.
 
-  Definition mk_fun_ctor (i: nat) (indices: list term) : constructor_body := {| 
-    cstr_name := "f" ++ (String.of_string (n_to_str i));
+  Definition mk_fun_ctor (name: ident) (indices: list term) : constructor_body := {| 
+    cstr_name := name ++ "_f";
     cstr_args := [];
     cstr_indices := [];
     cstr_type := tApp (tRel 0) indices;
     cstr_arity := 0;
   |}.
 
-  Definition funs_one_body (fun_args_term: term) (fun_ret_term: term) (indices: list (list term)) (funs_type: term) : one_inductive_body := {|
+  Definition funs_one_body (fun_args_term: term) (fun_ret_term: term)
+  (names: list ident) (indices: list (list term)) (funs_type: term) : one_inductive_body := {|
     ind_name := "fol_funs";
     ind_indices := [ {| 
         decl_name := (mkBindAnn nAnon Relevant);
@@ -189,17 +202,17 @@ Section Config.
     ind_sort := Universe.type1;
     ind_type := funs_type;
     ind_kelim := IntoAny;
-    ind_ctors := map_with_index mk_fun_ctor indices;
+    ind_ctors := map (fun '(name, idxs) => mk_fun_ctor name idxs) (List.combine names indices);
     ind_projs := [];
     ind_relevance := Relevant
   |}.
 
-  Definition funs_body (funs_arg_term : term) (funs_ret_term: term) (indices: list (list term)) (funs_type : term) : mutual_inductive_body := {| 
+  Definition funs_body (funs_arg_term : term) (funs_ret_term: term) (names: list ident) (indices: list (list term)) (funs_type : term) : mutual_inductive_body := {| 
     ind_finite := Finite;
     ind_npars := 0;
     ind_params := [];
     ind_bodies := [
-      funs_one_body funs_arg_term funs_ret_term indices funs_type
+      funs_one_body funs_arg_term funs_ret_term names indices funs_type
     ];
     ind_universes := Monomorphic_ctx;
     ind_variance := None;
@@ -297,16 +310,26 @@ Section Config.
       tmReturn ([args_term; ret_term] :: r)
     end.
 
-  Definition add_funs_type (sorts: Type) (indices : list (list sorts * sorts)) : TemplateMonad unit := 
+  Definition add_funs_type (sorts: Type) (names: list ident) (indices : list (list sorts * sorts)) : TemplateMonad unit := 
     arg_term <- tmQuote (list sorts) ;;
     ret_term <- tmQuote sorts ;;
     funs_ty_term <- tmQuote (list sorts -> sorts -> Type) ;;
     indices' <- quote_indices sorts indices ;;
-    tmMkInductive' (funs_body arg_term ret_term indices' funs_ty_term).
+    tmMkInductive' (funs_body arg_term ret_term names indices' funs_ty_term).
+
+  Definition get_ty_name (t: term) : TemplateMonad ident := 
+    match t with 
+    | tInd ind _ => tmReturn (snd ind.(inductive_mind))
+    | tVar s => tmReturn s
+    | _ => 
+      tmMsg "can't get name from:" ;;
+      tmPrint t ;;
+      tmFail "get_ty_name"
+    end.
 
 
-  Definition make_names (xs: list term) : list ident := 
-    map_with_index (fun i _ => String.of_string (n_to_str i)) xs.
+  Definition make_names (xs: list term) : TemplateMonad (list ident) := 
+    mapM get_ty_name xs.
 
   Definition uniq_term := uniq _ Core.eq_term.
 
@@ -318,8 +341,10 @@ Section Config.
   *)
   Definition get_ctor_type (t: term) (x: constructor_body) : list term :=
     normalize_sort_term (subst_terms [(tRel 0, t)] x.(cstr_type)).
+  
+  Definition get_ctor_name (x: constructor_body) : ident := x.(cstr_name).
 
-  Definition sorts_mind_body (t: term) : TemplateMonad (list (list term)) := 
+  Definition sorts_mind_body (t: term) : TemplateMonad (list (ident * list term)) := 
     match t with 
     | tInd ind  _ => 
       x <- tmQuoteInductive ind.(inductive_mind) ;;
@@ -328,13 +353,13 @@ Section Config.
         tmPrint "ctor types:" ;; 
         x <- tmEval all (map (fun c => c.(cstr_type)) i.(ind_ctors)) ;;
         tmPrint x ;;
-        tmReturn (map (get_ctor_type t) i.(ind_ctors))
+        tmReturn ( map (fun c => (get_ctor_name c, get_ctor_type t c)) i.(ind_ctors))
       | _ => tmFail "mutually inductive inds are not currently supported"
       end
     | _ => tmFail "sorts_mind_body called with non-ind input"
     end.
 
-  Definition gather_sorts (t: packed) : TemplateMonad (list (list term)) := 
+  Definition gather_sorts (t: packed) : TemplateMonad (list (ident * list term)) := 
     match t with 
     | pack x => 
       t' <- tmQuote x ;;
@@ -343,7 +368,7 @@ Section Config.
       | tConst name _ => 
         y <- tmQuoteConstant name true ;;
         x <- tmEval all (sorts_constant_body y) ;;
-        tmReturn [x]
+        tmReturn [(snd name, x)]
       | _ => 
         tmMsg "unrecognized term" ;;
         tmPrint t' ;;
@@ -351,7 +376,8 @@ Section Config.
       end
     end.
 
-  Fixpoint gather_sorts_all (xs: list packed) : TemplateMonad (list (list term)) := 
+
+  Fixpoint gather_sorts_all (xs: list packed) : TemplateMonad (list ( ident * list term)) := 
     match xs with 
     | nil => tmReturn nil
     | (x :: xs')%list => 
@@ -368,9 +394,9 @@ Section Config.
   *)
 
 
-  Definition add_funs_indices (indices: list (list term)) := 
+  Definition add_sorts_indices (indices: list (list term)) := 
     let sort_ty_terms := uniq_term (concat indices) in 
-    let sort_names := make_names sort_ty_terms in 
+      sort_names <- make_names sort_ty_terms ;;
       sort_terms <- add_sorts sort_names ;;
       tmReturn (combine sort_ty_terms sort_terms).
 
@@ -397,11 +423,12 @@ Section Config.
   
 
   Definition add_funs (typ_term: term) (funs: list packed) : TemplateMonad unit := 
-    normal_indices <- gather_sorts_all funs ;;
-    sorted_indices <- add_funs_indices normal_indices ;; 
-    tmPrint "lookup table for interp sorts:" ;;
+    names_indices <- gather_sorts_all funs ;;
+    let '(names, normal_indices) := List.split names_indices in 
+    sorted_indices <- add_sorts_indices normal_indices ;; 
+    (* tmPrint "lookup table for interp sorts:" ;;
     v <- tmEval all sorted_indices ;;
-    tmPrint v;;
+    tmPrint v;; *)
     srts <- tmLocate "sorts" ;;
     match srts with 
     | [] => tmFail "error making sorts"
@@ -414,9 +441,7 @@ Section Config.
       idx' <- unquote_indices srt (map (map (subst_terms sorted_indices)) normal_indices) ;;
       idx'' <- quote_indices srt idx' ;;
       foo <- tmEval all normal_indices ;;
-      tmMsg "normal indices:" ;;
-      tmPrint foo ;;
-      tmMkInductive' (funs_body arg_term ret_term idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
+      tmMkInductive' (funs_body arg_term ret_term names idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
       tmMsg "added function symbol inductive fol_funs"
     end.
 

@@ -59,6 +59,8 @@ Polymorphic Definition tmQuote2 {X} (x: X) :=
 Polymorphic Definition make_ind_ctor (ind: inductive) (u: Instance.t) (idx: nat) (x: constructor_body) : term := 
     tConstruct ind idx u.
 
+Require Import MirrorSolve.FirstOrder.
+
 Section Config.
 
   Set Universe Polymorphism.
@@ -552,5 +554,41 @@ Section Config.
 
   Definition add_tests_packed xs :=
     mapM add_test_packed xs.
+
+  Definition tmUnquoteTypedId (A: Type) (id: ident) : TemplateMonad A :=
+    typed_tms <- tmLocate id ;;
+    match typed_tms with
+    | nil =>
+      tmFail "Failed to look up signature"
+    | typed_tm :: _ =>
+      tmUnquoteTyped A (monomorph_globref_term typed_tm) >>= tmReturn
+    end
+  .
+
+  Definition gen_sig'
+    (sort_type : term)
+    (fun_type: term)
+    (rel_type: term)
+  :
+    TemplateMonad signature
+  :=
+    builder <- tmQuote Build_signature ;;
+    id <- tmFreshName "sig" ;;
+    tmMkDefinition id (tApp builder [sort_type; fun_type; rel_type]) ;;
+    tmUnquoteTypedId signature id
+  .
+
+  Definition gen_sig
+    (sorts : Type)
+    (funs: arity sorts -> sorts -> Type)
+    (rels: arity sorts -> Type)
+  :
+    TemplateMonad signature
+  :=
+    arg_sorts <- tmQuote sorts ;;
+    arg_funs <- tmQuote funs ;;
+    arg_rels <- tmQuote rels ;;
+    gen_sig' arg_sorts arg_funs arg_rels
+  .
 
 End Config.

@@ -131,15 +131,10 @@ Section ListFuncs.
 
   Inductive fol_list_rels : list sorts -> Type := 
     | In_r : fol_list_rels [sort_A; sort_list_A].
-
-  (* We package these up into a first-order logic *signature* for lists: the type symbols + function + relation symbols. 
-  
-  *)
-  Definition list_sig: signature := {| 
-    sig_sorts := sorts;
-    sig_funs := fol_funs;
-    sig_rels := fol_list_rels 
-  |}.
+    
+  MetaCoq Run (
+    gen_sig typ_term sorts fol_funs fol_list_rels
+  ).
 
   (* Next we give a semantics to the function and relation symbols, in terms of the original functions and relation.
     We use equations because the semantics has a dependent type (the sort symbols are interpreted for arguments and results).
@@ -163,7 +158,7 @@ Section ListFuncs.
 
   (* We can wrap these definitions together with the previous signature to get a first-order logic *model* for mirrorsolve! *)
 
-  Program Definition fm_model : model list_sig := {|
+  Program Definition fm_model : model sig := {|
     FirstOrder.mod_sorts := interp_sorts;
     FirstOrder.mod_fns := interp_fun;
     FirstOrder.mod_rels := interp_rel;
@@ -190,12 +185,12 @@ Section ListFuncs.
 
   Require Import MirrorSolve.Reflection.Tactics.
 
-  Notation tac_fun_list f := (tac_fun list_sig f).
-  Notation tac_rel_list f := (tac_rel list_sig f).
+  Notation tac_fun_list f := (tac_fun sig f).
+  Notation tac_rel_list f := (tac_rel sig f).
 
   (* List of reflection matches; the first element is a test function and the second is a conversion tactic to apply.
    *)
-  Definition match_tacs : list ((term -> bool) * tac_syn list_sig fm_model) := [
+  Definition match_tacs : list ((term -> bool) * tac_syn sig fm_model) := [
       (* ( is_t_In, tac_rel_list In_r) *)
       ( is_cons_A_t, tac_fun_list cons_A_f)
     ; ( is_nil_A_t, tac_fun_list nil_A_f)
@@ -287,8 +282,8 @@ Section ListFuncs.
 
   Scheme Equality for sorts.
 
-  Ltac quote_reflect_list := quote_reflect list_sig fm_model sorts_eq_dec match_tacs match_inds.
-  Ltac quote_extract_list := quote_extract list_sig fm_model sorts_eq_dec match_tacs match_inds.
+  Ltac quote_reflect_list := quote_reflect sig fm_model sorts_eq_dec match_tacs match_inds.
+  Ltac quote_extract_list := quote_extract sig fm_model sorts_eq_dec match_tacs match_inds.
 
   Ltac mirrorsolve :=
     prep_proof;

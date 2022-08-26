@@ -74,7 +74,7 @@ Section Config.
   |}.
 
   MetaCoq Quote Definition set_term := (Set).
-  MetaCoq Quote Definition typ_term := (Type).
+  MetaCoq Quote Definition typ_term := (Type@{sorts_level}).
 
 
   Definition sorts_one_body (names: list ident) : one_inductive_body := {|
@@ -422,11 +422,24 @@ Section Config.
     | _ => config_level
     end.
 
+  Check tInd.
+
   Fixpoint rep_sorts_level (univ: Universe.t) (t: term) := 
     match t with 
     | tSort _ => tSort univ
     | tProd x t ts => 
       tProd x (rep_sorts_level univ t) (rep_sorts_level univ ts)
+    | tApp f xs => tApp (rep_sorts_level univ f) (map (rep_sorts_level univ) xs)
+    | tConstruct ctr idx _ => 
+      match Universe.get_is_level univ with 
+      | Some lvls => tConstruct ctr idx [lvls]
+      | None => t 
+      end
+    | tInd ind _ => t
+      (* match Universe.get_is_level univ with 
+      | Some lvls => tInd ind []
+      | None => t 
+      end *)
     | _ => t
     end.
 
@@ -570,20 +583,25 @@ Section Config.
     (fun_type: term)
     (rel_type: term)
   :
-    TemplateMonad signature
+    TemplateMonad ident
   :=
     builder <- tmQuote Build_signature ;;
+    builder' <- tmEval all builder ;;
+    tmMsg "builder:" ;;
+    tmPrint builder' ;;
     id <- tmFreshName "sig" ;;
     tmMkDefinition id (tApp builder [sort_type; fun_type; rel_type]) ;;
-    tmUnquoteTypedId signature id
+    tmReturn id
+    (* tmUnquoteTypedId signature id *)
   .
 
   Definition gen_sig
+    (typ_term: term)
     (sorts : Type)
     (funs: arity sorts -> sorts -> Type)
     (rels: arity sorts -> Type)
   :
-    TemplateMonad signature
+    TemplateMonad ident
   :=
     arg_sorts <- tmQuote sorts ;;
     arg_funs <- tmQuote funs ;;

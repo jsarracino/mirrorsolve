@@ -59,6 +59,19 @@ Polymorphic Definition tmQuote2 {X} (x: X) :=
 Polymorphic Definition make_ind_ctor (ind: inductive) (u: Instance.t) (idx: nat) (x: constructor_body) : term := 
     tConstruct ind idx u.
 
+Polymorphic Fixpoint make_list {A} (ts: list term) : TemplateMonad term := 
+  match ts with 
+  | nil => 
+    nil_t <- tmQuote (@nil A) ;;
+    tmReturn nil_t
+  | t :: ts' => 
+    v <- tmUnquoteTyped A t ;;
+    vs_term <- @make_list A ts' ;;
+    vs <- tmUnquoteTyped (list A) vs_term ;;
+    tmQuote (v :: vs)
+  end.
+
+
 Require Import MirrorSolve.FirstOrder.
 
 Section Config.
@@ -608,9 +621,25 @@ Section Config.
     arg_rels <- tmQuote rels ;;
     gen_sig' arg_sorts arg_funs arg_rels
   .
+
+
   Require MirrorSolve.FirstOrder.
   Require MirrorSolve.Reflection.Tactics.
-  Definition build_match (s: FirstOrder.signature) (m: FirstOrder.model s) (t: term) : TemplateMonad ((term -> bool) * Tactics.tac_syn s m).
-  Admitted.
+  (* TODO: these dependent sum types are disgusting *)
+  Definition build_match {s: FirstOrder.signature} {m: FirstOrder.model s} {args_r} (fs : s.(sig_funs) (fst args_r) (snd args_r)) : TemplateMonad ((term -> bool) * Tactics.tac_syn s m) :=
+    x <- tmQuote2 fs ;;
+    f <- tmUnquoteTyped (term -> bool) (mk_test_lambda x) ;;
+    tmReturn (f , Tactics.tac_fun s fs).
+
+  Definition pack_fs (s: FirstOrder.signature) (m: FirstOrder.model s) := {args_r & s.(sig_funs) args_r.1 args_r.2}.
+
+  Definition build_matches {s: FirstOrder.signature} {m: FirstOrder.model s} (fss: list (pack_fs s m)) : TemplateMonad (list ((term -> bool) * Tactics.tac_syn s m)) := 
+    mapM (fun x => match x with pack x' => @build_match s m _ x' end) fss.
+
+  Definition add_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (fss : list (pack_fs s m)) : TemplateMonad unit := 
+    matches <- @build_matches s m fss ;;
+    matches_term <- tmQuote matches ;;
+    tmMkDefinition "match_tacs" matches_term.
+
 
 End Config.

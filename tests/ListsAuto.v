@@ -185,21 +185,18 @@ Section ListFuncs.
 
   Require Import MirrorSolve.Reflection.Tactics.
 
-  Notation tac_fun_list f := (tac_fun sig f).
-  Notation tac_rel_list f := (tac_rel sig f).
-
-  (* List of reflection matches; the first element is a test function and the second is a conversion tactic to apply.
-   *)
-  Definition match_tacs : list ((term -> bool) * tac_syn sig fm_model) := [
-      (* ( is_t_In, tac_rel_list In_r) *)
-      ( is_cons_A_t, tac_fun_list cons_A_f)
-    ; ( is_nil_A_t, tac_fun_list nil_A_f)
-    ; ( is_app_t, tac_fun_list app_f)
-    ; ( is_rev_t, tac_fun_list rev_f)
-    ; ( is_tail_rev_t, tac_fun_list tail_rev_f)
-    ; ( is_len_t, tac_fun_list len_f)
-    ; ( is_add_t, tac_fun_list add_f)
-  ].
+  Notation pack' x := (existT _ (_, _) x).
+  MetaCoq Run (
+    add_matches sig fm_model [
+        pack' rev_f
+      ; pack' app_f
+      ; pack' cons_A_f
+      ; pack' nil_A_f
+      ; pack' tail_rev_f
+      ; pack' len_f
+      ; pack' add_f
+    ]
+  ).
 
   (* Analogous reflection matches for sorts *)
   Definition match_inds : list ((term -> bool) * sorts) := [
@@ -266,10 +263,10 @@ Section ListFuncs.
 
   Hint Resolve app_equation_1 : list_eqns.
   Hint Resolve app_equation_2 : list_eqns.
-  Hint Resolve rev_equation_1 : list_eqns.
+  (* Hint Resolve rev_equation_1 : list_eqns.
   Hint Resolve rev_equation_2 : list_eqns.
   Hint Resolve tail_rev_equation_1 : list_eqns.
-  Hint Resolve tail_rev_equation_2 : list_eqns.
+  Hint Resolve tail_rev_equation_2 : list_eqns. *)
   (* Hint Resolve In_equation_1' : list_eqns.
   Hint Resolve In_equation_2' : list_eqns. *)
   (* Hint Resolve len_equation_1 : list_eqns.

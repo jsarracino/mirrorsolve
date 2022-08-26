@@ -553,4 +553,9 @@ Section Config.
   Definition add_tests_packed xs :=
     mapM add_test_packed xs.
 
+  Require MirrorSolve.FirstOrder.
+  Require MirrorSolve.Reflection.Tactics.
+  Definition build_match (s: FirstOrder.signature) (m: FirstOrder.model s) (t: term) : TemplateMonad ((term -> bool) * Tactics.tac_syn s m).
+  Admitted.
+
 End Config.

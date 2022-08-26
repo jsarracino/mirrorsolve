@@ -169,7 +169,6 @@ Section ListFuncs.
     FirstOrder.mod_rels := interp_rel;
   |}.
 
-
   (* Next we configure the reflection logic for mirrorsolve. 
     So we're going to connect the first-order logic syntax and semantics with Coq's AST in MetaCoq. 
   *)

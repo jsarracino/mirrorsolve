@@ -103,23 +103,13 @@ Section ListFuncs.
   Require Import MirrorSolve.Config.
   Open Scope bs.
 
-  (* MetaCoq Run (add_sorts ["A"; "lA"; "bool"; "Z"]).
-  MetaCoq Run (add_interp_sorts [pack A; pack (list_A); pack bool; pack Z] sorts). *)
-
   Notation pack x := (existT _ _ x).
-  (* Check tmEval. *)
 
   Universe foo.
 
   MetaCoq Quote Definition typ_term := Type@{foo}.
 
-  MetaCoq Run (
-    srts <- gather_sorts (pack In) ;; 
-    srts <- tmEval all srts ;;
-    tmPrint srts
-  ).
-
-  (* TODO: rels, bool, Z and constants *)
+  (* TODO: Z constants *)
   MetaCoq Run (
     xs <- add_funs typ_term [
         pack ListFuncs.rev
@@ -132,11 +122,6 @@ Section ListFuncs.
     xs' <- tmQuote xs ;;
     tmMkDefinition "trans_tbl" xs'
   ).
-(* 
-  Print sorts.
-  Print interp_sorts.
-  Print fol_funs.
-  Print fol_rels. *)
     
   MetaCoq Run (
     gen_sig typ_term sorts fol_funs fol_rels
@@ -174,36 +159,9 @@ Section ListFuncs.
     So we're going to connect the first-order logic syntax and semantics with Coq's AST in MetaCoq. 
   *)
 
-  (* We also need to quote the types: Z, A, and list A *)
-  MetaCoq Quote Definition t_Z := (Z).
-  MetaCoq Quote Definition t_lA := (list_A).
-  MetaCoq Quote Definition t_A := (A).
-  MetaCoq Quote Definition t_bool := (bool).
-  
-
-  (* Next we have some machinery for reflecting between normal Coq goals and goals in FOL,
-    and we start with some helper notation for calling mirrorsolve conversion functions. 
-     Plain function and relation symbols are easy so mirrorsolve can auto-generate reflection code.
-     More complicated symbols are harder; 
-      for example the function symbol for Z literals is tricky because it quantifies over all Z values.
-     Mirrorsolve has a primitive for converting Z constants which we use here.
-   *)
-
-  Require Import MirrorSolve.Reflection.Tactics.
-
-
   MetaCoq Run (
     add_matches sig fm_model trans_tbl
   ).
-
-  (* Analogous reflection matches for sorts *)
-  Definition match_inds : list ((term -> bool) * sorts) := [
-      (eq_term t_lA, sort_list_A)
-    ; (eq_term t_A, sort_A)
-    ; (eq_term t_Z, sort_Z)
-    ; (eq_term t_bool, sort_prop)
-  ].
-
 
   (* The section variable A is an uninterpreted sort in SMT. *)
   RegisterCustomSort sort_A "A".
@@ -249,6 +207,8 @@ Section ListFuncs.
   (* Finally we need to handle integer literals *)
   (* RegisterSMTBuiltin z_const_f IntLit. *)
 
+  Require Import MirrorSolve.Reflection.Tactics.
+
   Transparent denote_tm.
   Require Import MirrorSolve.Axioms.
 
@@ -277,8 +237,8 @@ Section ListFuncs.
 
   Scheme Equality for sorts.
 
-  Ltac quote_reflect_list := quote_reflect sig fm_model sorts_eq_dec match_tacs match_inds.
-  Ltac quote_extract_list := quote_extract sig fm_model sorts_eq_dec match_tacs match_inds.
+  Ltac quote_reflect_list := quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts.
+  Ltac quote_extract_list := quote_extract sig fm_model sorts_eq_dec match_tacs match_sorts.
 
   Ltac mirrorsolve :=
     prep_proof;

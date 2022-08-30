@@ -561,8 +561,9 @@ Section Config.
     end.
 
   Record translation_table := {
+    mp_srts : list (term * term) ;
     mp_funs : list (term * term) ; 
-    mp_rels : list (term * term)
+    mp_rels : list (term * term) ;
   }.
 
   Definition all_symbs (t: translation_table) := List.app t.(mp_funs) t.(mp_rels).
@@ -603,6 +604,7 @@ Section Config.
           orig_funs <- mapM get_orig_funs funs ;;
           orig_rels <- mapM get_orig_funs rels ;;
           tmReturn {|
+            mp_srts := sorted_indices ;
             mp_funs := List.combine (concat orig_funs) (map_with_index (make_ind_ctor ind_f []) x'.(ind_ctors)) ;
             mp_rels := List.combine (concat orig_rels) (map_with_index (make_ind_ctor ind_r []) y'.(ind_ctors)) ;
           |}
@@ -749,10 +751,25 @@ Section Config.
     tac <- coerce_tac_syn_r symb ;;
     tmReturn (test, tac).
 
-  Definition add_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (t: translation_table) : TemplateMonad unit := 
+  Definition build_sort_match {s: FirstOrder.signature} {m: FirstOrder.model s} (orig: term) (symb: term) : TemplateMonad ((term -> bool) * s.(sig_sorts)) := 
+    x <- tmQuote orig ;;
+    test <- tmUnquoteTyped (term -> bool) (mk_test_lambda x) ;;
+    srt <- tmUnquoteTyped s.(sig_sorts) symb ;;
+    tmReturn (test, srt).
+
+  Definition add_symb_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (t: translation_table) : TemplateMonad unit := 
     fun_matches <- mapM (fun '(orig_f, sym_f) => @build_fun_match s m orig_f sym_f) t.(mp_funs) ;;
     rel_matches <- mapM (fun '(orig_r, sym_r) => @build_rel_match s m orig_r sym_r) t.(mp_rels) ;;
     matches_term <- tmQuote (List.app fun_matches rel_matches) ;;
     tmMkDefinition "match_tacs" matches_term.
+
+  Definition add_sort_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (t: translation_table) : TemplateMonad unit := 
+    sort_matches <- mapM (fun '(orig, sym) => @build_sort_match s m orig sym) t.(mp_srts) ;;
+    matches_term <- tmQuote sort_matches ;;
+    tmMkDefinition "match_sorts" matches_term.
+
+  Definition add_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (t: translation_table) : TemplateMonad unit := 
+    add_symb_matches s m t ;;
+    add_sort_matches s m t.
 
 End Config.

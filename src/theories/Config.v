@@ -50,6 +50,9 @@ Polymorphic Fixpoint sequence {A} (acts: list (TemplateMonad A)) : TemplateMonad
 Polymorphic Definition mapM {A B} (f: A -> TemplateMonad B) (xs: list A) : TemplateMonad (list B) :=
   sequence (map f xs).
 
+Polymorphic Definition fmap {A B} (f: A -> B) (t: TemplateMonad A) : TemplateMonad B := 
+  t >>= (fun x => tmReturn (f x)).
+
 Polymorphic Definition liftM {A B} (f: A -> B) : A -> TemplateMonad B := 
   fun a => tmReturn (f a).
 
@@ -125,9 +128,12 @@ Section Config.
     | _ => tmFail "sorts is not an inductive!"
     end.
 
+  MetaCoq Quote Definition t_bool := (bool).
+  MetaCoq Quote Definition t_prop := (Prop).
+
   Definition make_interp_branch (r: term) : branch term :=  {|
     bcontext := [];
-    bbody := r
+    bbody := if Core.eq_term r t_prop then t_bool else r
   |}.
 
   Definition packed := {T & T}.
@@ -212,6 +218,14 @@ Section Config.
     cstr_arity := 0;
   |}.
 
+  Definition mk_rel_ctor (name: ident) (indices: list term) : constructor_body := {| 
+    cstr_name := name ++ "_r";
+    cstr_args := [];
+    cstr_indices := [];
+    cstr_type := tApp (tRel 0) indices;
+    cstr_arity := 0;
+  |}.
+
   Definition funs_one_body (fun_args_term: term) (fun_ret_term: term)
   (names: list ident) (indices: list (list term)) (funs_type: term) : one_inductive_body := {|
     ind_name := "fol_funs";
@@ -244,11 +258,41 @@ Section Config.
     ind_variance := None;
   |}.
 
+  Definition rel_one_body (rel_args_term: term)
+  (names: list ident) (indices: list (list term)) (rel_type: term) : one_inductive_body := {|
+    ind_name := "fol_rels";
+    ind_indices := [ {| 
+        decl_name := (mkBindAnn nAnon Relevant);
+        decl_body := None;
+        decl_type := rel_args_term;
+      |} 
+    ];
+    ind_sort := Universe.type1;
+    ind_type := rel_type;
+    ind_kelim := IntoAny;
+    ind_ctors := map (fun '(name, idxs) => mk_rel_ctor name idxs) (List.combine names indices);
+    ind_projs := [];
+    ind_relevance := Relevant
+  |}.
+
+  Definition rel_body (rel_arg_term : term) (names: list ident) (indices: list (list term)) (rel_type : term) : mutual_inductive_body := {| 
+    ind_finite := Finite;
+    ind_npars := 0;
+    ind_params := [];
+    ind_bodies := [
+      rel_one_body rel_arg_term names indices rel_type
+    ];
+    ind_universes := Monomorphic_ctx;
+    ind_variance := None;
+  |}.
+
   Definition get_typ (x: global_decl) := 
     match x with 
     | ConstantDecl body => body.(cst_type)
     | InductiveDecl mind => hole
     end.
+  
+ 
 
   Fixpoint normalize_sort_term (t: term) : list term := 
     match t with 
@@ -258,6 +302,8 @@ Section Config.
     | tApp l rs => 
       normalize_sort_term l ++ concat (map normalize_sort_term rs)
     (* | tRel _ => [t] *)
+    | tSort _ => 
+      if Core.eq_term t t_prop then [t] else []
     | _ => []
     end.
 
@@ -313,40 +359,55 @@ Section Config.
       end
     end.
 
-  Fixpoint unquote_indices (sorts: Type) (indices: list (list term)) : TemplateMonad (list (list sorts * sorts)) := 
+  Fixpoint unquote_fun_indices (sorts: Type) (indices: list (list term)) : TemplateMonad (list (list sorts * sorts)) := 
     match indices with 
     | [] => tmReturn []
     | t :: ts => 
       x <- unquote_indices_helper sorts t ;;
       match get_last x with 
       | Some v => 
-        r <- unquote_indices sorts ts ;;
+        r <- unquote_fun_indices sorts ts ;;
         tmReturn (v :: r)
       | None => tmFail "empty indices??"
       end
     end.
 
-  Fixpoint quote_indices (sorts: Type) (indices : list (list sorts * sorts)) : TemplateMonad (list (list term)) :=
+  Definition unquote_rel_indices (sorts: Type) (indices: list (list term)) : TemplateMonad (list (list sorts)) := 
+    mapM (unquote_indices_helper sorts) indices.
+
+  Fixpoint quote_fun_indices (sorts: Type) (indices : list (list sorts * sorts)) : TemplateMonad (list (list term)) :=
     match indices with 
     | nil => tmReturn nil
     | (args, ret) :: indices' => 
       args_term <- tmQuote args ;;
       ret_term <- tmQuote ret ;;
-      r <- quote_indices _ indices' ;;
+      r <- quote_fun_indices _ indices' ;;
       tmReturn ([args_term; ret_term] :: r)
     end.
+
+  Fixpoint quote_rel_indices (sorts: Type) (indices : list (list sorts)) : TemplateMonad (list (list term)) :=
+    match indices with 
+    | nil => tmReturn nil
+    | args :: indices' => 
+      args_term <- tmQuote args ;;
+      r <- quote_rel_indices _ indices' ;;
+      tmReturn ([args_term] :: r)
+    end.
+
+  (* Definition  *)
 
   Definition add_funs_type (sorts: Type) (names: list ident) (indices : list (list sorts * sorts)) : TemplateMonad unit := 
     arg_term <- tmQuote (list sorts) ;;
     ret_term <- tmQuote sorts ;;
     funs_ty_term <- tmQuote (list sorts -> sorts -> Type) ;;
-    indices' <- quote_indices sorts indices ;;
+    indices' <- quote_fun_indices sorts indices ;;
     tmMkInductive' (funs_body arg_term ret_term names indices' funs_ty_term).
 
   Definition get_ty_name (t: term) : TemplateMonad ident := 
     match t with 
     | tInd ind _ => tmReturn (snd ind.(inductive_mind))
     | tVar s => tmReturn s
+    | tSort (Universe.lProp) => tmReturn "prop"
     | _ => 
       tmMsg "can't get name from:" ;;
       tmPrint t ;;
@@ -362,9 +423,6 @@ Section Config.
   Definition sorts_constant_body (x: constant_body) : list term := 
     normalize_sort_term x.(cst_type).
 
-  (* sadly this subst needs to normalize variables for the binder as it goes.
-     The proper thing is probably to tweak subst so that it properly reasons about variable indices as it does the substitution.
-  *)
   Definition get_ctor_type (t: term) (x: constructor_body) : list term :=
     normalize_sort_term (subst_terms [(tRel 0, t)] x.(cstr_type)).
   
@@ -376,7 +434,7 @@ Section Config.
       x <- tmQuoteInductive ind.(inductive_mind) ;;
       match x.(ind_bodies) with 
       | [i] => 
-        tmPrint "ctor types:" ;; 
+        (* tmPrint "ctor types:" ;;  *)
         x <- tmEval all (map (fun c => c.(cstr_type)) i.(ind_ctors)) ;;
         tmPrint x ;;
         tmReturn ( map (fun c => (get_ctor_name c, get_ctor_type t c)) i.(ind_ctors))
@@ -409,14 +467,30 @@ Section Config.
       tmReturn (t ++ t')%list
     end.
 
+  Fixpoint conv_fun_rel (tys: list term) : TemplateMonad (list term + list term) :=
+    match tys with 
+    | [] => tmFail "check_fun_rel on empty type"
+    | [x] => 
+      if Core.eq_term x t_prop then tmReturn (inr []) else tmReturn (inl [x])
+    | x :: xs => 
+      r <- conv_fun_rel xs ;; 
+      match r with 
+      | inl xs' => tmReturn (inl (x :: xs'))
+      | inr xs' => tmReturn (inr (x :: xs'))
+      end
+    end.
 
-  (* TODO: 
-    1) add a new sort interpretation, unquoting sort_ty_terms to get the types
-    2) add function symbols, using the new sort and the indices as constructor arguments
-    
-  *)
+  Definition split_fun_rel (x: ident * list term) : TemplateMonad (ident * (list term + list term)) := 
+    r <- conv_fun_rel x.2 ;;
+    tmReturn (x.1, r).
 
-
+  
+(* Takes a set of function and relation signatures, as terms, makes sort symbols + interpretation for each of the sorts in the signatures,
+   and returns a map (key-value assoc list) from sort terms to sort term symbols.
+   
+   e.g. if t_prop is in the input, then adds a symbol sort_prop,
+        and returns (t_prop, quote sort_prop) in the output map
+   *)
   Definition add_sorts_indices (indices: list (list term)) := 
     let sort_ty_terms := uniq_term (concat indices) in 
       sort_names <- make_names sort_ty_terms ;;
@@ -434,8 +508,6 @@ Section Config.
     | tSort u => u
     | _ => config_level
     end.
-
-  Check tInd.
 
   Fixpoint rep_sorts_level (univ: Universe.t) (t: term) := 
     match t with 
@@ -462,8 +534,6 @@ Section Config.
      Generates syntax and semantics for the types of the input functions (but does not examine their bodies).
   *)
 
-  Print one_inductive_body.
-
   Definition get_ind_ctors (i: inductive) (u: Instance.t) : TemplateMonad (list term) :=
     x' <- tmQuoteInductive i.(inductive_mind) ;;
     match nth_error x'.(ind_bodies) i.(inductive_ind) with 
@@ -479,13 +549,30 @@ Section Config.
     | _ => tmReturn [x]
     end.
 
-  Definition add_funs (typ_term: term) (funs: list packed) : TemplateMonad (list (term * term)) := 
-    names_indices <- gather_sorts_all funs ;;
-    let '(names, normal_indices) := List.split names_indices in 
-    sorted_indices <- add_sorts_indices normal_indices ;; 
-    (* tmPrint "lookup table for interp sorts:" ;;
-    v <- tmEval all sorted_indices ;;
-    tmPrint v;; *)
+  Fixpoint split_sum_list {A B C} (xs: list (A * (B + C))) : list (A * B) * list (A * C) := 
+    match xs with 
+    | [] => ([], [])
+    | (k, x) :: xs' => 
+      let '(ls, rs) := split_sum_list xs' in 
+      match x with 
+      | inl x' => ((k, x') :: ls, rs)
+      | inr x' => (ls, (k, x') :: rs)
+      end
+    end.
+
+  Record translation_table := {
+    mp_funs : list (term * term) ; 
+    mp_rels : list (term * term)
+  }.
+
+  Definition all_symbs (t: translation_table) := List.app t.(mp_funs) t.(mp_rels).
+
+  Definition add_funs (typ_term: term) (funs: list packed) (rels: list packed) : TemplateMonad translation_table := 
+    names_indices <- gather_sorts_all (List.app funs rels) ;;
+    names_funs_rels <- fmap split_sum_list (mapM split_fun_rel names_indices) ;; 
+    let '(names_funs, fun_indices) := List.split names_funs_rels.1 in 
+    let '(names_rels, rel_indices) := List.split names_funs_rels.2 in 
+    sorted_indices <- add_sorts_indices (fun_indices ++ rel_indices ++ [[t_prop]]) ;; 
     srts <- tmLocate "sorts" ;;
     match srts with 
     | [] => tmFail "error making sorts"
@@ -495,22 +582,34 @@ Section Config.
       arg_term <- tmQuote (list srt) ;;
       ret_term <- tmQuote srt ;;
       funs_ty_term <- tmQuote (list srt -> srt -> Type) ;;
-      idx' <- unquote_indices srt (map (map (subst_terms sorted_indices)) normal_indices) ;;
-      idx'' <- quote_indices srt idx' ;;
-      foo <- tmEval all normal_indices ;;
-      tmMkInductive' (funs_body arg_term ret_term names idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
+      rels_ty_term <- tmQuote (list srt -> Type) ;;
+      idx' <- unquote_fun_indices srt (map (map (subst_terms sorted_indices)) fun_indices) ;;
+      idx'' <- quote_fun_indices srt idx' ;;
+      tmMkInductive' (funs_body arg_term ret_term names_funs idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
       tmMsg "added function symbol inductive fol_funs" ;;
+      (* let rel_indices' := (map (map (subst_terms sorted_indices)) rel_indices) in  *)
+      idx' <- unquote_rel_indices srt (map (map (subst_terms sorted_indices)) rel_indices) ;;
+      idx'' <- quote_rel_indices srt idx' ;;
+      tmMkInductive' (rel_body arg_term names_rels idx'' (rep_sorts_level (extr_univ typ_term) rels_ty_term) ) ;;
+      tmMsg "added relation symbol inductive fol_rels" ;;
       funs' <- tmLocate "fol_funs" ;;
-      match funs' with 
-      | (IndRef ind) :: _ => 
-        x <- tmQuoteInductive ind.(inductive_mind) ;;
-        match x.(ind_bodies) with 
-        | [x'] => 
-          origs <- mapM get_orig_funs funs ;;
-          tmReturn (List.combine (concat origs) (map_with_index (make_ind_ctor ind []) x'.(ind_ctors)))
-        | _ => tmFail "unexpected size of funs inductive"
+      rels' <- tmLocate "fol_rels" ;;
+      match funs', rels' with 
+      | IndRef ind_f :: _, IndRef ind_r :: _ => 
+        x <- tmQuoteInductive ind_f.(inductive_mind) ;;
+        y <- tmQuoteInductive ind_r.(inductive_mind) ;;
+        match x.(ind_bodies), y.(ind_bodies) with 
+        | [x'], [y'] => 
+          orig_funs <- mapM get_orig_funs funs ;;
+          orig_rels <- mapM get_orig_funs rels ;;
+          tmReturn {|
+            mp_funs := List.combine (concat orig_funs) (map_with_index (make_ind_ctor ind_f []) x'.(ind_ctors)) ;
+            mp_rels := List.combine (concat orig_rels) (map_with_index (make_ind_ctor ind_r []) y'.(ind_ctors)) ;
+          |}
+
+        | _ , _ => tmFail "unexpected size of funs/rels  inductive"
         end
-      | _ => tmFail "error making funs"
+      | _, _ => tmFail "error making funs"
       end
     end.
 
@@ -625,21 +724,35 @@ Section Config.
 
   Require MirrorSolve.FirstOrder.
   Require MirrorSolve.Reflection.Tactics.
-  (* TODO: these dependent sum types are disgusting *)
-  Definition build_match {s: FirstOrder.signature} {m: FirstOrder.model s} {args_r} (fs : s.(sig_funs) (fst args_r) (snd args_r)) : TemplateMonad ((term -> bool) * Tactics.tac_syn s m) :=
-    x <- tmQuote2 fs ;;
-    f <- tmUnquoteTyped (term -> bool) (mk_test_lambda x) ;;
-    tmReturn (f , Tactics.tac_fun s fs).
-
   Definition pack_fs (s: FirstOrder.signature) (m: FirstOrder.model s) := {args_r & s.(sig_funs) args_r.1 args_r.2}.
+  Definition pack_rs (s: FirstOrder.signature) (m: FirstOrder.model s) := {args & s.(sig_rels) args}.
 
-  Definition build_matches {s: FirstOrder.signature} {m: FirstOrder.model s} (fss: list (pack_fs s m)) : TemplateMonad (list ((term -> bool) * Tactics.tac_syn s m)) := 
-    mapM (fun x => match x with pack x' => @build_match s m _ x' end) fss.
 
-  Definition add_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (fss : list (pack_fs s m)) : TemplateMonad unit := 
-    matches <- @build_matches s m fss ;;
-    matches_term <- tmQuote matches ;;
+  Definition coerce_tac_syn_f {s: FirstOrder.signature} {m: FirstOrder.model s} (t: term)  : TemplateMonad (Tactics.tac_syn s m) := 
+    a <- tmUnquoteTyped (list (s.(sig_sorts))) hole ;;
+    r <- tmUnquoteTyped (s.(sig_sorts)) hole ;;
+    fs <- tmUnquoteTyped (s.(sig_funs) a r) t ;;
+    tmReturn (Tactics.tac_fun s fs).
+  Definition coerce_tac_syn_r {s: FirstOrder.signature} {m: FirstOrder.model s} (t: term)  : TemplateMonad (Tactics.tac_syn s m) := 
+    a <- tmUnquoteTyped (list (s.(sig_sorts))) hole ;;
+    rs <- tmUnquoteTyped (s.(sig_rels) a) t ;;
+    tmReturn (Tactics.tac_rel s rs).
+
+  Definition build_fun_match {s: FirstOrder.signature} {m: FirstOrder.model s} (orig: term) (symb: term) : TemplateMonad ((term -> bool) * Tactics.tac_syn s m) :=
+    x <- tmQuote orig ;;
+    test <- tmUnquoteTyped (term -> bool) (mk_test_lambda x) ;;
+    tac <- coerce_tac_syn_f symb ;;
+    tmReturn (test, tac).
+  Definition build_rel_match {s: FirstOrder.signature} {m: FirstOrder.model s} (orig: term) (symb: term) : TemplateMonad ((term -> bool) * Tactics.tac_syn s m) :=
+    x <- tmQuote orig ;;
+    test <- tmUnquoteTyped (term -> bool) (mk_test_lambda x) ;;
+    tac <- coerce_tac_syn_r symb ;;
+    tmReturn (test, tac).
+
+  Definition add_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (t: translation_table) : TemplateMonad unit := 
+    fun_matches <- mapM (fun '(orig_f, sym_f) => @build_fun_match s m orig_f sym_f) t.(mp_funs) ;;
+    rel_matches <- mapM (fun '(orig_r, sym_r) => @build_rel_match s m orig_r sym_r) t.(mp_rels) ;;
+    matches_term <- tmQuote (List.app fun_matches rel_matches) ;;
     tmMkDefinition "match_tacs" matches_term.
-
 
 End Config.

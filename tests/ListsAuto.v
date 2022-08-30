@@ -113,6 +113,12 @@ Section ListFuncs.
 
   MetaCoq Quote Definition typ_term := Type@{foo}.
 
+  MetaCoq Run (
+    srts <- gather_sorts (pack In) ;; 
+    srts <- tmEval all srts ;;
+    tmPrint srts
+  ).
+
   (* TODO: rels, bool, Z and constants *)
   MetaCoq Run (
     xs <- add_funs typ_term [
@@ -122,18 +128,18 @@ Section ListFuncs.
       ; pack ListFuncs.tail_rev
       ; pack ListFuncs.len
       ; pack Z.add
-    ] ;;
-    xs' <- tmEval all (fst (List.split xs)) ;;
-    add_tests xs'
+    ] [ pack ListFuncs.In ];;
+    xs' <- tmQuote xs ;;
+    tmMkDefinition "trans_tbl" xs'
   ).
-
-  (* Print fol_funs. *)
-
-  Inductive fol_list_rels : list sorts -> Type := 
-    | In_r : fol_list_rels [sort_A; sort_list_A].
+(* 
+  Print sorts.
+  Print interp_sorts.
+  Print fol_funs.
+  Print fol_rels. *)
     
   MetaCoq Run (
-    gen_sig typ_term sorts fol_funs fol_list_rels
+    gen_sig typ_term sorts fol_funs fol_rels
   ).
 
   (* Next we give a semantics to the function and relation symbols, in terms of the original functions and relation.
@@ -152,7 +158,7 @@ Section ListFuncs.
     (* interp_fun _ _ (z_const_f z) hnil := z; *)
   }.
   
-  Equations interp_rel args (r: fol_list_rels args) (hargs : HList.t interp_sorts args) : Prop := {
+  Equations interp_rel args (r: fol_rels args) (hargs : HList.t interp_sorts args) : Prop := {
     interp_rel _ In_r (x ::: l ::: hnil)  := In x l;
   }.
 
@@ -185,17 +191,9 @@ Section ListFuncs.
 
   Require Import MirrorSolve.Reflection.Tactics.
 
-  Notation pack' x := (existT _ (_, _) x).
+
   MetaCoq Run (
-    add_matches sig fm_model [
-        pack' rev_f
-      ; pack' app_f
-      ; pack' cons_A_f
-      ; pack' nil_A_f
-      ; pack' tail_rev_f
-      ; pack' len_f
-      ; pack' add_f
-    ]
+    add_matches sig fm_model trans_tbl
   ).
 
   (* Analogous reflection matches for sorts *)
@@ -203,7 +201,7 @@ Section ListFuncs.
       (eq_term t_lA, sort_list_A)
     ; (eq_term t_A, sort_A)
     ; (eq_term t_Z, sort_Z)
-    (* ; (eq_term t_bool, sort_bool) *)
+    ; (eq_term t_bool, sort_prop)
   ].
 
 
@@ -221,7 +219,7 @@ Section ListFuncs.
 
   (* Map the Z sort to SMT Int, and the bool sort to SMT bool *)
   RegisterSMTSort sort_Z SInt.
-  (* RegisterSMTSort sort_bool SBool. *)
+  RegisterSMTSort sort_prop SBool.
 
   (* The inductive declaration puts "cons" and "nil" in scope as SMT function symbols, 
     but the rest of our functions/relations still need to be declared. 
@@ -237,7 +235,7 @@ Section ListFuncs.
   RegisterSMTUF "rev" sort_list_A sort_list_A.
   RegisterSMTUF "len" sort_list_A sort_Z.
   RegisterSMTUF "tail_rev" sort_list_A sort_list_A sort_list_A.
-  (* RegisterSMTUF "In" sort_A sort_list_A sort_bool. *)
+  RegisterSMTUF "In" sort_A sort_list_A sort_prop.
 
   RegisterSMTFun cons_A_f "cons" 2.
   RegisterSMTFun nil_A_f "nil" 0.
@@ -245,7 +243,7 @@ Section ListFuncs.
   RegisterSMTFun rev_f "rev" 1.
   RegisterSMTFun tail_rev_f "tail_rev" 2.
   RegisterSMTFun len_f "len" 1.
-  (* RegisterSMTFun In_r "In" 2. *)
+  RegisterSMTFun In_r "In" 2.
   RegisterSMTFun add_f "+" 2.
 
   (* Finally we need to handle integer literals *)
@@ -263,12 +261,12 @@ Section ListFuncs.
 
   Hint Resolve app_equation_1 : list_eqns.
   Hint Resolve app_equation_2 : list_eqns.
-  (* Hint Resolve rev_equation_1 : list_eqns.
+  Hint Resolve rev_equation_1 : list_eqns.
   Hint Resolve rev_equation_2 : list_eqns.
   Hint Resolve tail_rev_equation_1 : list_eqns.
-  Hint Resolve tail_rev_equation_2 : list_eqns. *)
-  (* Hint Resolve In_equation_1' : list_eqns.
-  Hint Resolve In_equation_2' : list_eqns. *)
+  Hint Resolve tail_rev_equation_2 : list_eqns.
+  Hint Resolve In_equation_1' : list_eqns.
+  Hint Resolve In_equation_2' : list_eqns.
   (* Hint Resolve len_equation_1 : list_eqns.
   Hint Resolve len_equation_2 : list_eqns. *)
 
@@ -306,7 +304,15 @@ Section ListFuncs.
 
   Hint Immediate app_assoc : list_eqns.
 
-  SetSMTSolver "z3".
+  Lemma app_nil_r : 
+    forall l, app l [] = l.
+  Proof.
+    induction l; mirrorsolve.
+  Qed.
+
+  Hint Immediate app_nil_r : list_eqns.
+
+  SetSMTSolver "cvc5".
 
   Lemma rev_app : 
     forall (l r : list_A), 
@@ -317,14 +323,6 @@ Section ListFuncs.
   Qed.
 
   Hint Immediate rev_app : list_eqns.
-
-  Lemma app_nil_r : 
-    forall l, app l [] = l.
-  Proof.
-    induction l; mirrorsolve.
-  Qed.
-
-  Hint Immediate app_nil_r : list_eqns.
 
   Lemma rev_rev : 
     forall (l : list_A), 
@@ -375,8 +373,8 @@ Section ListFuncs.
     forall x l r,
       In x (app l r) <-> In x l \/ In x r.
   Proof.
-    (* induction l; mirrorsolve. *)
-  Admitted.
+    induction l; mirrorsolve.
+  Qed.
 
   Hint Immediate app_In : list_eqns.
 
@@ -384,8 +382,8 @@ Section ListFuncs.
     forall x l,
       In x l <-> In x (ListFuncs.rev l).
   Proof.
-    (* induction l; mirrorsolve. *)
-  Admitted.
+    induction l; mirrorsolve.
+  Qed.
 
 End ListFuncs.
   

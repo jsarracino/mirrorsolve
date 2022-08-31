@@ -218,6 +218,43 @@ Section Config.
     cstr_arity := 0;
   |}.
 
+
+  Definition z_const_ctor (z_const_indices : term) (t_nil : term) : constructor_body := {| 
+    cstr_name := "z_const_f";
+    cstr_args := [{|
+      decl_name :=
+        {|
+          binder_name := nNamed "z"; binder_relevance := Relevant
+        |};
+      decl_body := None;
+      decl_type :=
+        tInd
+          {|
+            inductive_mind :=
+              (MPfile ["BinNums"; "Numbers"; "Coq"], "Z");
+            inductive_ind := 0
+          |} []
+    |}];
+    cstr_indices := [tInd
+    {|
+      inductive_mind :=
+        (MPfile ["BinNums"; "Numbers"; "Coq"], "Z");
+      inductive_ind := 0
+    |} []];
+    cstr_type := 
+      tProd
+        {| binder_name := nNamed "z"; binder_relevance := Relevant |}
+        (tInd
+          {|
+            inductive_mind :=
+              (MPfile ["BinNums"; "Numbers"; "Coq"], "Z");
+            inductive_ind := 0
+          |} [])
+        (tApp (tRel 1) [ t_nil ; z_const_indices]);
+    cstr_arity := 1;
+  |}.
+
+
   Definition mk_rel_ctor (name: ident) (indices: list term) : constructor_body := {| 
     cstr_name := name ++ "_r";
     cstr_args := [];
@@ -226,7 +263,7 @@ Section Config.
     cstr_arity := 0;
   |}.
 
-  Definition funs_one_body (fun_args_term: term) (fun_ret_term: term)
+  Definition funs_one_body (z_index: option term) (t_nil : term) (fun_args_term: term) (fun_ret_term: term)
   (names: list ident) (indices: list (list term)) (funs_type: term) : one_inductive_body := {|
     ind_name := "fol_funs";
     ind_indices := [ {| 
@@ -242,17 +279,20 @@ Section Config.
     ind_sort := Universe.type1;
     ind_type := funs_type;
     ind_kelim := IntoAny;
-    ind_ctors := map (fun '(name, idxs) => mk_fun_ctor name idxs) (List.combine names indices);
+    ind_ctors := 
+      List.app 
+        (map (fun '(name, idxs) => mk_fun_ctor name idxs) (List.combine names indices))
+        (match z_index with | Some x => [z_const_ctor x t_nil] | _ => [] end );
     ind_projs := [];
     ind_relevance := Relevant
   |}.
 
-  Definition funs_body (funs_arg_term : term) (funs_ret_term: term) (names: list ident) (indices: list (list term)) (funs_type : term) : mutual_inductive_body := {| 
+  Definition funs_body (z_index : option term) (t_nil: term) (funs_arg_term : term) (funs_ret_term: term) (names: list ident) (indices: list (list term)) (funs_type : term) : mutual_inductive_body := {| 
     ind_finite := Finite;
     ind_npars := 0;
     ind_params := [];
     ind_bodies := [
-      funs_one_body funs_arg_term funs_ret_term names indices funs_type
+      funs_one_body z_index t_nil funs_arg_term funs_ret_term names indices funs_type
     ];
     ind_universes := Monomorphic_ctx;
     ind_variance := None;
@@ -394,14 +434,13 @@ Section Config.
       tmReturn ([args_term] :: r)
     end.
 
-  (* Definition  *)
-
   Definition add_funs_type (sorts: Type) (names: list ident) (indices : list (list sorts * sorts)) : TemplateMonad unit := 
     arg_term <- tmQuote (list sorts) ;;
     ret_term <- tmQuote sorts ;;
     funs_ty_term <- tmQuote (list sorts -> sorts -> Type) ;;
+    nil_term <- tmQuote (@nil sorts) ;;
     indices' <- quote_fun_indices sorts indices ;;
-    tmMkInductive' (funs_body arg_term ret_term names indices' funs_ty_term).
+    tmMkInductive' (funs_body None nil_term arg_term ret_term names indices' funs_ty_term).
 
   Definition get_ty_name (t: term) : TemplateMonad ident := 
     match t with 
@@ -568,31 +607,52 @@ Section Config.
 
   Definition all_symbs (t: translation_table) := List.app t.(mp_funs) t.(mp_rels).
 
+  MetaCoq Quote Definition t_z := (BinInt.Z).
+
+  Definition is_z_srt (t: term) := Core.eq_term t t_z.
+
+  Fixpoint gather_z_const (srts: list (term * term)) : option term := 
+    match srts with 
+    | [] => None
+    | (typ, idx) :: xs => 
+      if is_z_srt typ then Some idx else gather_z_const xs 
+    end.
+
+
+
   Definition add_funs (typ_term: term) (funs: list packed) (rels: list packed) : TemplateMonad translation_table := 
     names_indices <- gather_sorts_all (List.app funs rels) ;;
     names_funs_rels <- fmap split_sum_list (mapM split_fun_rel names_indices) ;; 
+
     let '(names_funs, fun_indices) := List.split names_funs_rels.1 in 
     let '(names_rels, rel_indices) := List.split names_funs_rels.2 in 
+
     sorted_indices <- add_sorts_indices (fun_indices ++ rel_indices ++ [[t_prop]]) ;; 
+    let z_const_opt := gather_z_const sorted_indices in 
+
     srts <- tmLocate "sorts" ;;
     match srts with 
     | [] => tmFail "error making sorts"
     | srt :: _ =>
       srt <- tmUnquoteTyped Type (monomorph_globref_term srt) ;;
       add_interp_sorts (fst (split sorted_indices)) srt ;;
+
       arg_term <- tmQuote (list srt) ;;
       ret_term <- tmQuote srt ;;
       funs_ty_term <- tmQuote (list srt -> srt -> Type) ;;
       rels_ty_term <- tmQuote (list srt -> Type) ;;
+      nil_term <- tmQuote (@nil srt) ;;
+
       idx' <- unquote_fun_indices srt (map (map (subst_terms sorted_indices)) fun_indices) ;;
       idx'' <- quote_fun_indices srt idx' ;;
-      tmMkInductive' (funs_body arg_term ret_term names_funs idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
+      tmMkInductive' (funs_body z_const_opt nil_term arg_term ret_term names_funs idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
       tmMsg "added function symbol inductive fol_funs" ;;
-      (* let rel_indices' := (map (map (subst_terms sorted_indices)) rel_indices) in  *)
+
       idx' <- unquote_rel_indices srt (map (map (subst_terms sorted_indices)) rel_indices) ;;
       idx'' <- quote_rel_indices srt idx' ;;
       tmMkInductive' (rel_body arg_term names_rels idx'' (rep_sorts_level (extr_univ typ_term) rels_ty_term) ) ;;
       tmMsg "added relation symbol inductive fol_rels" ;;
+
       funs' <- tmLocate "fol_funs" ;;
       rels' <- tmLocate "fol_rels" ;;
       match funs', rels' with 

@@ -99,15 +99,15 @@ Section ListFuncs.
 
   From MetaCoq.Template Require Import All Loader.
   Import MCMonadNotation.
-
   Require Import MirrorSolve.Config.
   Open Scope bs.
 
   Notation pack x := (existT _ _ x).
 
   Universe foo.
-
   MetaCoq Quote Definition typ_term := Type@{foo}.
+
+  
 
   (* TODO: Z constants *)
   MetaCoq Run (
@@ -140,7 +140,7 @@ Section ListFuncs.
     interp_fun _ _ tail_rev_f (x ::: l ::: hnil) := tail_rev x l;
     interp_fun _ _ len_f (x ::: hnil) := len x;
     interp_fun _ _ add_f (l ::: r ::: hnil) := (l + r)%Z;
-    (* interp_fun _ _ (z_const_f z) hnil := z; *)
+    interp_fun _ _ (z_const_f z) hnil := z;
   }.
   
   Equations interp_rel args (r: fol_rels args) (hargs : HList.t interp_sorts args) : Prop := {
@@ -162,6 +162,9 @@ Section ListFuncs.
   MetaCoq Run (
     add_matches sig fm_model trans_tbl
   ).
+
+  Require Import MirrorSolve.Reflection.Tactics.
+  Definition match_tacs' := ((is_z_term, tacLit sig fm_model z_lit (fun x => (sort_Z; x)) (fun x _ => (sort_Z; TFun sig (z_const_f x) hnil)) ltac:(solve_lit_wf)) :: match_tacs)%list.
 
   (* The section variable A is an uninterpreted sort in SMT. *)
   RegisterCustomSort sort_A "A".
@@ -205,7 +208,7 @@ Section ListFuncs.
   RegisterSMTFun add_f "+" 2.
 
   (* Finally we need to handle integer literals *)
-  (* RegisterSMTBuiltin z_const_f IntLit. *)
+  RegisterSMTBuiltin z_const_f IntLit.
 
   Require Import MirrorSolve.Reflection.Tactics.
 
@@ -227,8 +230,8 @@ Section ListFuncs.
   Hint Resolve tail_rev_equation_2 : list_eqns.
   Hint Resolve In_equation_1' : list_eqns.
   Hint Resolve In_equation_2' : list_eqns.
-  (* Hint Resolve len_equation_1 : list_eqns.
-  Hint Resolve len_equation_2 : list_eqns. *)
+  Hint Resolve len_equation_1 : list_eqns.
+  Hint Resolve len_equation_2 : list_eqns.
 
   Ltac prep_proof := 
     hints_foreach (fun x => pose proof x) "list_eqns";
@@ -237,8 +240,8 @@ Section ListFuncs.
 
   Scheme Equality for sorts.
 
-  Ltac quote_reflect_list := quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts.
-  Ltac quote_extract_list := quote_extract sig fm_model sorts_eq_dec match_tacs match_sorts.
+  Ltac quote_reflect_list := quote_reflect sig fm_model sorts_eq_dec match_tacs' match_sorts.
+  Ltac quote_extract_list := quote_extract sig fm_model sorts_eq_dec match_tacs' match_sorts.
 
   Ltac mirrorsolve :=
     prep_proof;
@@ -258,8 +261,7 @@ Section ListFuncs.
     forall (x y z: list_A),
       app (app x y) z = app x (app y z).
   Proof.
-    induction x; 
-    mirrorsolve.
+    induction x; mirrorsolve.
   Qed.
 
   Hint Immediate app_assoc : list_eqns.
@@ -278,8 +280,7 @@ Section ListFuncs.
     forall (l r : list_A), 
       ListFuncs.rev (app l r) = app (ListFuncs.rev r) (ListFuncs.rev l).
   Proof.
-    induction l;
-    mirrorsolve.
+    induction l; mirrorsolve.
   Qed.
 
   Hint Immediate rev_app : list_eqns.
@@ -315,8 +316,8 @@ Section ListFuncs.
     forall (l r : list_A), 
       len (app l r) = (len l + len r)%Z.
   Proof.
-    (* induction l; mirrorsolve. *)
-  Admitted.
+    induction l; mirrorsolve.
+  Qed.
 
   Hint Immediate app_len : list_eqns.
 

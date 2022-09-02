@@ -39,6 +39,12 @@ Section ListFuncs.
   Infix "::" := cons_A.
   Notation "[]" := nil_A.
 
+  Inductive even_list : list_A -> Prop := 
+  | even_nil : even_list []
+  | even_cons : 
+    forall xs (es: even_list xs),
+      forall x x', even_list (x :: x' :: xs).
+
   (* We will make use of a hint database to reflect recursive coq functions into SMT logic.
      For now, don't worry about it, but it's handy to use Equations for recursion to make use of the generated equations.
    *)
@@ -107,9 +113,7 @@ Section ListFuncs.
   Universe foo.
   MetaCoq Quote Definition typ_term := Type@{foo}.
 
-  
-
-  (* TODO: Z constants *)
+  (* TODO: support for inductive relations *)
   MetaCoq Run (
     xs <- add_funs typ_term [
         pack ListFuncs.rev
@@ -118,7 +122,10 @@ Section ListFuncs.
       ; pack ListFuncs.tail_rev
       ; pack ListFuncs.len
       ; pack Z.add
-    ] [ pack ListFuncs.In ];;
+    ] [ 
+        pack ListFuncs.In 
+      (* ; pack ListFuncs.even_list *)
+    ];;
     xs' <- tmQuote xs ;;
     tmMkDefinition "trans_tbl" xs'
   ).

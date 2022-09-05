@@ -279,6 +279,13 @@ type func_decl = {
       let _ = Feedback.msg_debug @@ Constr.debug_print e in 
       None
 
+module SortTbl = Map.Make ( struct
+  type t = Names.constructor ;;
+  let compare l r = 
+    let env = Global.env() in 
+    Environ.QConstruct.compare env l r
+end) ;;
+
 let sort_tbl : (Names.constructor, srt_smt) Hashtbl.t = 
   Hashtbl.create 5 
   ;;
@@ -290,7 +297,11 @@ let sort_tbl : (Names.constructor, srt_smt) Hashtbl.t =
     | e -> raise e
   end
 
-let lookup_sort (ctor: Names.constructor) : srt_smt option = Hashtbl.find_opt sort_tbl ctor
+let conv_tbl (tbl: (Names.constructor, srt_smt) Hashtbl.t) =
+  SortTbl.of_seq @@ Hashtbl.to_seq tbl
+
+let init_sorts () = conv_tbl @@ sort_tbl
+
 let add_sort (e: C.t) v = 
   if C.isConstruct e then 
     let (k, _) = C.destConstruct e in 
@@ -329,11 +340,10 @@ let pretty_ind_decl (name: string) (decl: ind_decl) =
 let debug_tbl (tbl : ('a, 'b) Hashtbl.t) (printer: 'a -> 'b -> Pp.t) : Pp.t = 
   Pp.pr_vertical_list (fun (x, y) -> printer x y) @@ List.of_seq @@ Hashtbl.to_seq tbl
 
-
-let extract_prim_sort (e: C.t) =
+let extract_prim_sort (sorts : srt_smt SortTbl.t) (e: C.t) =
   if C.isConstruct e then 
     let (ctor, _) = C.destConstruct e in 
-      begin match lookup_sort ctor with 
+      begin match SortTbl.find_opt ctor sorts with 
       | Some x -> x
       | None ->
         let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
@@ -350,15 +360,15 @@ let extract_prim_sort (e: C.t) =
     let _ = Feedback.msg_debug (Constr.debug_print e) in
       raise bedef
 
-let extract_sort (e: C.t) =
+let extract_sort (sorts : srt_smt SortTbl.t) (e: C.t) =
   if C.isApp e then 
     let (f, es) = C.destApp e in 
-      begin match extract_prim_sort f with 
+      begin match extract_prim_sort sorts f with 
       | Smt_bv None -> Smt_bv (Some (c_binnat_to_int es.(0)))
       | x -> x
       end
   else
-    extract_prim_sort e
+    extract_prim_sort sorts e
 
 let pretty_func_decl (fd: func_decl) : string = 
   let prefix = Format.sprintf "(declare-fun %s (" fd.name in 
@@ -757,7 +767,7 @@ and pretty_tm (tm: C.t) : string =
     raise bedef
 
   
-let rec pretty_fm (e: C.t) : string =
+let rec pretty_fm (sorts : srt_smt SortTbl.t) (e: C.t) : string =
   try
     begin match C.kind e with 
     | C.App(f, es) -> 
@@ -767,23 +777,23 @@ let rec pretty_fm (e: C.t) : string =
           Format.sprintf "(= %s %s)" a1 a2
       else if equal_ctor f c_impl then 
         let _ = debug_pp @@ Pp.str "extracting impl" in
-        let a1, a2 = pretty_fm es.(Array.length es - 2), pretty_fm (a_last es) in
+        let a1, a2 = pretty_fm sorts es.(Array.length es - 2), pretty_fm sorts (a_last es) in
           Format.sprintf "(=> %s %s)" a1 a2
       else if equal_ctor f c_and then 
         (* bunch of junk, l, r *)
         let _ = debug_pp @@ Pp.str "extracting and" in
-        let l, r = pretty_fm es.(Array.length es - 2), pretty_fm (a_last es) in 
+        let l, r = pretty_fm sorts es.(Array.length es - 2), pretty_fm sorts (a_last es) in 
           Format.sprintf "(and %s %s)" l r
       else if equal_ctor f c_or then 
         (* bunch of junk, l, r *)
         let _ = debug_pp @@ Pp.str "extracting or" in
-        let l = pretty_fm es.(Array.length es - 2) in 
-        let r = pretty_fm (a_last es) in 
+        let l = pretty_fm sorts es.(Array.length es - 2) in 
+        let r = pretty_fm sorts (a_last es) in 
           Format.sprintf "(or %s %s)" l r
       else if equal_ctor f c_not then 
         (* bunch of junk, inner *)
         let _ = debug_pp @@ Pp.str "extracting not" in
-          Format.sprintf "(not %s)" (pretty_fm (a_last es))
+          Format.sprintf "(not %s)" (pretty_fm sorts (a_last es))
       else if equal_ctor f c_rel then 
         let _ = debug_pp @@ Pp.str "extracting a relation:" in
         let _ = debug_pp @@ C.debug_print f in 
@@ -803,12 +813,12 @@ let rec pretty_fm (e: C.t) : string =
         "false" 
       else if equal_ctor f c_forall then
         let _ = debug_pp @@ Pp.str "extracting forall" in
-        let v_sort = extract_sort es.(2) in
-        if not (valid_sort v_sort) then pretty_fm (a_last es) 
+        let v_sort = extract_sort sorts es.(2) in
+        if not (valid_sort v_sort) then pretty_fm sorts (a_last es) 
         else 
           let v_suff = List.length (extract_ctx es.(1)) in
           let v_name = Format.sprintf "fvar_%n" v_suff in
-          let bod = pretty_fm (a_last es) in
+          let bod = pretty_fm sorts (a_last es) in
             Format.sprintf "(forall ((%s %s)) %s)" v_name (pretty_sort v_sort) bod
           
       else 
@@ -824,8 +834,8 @@ let rec pretty_fm (e: C.t) : string =
       let _ = Feedback.msg_debug (Constr.debug_print e) in
       raise UnboundPrimitive
 
-let pretty env sigma e = 
-  pretty_fm @@ EConstr.to_constr sigma e 
+let pretty env sigma sorts e = 
+  pretty_fm sorts @@ EConstr.to_constr sigma e 
 
 let debug_lib_refs _ = 
   let lib_ref_names = List.map fst (Coqlib.get_lib_refs ()) in
@@ -852,10 +862,11 @@ let build_query (e: C.t) (opts: query_opts) : string =
   let ind_decls = List.map (fun s -> pretty_ind_decl s (Hashtbl.find ind_tbl s)) ind_sorts in 
   let fun_decls = List.map pretty_func_decl @@ List.of_seq @@ get_decls () in 
   let prefix = String.concat "\n" @@ us_decls @ ind_decls @ fun_decls in 
+  let sorts = conv_tbl sort_tbl in 
   let q_str = if opts.refute_query then 
-    Format.sprintf "(assert (not %s))" (pretty_fm e) 
+    Format.sprintf "(assert (not %s))" (pretty_fm sorts e) 
   else
-    Format.sprintf "(assert %s)" (pretty_fm e) in 
+    Format.sprintf "(assert %s)" (pretty_fm sorts e) in 
   Smt.gen_bv_query (String.concat "\n" [prefix; q_str])
 
 let dump_query (e: EConstr.t) : unit = 
@@ -966,8 +977,9 @@ let reg_uf_decl (name: string) (ret_e: EConstr.t) (args: EConstr.t list) : unit 
   let force = EConstr.to_constr sigma in 
   let r_e = force ret_e in 
   let args_e = List.map force args in 
+  let sorts = conv_tbl sort_tbl in 
   try 
-    let r_ty, args_ty = extract_sort r_e, List.map extract_sort args_e in  
+    let r_ty, args_ty = extract_sort sorts r_e, List.map (extract_sort sorts) args_e in  
       add_fun_decl name {arg_tys = args_ty; ret_ty = r_ty; name = name}
   with
     | e -> 

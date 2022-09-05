@@ -36,6 +36,17 @@ type func_decl = {
   name: string;
 }
 
+module SortTbl : (Map.S with type key = Names.constructor)
+
+val init_sorts : unit -> Ms_sorts.srt_smt SortTbl.t
+
+(* Map.Make ( struct
+  type t = Names.constructor ;;
+  let compare l r = 
+    let env = Global.env() in 
+    Environ.QConstruct.compare env l r
+end) ;; *)
+
 (* val uf_sym_tbl : (string, func_decl) Hashtbl.t
 val lookup_uf : string -> func_decl option
 val add_uf : string -> func_decl -> unit *)
@@ -55,8 +66,8 @@ type bexpr =
 val extract_expr : Constr.t -> bexpr
 val pretty_bexpr : bexpr -> Pp.t
 
-val pretty_fm : Constr.t -> string
-val pretty: Environ.env -> Evd.evar_map -> EConstr.constr -> string
+val pretty_fm : Ms_sorts.srt_smt SortTbl.t -> Constr.t -> string
+val pretty: Environ.env -> Evd.evar_map -> Ms_sorts.srt_smt SortTbl.t -> EConstr.constr -> string
 
 val debug_lib_refs : unit -> Pp.t
 

@@ -69,7 +69,8 @@ TACTIC EXTEND Pretty
 | [ "pretty" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
-    let out = Main.pretty env sigma e in
+    let sorts = Main.init_sorts () in 
+    let out = Main.pretty env sigma sorts e in
       Main.debug out 
   }
 END

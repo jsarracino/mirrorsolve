@@ -60,8 +60,6 @@ val pretty: Environ.env -> Evd.evar_map -> EConstr.constr -> string
 
 val debug_lib_refs : unit -> Pp.t
 
-val reg_prim_name': Constr.t -> string -> unit
-
 type query_opts = 
   { refute_query : bool ;
     negate_toplevel : bool ;

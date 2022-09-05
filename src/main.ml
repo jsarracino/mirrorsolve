@@ -138,17 +138,6 @@ let equal_ctor (l: C.t) (r: unit -> C.t) : bool =
       let _ = Feedback.msg_debug @@ Constr.debug_print (r ()) in  
         raise e
 
-let find_add i tbl builder = 
-  begin match Hashtbl.find_opt tbl i with 
-  | Some x -> x
-  | None -> 
-    let nxt = builder () in 
-    Hashtbl.add tbl i nxt;
-    nxt
-  end
-
-let prim_tbl' : (C.t, string) Hashtbl.t = Hashtbl.create 20
-let reg_prim' i t = find_add i prim_tbl' (fun _ -> t)
 
 (* let c_char_to_char (e: C.t) : string 
 let rec c_str_to_str (e: C.t) : string = 
@@ -432,8 +421,6 @@ let debug_tbls () =
   Pp.pr_vertical_list (fun x -> x) @@ 
     [Pp.str "ENV CTORS:"] @ 
     Hashtbl.fold (fun ctor (sym, srt) acc -> acc @ [Pp.(++) (print_ctor ctor) (Pp.(++) (Pp.str " => ") (Pp.(++) (Pp.str sym) (Pp.str @@ Format.sprintf " : %s" (pretty_sort srt))))]) []  *)
-
-let reg_prim_name' e nme = ignore @@ reg_prim' e nme
 
 type bop = Impl | And | Or | Eq 
 type uop = Neg

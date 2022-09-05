@@ -171,6 +171,12 @@ Section ListFuncs.
   ).
 
   Require Import MirrorSolve.Reflection.Tactics.
+  (* TODO: 
+    to infer this code, turn the wf condition into a typeclass,
+    register a new typeclass instance when we add the z literal to the sig/interpretation,
+    and tell TemplateCoq to do typeclass resolution where the ltac is called
+  
+  *)
   Definition match_tacs' := ((is_z_term, tacLit sig fm_model z_lit (fun x => (sort_Z; x)) (fun x _ => (sort_Z; TFun sig (z_const_f x) hnil)) ltac:(solve_lit_wf)) :: match_tacs)%list.
 
   (* The section variable A is an uninterpreted sort in SMT. *)

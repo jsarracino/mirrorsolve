@@ -80,9 +80,10 @@ VERNAC COMMAND EXTEND ViewSMTQuery CLASSIFIED AS QUERY
 | [ "PrintSMT" constr(e) ] -> { 
     let env = Global.env () in
     let sigma = Evd.from_env env in
+    let ctx = Main.init_printing_ctx () in 
     let (sigma', e') = Constrintern.interp_constr_evars env sigma e in
       Feedback.msg_info (Pp.str "SMT QUERY:\n") ;
-      Main.dump_query e'
+      Main.dump_query ctx e'
   }
 END
 
@@ -100,7 +101,8 @@ END
 TACTIC EXTEND ViewSMTTactic 
 | [ "print_smt" constr(e) ] -> { 
     Feedback.msg_info (Pp.str "SMT QUERY:\n") ;
-    Main.dump_query e ;
+    let ctx = Main.init_printing_ctx () in
+    Main.dump_query ctx e ;
     Proofview.tclUNIT ()
   }
 END
@@ -158,6 +160,72 @@ TACTIC EXTEND CheckUnsatNeg
     let sigma = Evd.from_env env in
     let fail s = tcl_fail (Pp.str s) in
     let query = Main.check_interp (EConstr.to_constr sigma e) true in
+
+    begin match Smt.run_smt query with 
+    | SAT -> fail "SAT smt query"
+    | UNSAT -> Proofview.tclUNIT ()
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
+  }
+END
+
+TACTIC EXTEND CheckInterpPosF
+| [ "check_interp_pos_func" constr(ctx_e) constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let fail s = tcl_fail (Pp.str s) in
+    let ctx_e = Some (EConstr.to_constr sigma ctx_e) in 
+    let query = Main.check_interp ~ctx_e (EConstr.to_constr sigma e) false in
+
+    begin match Smt.run_smt query with 
+    | SAT -> 
+      Proofview.tclUNIT ()
+    | UNSAT -> fail "UNSAT smt query"
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
+  }
+END
+
+TACTIC EXTEND CheckInterpNegF
+| [ "check_interp_neg_func" constr(ctx_e) constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let fail s = tcl_fail (Pp.str s) in
+    let ctx_e = Some (EConstr.to_constr sigma ctx_e) in 
+    let query = Main.check_interp ~ctx_e (EConstr.to_constr sigma e) true in
+
+    begin match Smt.run_smt query with 
+    | SAT -> 
+      Proofview.tclUNIT ()
+    | UNSAT -> fail "UNSAT smt query"
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
+  }
+END
+
+TACTIC EXTEND CheckUnsatPosF 
+| [ "check_unsat_pos_func" constr(ctx_e) constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let fail s = tcl_fail (Pp.str s) in
+    let ctx_e = Some (EConstr.to_constr sigma ctx_e) in 
+    let query = Main.check_interp ~ctx_e (EConstr.to_constr sigma e) false in
+
+    begin match Smt.run_smt query with 
+    | SAT -> fail "SAT smt query"
+    | UNSAT -> Proofview.tclUNIT ()
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
+  }
+END
+
+TACTIC EXTEND CheckUnsatNegF 
+| [ "check_unsat_neg_func" constr(ctx_e) constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let fail s = tcl_fail (Pp.str s) in
+    let ctx_e = Some (EConstr.to_constr sigma ctx_e) in 
+    let query = Main.check_interp ~ctx_e (EConstr.to_constr sigma e) true in
 
     begin match Smt.run_smt query with 
     | SAT -> fail "SAT smt query"

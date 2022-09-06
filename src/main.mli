@@ -86,9 +86,9 @@ type query_opts =
     negate_toplevel : bool ;
   }
 
-val build_query : Constr.t -> query_opts -> string
-val dump_query : EConstr.t -> unit
-val check_interp : Constr.t -> bool -> string
+val build_query : printing_ctx -> query_opts -> Constr.t -> string
+val dump_query : printing_ctx -> EConstr.t -> unit
+val check_interp : ?ctx_e: Constr.t option -> Constr.t -> bool -> string
 val extract_ctx : Constr.t -> Constr.t list
 
 val pretty_func_decl : func_decl -> string

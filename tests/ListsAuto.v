@@ -230,7 +230,7 @@ Section ListFuncs.
 
   Ltac check_goal_unsat := 
     match goal with 
-    | |- ?G => check_unsat_neg G; eapply UnsoundAxioms.interp_true
+    | |- ?G => check_unsat_neg_func G G; eapply UnsoundAxioms.interp_true
     end.
 
   Create HintDb list_eqns.

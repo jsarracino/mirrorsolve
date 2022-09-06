@@ -888,10 +888,9 @@ let in_map k mp =
   | None -> false
   end
 
-let build_query (e: C.t) (opts: query_opts) : string = 
+let build_query (ctx: printing_ctx) (opts: query_opts) (e: C.t)  : string = 
   let sorts = init_sorts () in 
-  let inds = init_inds () in 
-  let ctx = init_printing_ctx () in 
+  let inds = init_inds () in  
   let ind_sorts, us_sorts = List.partition (in_map inds) @@ custom_sorts sorts in 
   let us_decls = List.map (fun s -> Format.sprintf "(declare-sort %s 0)" s) us_sorts in 
   let ind_decls = List.map (fun s -> pretty_ind_decl s (StringMap.find s inds)) ind_sorts in 
@@ -903,25 +902,30 @@ let build_query (e: C.t) (opts: query_opts) : string =
     Format.sprintf "(assert %s)" (pretty_fm ctx e) in 
   Smt.gen_bv_query (String.concat "\n" [prefix; q_str])
 
-let dump_query (e: EConstr.t) : unit = 
+let dump_query (ctx: printing_ctx) (e: EConstr.t) : unit = 
   let env = Global.env () in
   let sigma = Evd.from_env env in
   let opts = { refute_query = true; negate_toplevel = false; } in
-  let query = build_query (EConstr.to_constr sigma e) opts in
+  let query = build_query ctx opts (EConstr.to_constr sigma e) in
     Feedback.msg_info (Pp.str query)
 
-let rec check_interp (e: C.t) (negate_toplevel: bool) : string = 
+let rec check_interp ?(ctx_e  = None) (e: C.t) (negate_toplevel: bool) : string = 
+  let ctx = 
+    begin match ctx_e with 
+    | Some _ 
+    | None -> init_printing_ctx () 
+    end in 
   if C.isApp e then 
     let (f, es) = C.destApp e in
     if C.equal f @@ c_prop_not () then 
-      check_interp (a_last es) (not negate_toplevel)
+      check_interp ~ctx_e (a_last es) (not negate_toplevel)
     else 
       let (n, _) = C.destConst f in 
       let name = Names.Constant.to_string n in 
       if name = "MirrorSolve.FirstOrder.interp_fm" then
         let opts = { refute_query = negate_toplevel; negate_toplevel = negate_toplevel; } in
         let bod' = a_last es in
-          build_query bod' opts
+          build_query ctx opts bod'
       else
         let _ = Feedback.msg_debug (Pp.str "unrecognized name: ") in 
         let _ = Feedback.msg_debug @@ Pp.str name in 

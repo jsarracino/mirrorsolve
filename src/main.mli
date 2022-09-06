@@ -36,20 +36,30 @@ type func_decl = {
   name: string;
 }
 
-module SortTbl : (Map.S with type key = Names.constructor)
+type builtin_syms = 
+  | Smt_int_lit
+  | Smt_bool_lit
+  | Smt_bv_lit
 
-val init_sorts : unit -> Ms_sorts.srt_smt SortTbl.t
+module ConstructorMap : (Map.S with type key = Names.constructor)
+module StringMap : (Map.S with type key = string)
 
-(* Map.Make ( struct
-  type t = Names.constructor ;;
-  let compare l r = 
-    let env = Global.env() in 
-    Environ.QConstruct.compare env l r
-end) ;; *)
+type printing_ctx = {
+  ctx_sorts : Ms_sorts.srt_smt ConstructorMap.t ;
+  ctx_fun_symbs : string ConstructorMap.t ;
+  ctx_fun_arity : int ConstructorMap.t ;
+  ctx_fun_builtin : builtin_syms ConstructorMap.t ;
+}
 
-(* val uf_sym_tbl : (string, func_decl) Hashtbl.t
-val lookup_uf : string -> func_decl option
-val add_uf : string -> func_decl -> unit *)
+val init_printing_ctx : unit -> printing_ctx
+val init_sorts : unit -> Ms_sorts.srt_smt ConstructorMap.t
+
+val lookup_ctx_sort : printing_ctx -> ConstructorMap.key -> Ms_sorts.srt_smt option
+val lookup_ctx_symb : printing_ctx -> ConstructorMap.key -> string option
+val lookup_ctx_arity : printing_ctx -> ConstructorMap.key -> int option
+val lookup_ctx_builtin : printing_ctx -> ConstructorMap.key -> builtin_syms option
+
+
 
 type bop = Impl | And | Or | Eq 
 type uop = Neg
@@ -66,8 +76,8 @@ type bexpr =
 val extract_expr : Constr.t -> bexpr
 val pretty_bexpr : bexpr -> Pp.t
 
-val pretty_fm : Ms_sorts.srt_smt SortTbl.t -> Constr.t -> string
-val pretty: Environ.env -> Evd.evar_map -> Ms_sorts.srt_smt SortTbl.t -> EConstr.constr -> string
+val pretty_fm : printing_ctx -> Constr.t -> string
+val pretty: Environ.env -> Evd.evar_map -> printing_ctx -> EConstr.constr -> string
 
 val debug_lib_refs : unit -> Pp.t
 

@@ -21,3 +21,6 @@ Section SMTSig.
 End SMTSig.
 
 Register MkSMTSig as ms.smt.mk_smt_sig.
+Register PSF as ms.smt.psf.
+Register PSR as ms.smt.psr.
+Register PSL as ms.smt.psl.

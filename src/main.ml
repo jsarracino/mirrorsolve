@@ -127,6 +127,12 @@ let c_mk_smt_sig () = get_coq "ms.smt.mk_smt_sig"
 let c_smt_sort_base () = get_coq "ms.core.smt_sort_base"
 let c_smt_sort_ind () = get_coq "ms.core.smt_sort_ind"
 
+let c_smt_psf () = get_coq "ms.smt.psf"
+let c_smt_psr () = get_coq "ms.smt.psr"
+let c_smt_psl () = get_coq "ms.smt.psl"
+
+let c_smt_fprim () = get_coq "ms.core.fprim"
+(* let c_smt_funinterp () = get_coq "ms.core.funinterp" *)
 
 let equal_ctor (l: C.t) (r: unit -> C.t) : bool = 
   try 
@@ -453,6 +459,40 @@ let debug_ctx (ctx: printing_ctx) =
     ()
 
 
+
+let lookup_ctx_sort ctx x = ConstructorMap.find_opt x ctx.ctx_sorts
+let lookup_ctx_symb ctx x = ConstructorMap.find_opt x ctx.ctx_fun_symbs
+let lookup_ctx_arity ctx x = ConstructorMap.find_opt x ctx.ctx_fun_arity
+let lookup_ctx_builtin ctx x = ConstructorMap.find_opt x ctx.ctx_fun_builtin
+
+
+let extract_prim_sort (ctx: printing_ctx) (e: C.t) =
+  if C.isConstruct e then 
+    let (ctor, _) = C.destConstruct e in 
+      begin match lookup_ctx_sort ctx ctor with 
+      | Some x -> x
+      | None ->
+        let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
+        let _ = Feedback.msg_debug (Constr.debug_print e) in
+        let _ = debug_ctx ctx in 
+        raise @@ BadExpr "unexpected constructor for sorts (see debug)"   
+      end 
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected construct for sort and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise bedef
+
+let extract_sort (ctx: printing_ctx) (e: C.t) =
+  if C.isApp e then 
+    let (f, es) = C.destApp e in 
+      begin match extract_prim_sort ctx f with 
+      | Smt_bv None -> Smt_bv (Some (c_binnat_to_int es.(0)))
+      | x -> x
+      end
+  else
+    extract_prim_sort ctx e
+
+
 let extract_ind_base (base: srt_smt) (e: C.t) = 
   let _ = debug_pp @@ Pp.str "extracting ind base from:" in
   let _ = debug_pp @@ Constr.debug_print e in  
@@ -538,9 +578,35 @@ let add_ctx_sort_ind (ctx: printing_ctx) (kv: (ConstructorMap.key * (srt_smt opt
   | _ -> raise bedef
   end
 
-let load_fun_symbs (x: C.t) = ConstructorMap.empty
-let load_fun_arity (x: C.t) = ConstructorMap.empty
-let load_fun_builtin (x: C.t) = ConstructorMap.empty
+let load_fun_symbs (ctx: printing_ctx) (x: C.t) = ConstructorMap.empty
+
+let load_packed_sfun (ctx : printing_ctx) (x: C.t)  = 
+  let f, es = C.destApp x  in 
+  if equal_ctor f c_smt_psf || equal_ctor f c_smt_psr then 
+    let args = extract_list (extract_sort ctx) es.(1) in 
+      Inl (fst (C.destConstruct @@ a_last es), List.length args)
+  else if equal_ctor f c_smt_psl then 
+      Inr (fst (C.destConstruct @@ a_last es))
+  else 
+    let _ = Feedback.msg_debug @@ Pp.str "expected psf/psr/psl in load_packed_sfun" in 
+    let _ = Feedback.msg_debug @@ C.debug_print f in 
+    raise @@ BadExpr "bad construct in load_packed_sfun"
+
+let load_arity (ctx: printing_ctx) (x: C.t) = 
+  let sfun, r = extract_pair (load_packed_sfun ctx) (fun x -> x) x in 
+  begin match sfun with 
+  | Inl x -> x
+  | Inr x -> 
+    let f, es = C.destApp r in 
+    if equal_ctor f c_smt_fprim then
+      (x, 0)
+    else
+      raise @@ BadExpr "expected fprim in load arity"
+
+  end
+
+let load_fun_arity (ctx: printing_ctx) (x: C.t) = ConstructorMap.of_seq @@ List.to_seq @@ extract_list (load_arity ctx) x
+let load_fun_builtin (ctx: printing_ctx)  (x: C.t) = ConstructorMap.empty
 
 let load_ctx (x: C.t) = 
   if C.isApp x then 
@@ -550,9 +616,9 @@ let load_ctx (x: C.t) =
       let c_funs = a_last args in 
       let sorts_inds = load_ctx_sorts c_sorts in 
       let init_ctx = List.fold_left add_ctx_sort_ind empty_ctx sorts_inds in { init_ctx with
-        ctx_fun_symbs = load_fun_symbs c_funs;
-        ctx_fun_arity = load_fun_arity c_funs ; 
-        ctx_fun_builtin = load_fun_builtin c_funs ; 
+        ctx_fun_symbs = load_fun_symbs init_ctx c_funs;
+        ctx_fun_arity = load_fun_arity init_ctx c_funs ; 
+        ctx_fun_builtin = load_fun_builtin init_ctx c_funs ; 
       }
     else
       let _ = Feedback.msg_debug @@ Pp.str "unexpected smt_sig builder in load_ctx:" in
@@ -565,39 +631,6 @@ let load_ctx (x: C.t) =
     let _ = Feedback.msg_debug @@ C.debug_print x in
     raise bedef
       
-
-
-let lookup_ctx_sort ctx x = ConstructorMap.find_opt x ctx.ctx_sorts
-let lookup_ctx_symb ctx x = ConstructorMap.find_opt x ctx.ctx_fun_symbs
-let lookup_ctx_arity ctx x = ConstructorMap.find_opt x ctx.ctx_fun_arity
-let lookup_ctx_builtin ctx x = ConstructorMap.find_opt x ctx.ctx_fun_builtin
-
-
-let extract_prim_sort (ctx: printing_ctx) (e: C.t) =
-  if C.isConstruct e then 
-    let (ctor, _) = C.destConstruct e in 
-      begin match lookup_ctx_sort ctx ctor with 
-      | Some x -> x
-      | None ->
-        let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
-        let _ = Feedback.msg_debug (Constr.debug_print e) in
-        let _ = debug_ctx ctx in 
-        raise @@ BadExpr "unexpected constructor for sorts (see debug)"   
-      end 
-  else
-    let _ = Feedback.msg_debug (Pp.str "Expected construct for sort and got:") in
-    let _ = Feedback.msg_debug (Constr.debug_print e) in
-      raise bedef
-
-let extract_sort (ctx: printing_ctx) (e: C.t) =
-  if C.isApp e then 
-    let (f, es) = C.destApp e in 
-      begin match extract_prim_sort ctx f with 
-      | Smt_bv None -> Smt_bv (Some (c_binnat_to_int es.(0)))
-      | x -> x
-      end
-  else
-    extract_prim_sort ctx e
 
 let pretty_func_decl (fd: func_decl) : string = 
   let prefix = Format.sprintf "(declare-fun %s (" fd.name in 
@@ -1158,6 +1191,8 @@ let reg_ind_decl (name: string) (ctor_e: EConstr.t) (ind_decl_e : EConstr.t) : u
 
 let load_printing_ctx (x: C.t) = 
   let ctx = load_ctx x in 
+  let _ = debug_pp @@ Pp.str "loading ctx:" in 
+  let _ = debug_ctx ctx in 
   let _ = Hashtbl.add_seq sort_tbl @@ ConstructorMap.to_seq ctx.ctx_sorts in 
   let _ = Hashtbl.add_seq fun_symb_tbl @@ ConstructorMap.to_seq ctx.ctx_fun_symbs in 
   let _ = Hashtbl.add_seq fun_arity_tbl @@ ConstructorMap.to_seq ctx.ctx_fun_arity in 

@@ -40,3 +40,6 @@ Register BVLit as ms.core.bv_lit.
 Inductive smt_fun := 
   | FPrim : smt_fun_base -> smt_fun 
   | FUninterp : string -> smt_fun.
+
+Register FPrim as ms.core.fprim.
+Register FUninterp as ms.core.funinterp.

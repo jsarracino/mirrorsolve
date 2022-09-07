@@ -9,7 +9,7 @@ Section SMTSig.
 
   Inductive packed_sfun := 
   | PSF: forall args r, sig.(sig_funs) args r -> packed_sfun
-  | PSR : forall args, sig.(sig_rels) args -> packed_sfun
+  | PSR : forall args, sig.(sig_sorts) -> sig.(sig_rels) args -> packed_sfun
   | PSL : forall X args r, 
     (forall (x: X), sig.(sig_funs) args r) -> 
     packed_sfun.

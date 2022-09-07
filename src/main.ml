@@ -114,6 +114,8 @@ let c_smt_bv_ctor = get_coq "ms.bv.smt_bv_ctor"
 let c_builtin_bool_lit () = get_coq "ms.core.bool_lit"
 let c_builtin_int_lit () = get_coq "ms.core.int_lit"
 
+let c_ms_fun_sym () = get_coq "ms.core.fun_sym"
+
 let c_ufun_ctor () = get_coq "ms.uf.ufun"
 let c_cfun_ctor () = get_coq "ms.uf.cfun"
 
@@ -132,7 +134,7 @@ let c_smt_psr () = get_coq "ms.smt.psr"
 let c_smt_psl () = get_coq "ms.smt.psl"
 
 let c_smt_fprim () = get_coq "ms.core.fprim"
-(* let c_smt_funinterp () = get_coq "ms.core.funinterp" *)
+let c_smt_funinterp () = get_coq "ms.core.funinterp"
 
 let equal_ctor (l: C.t) (r: unit -> C.t) : bool = 
   try 
@@ -310,16 +312,21 @@ type func_decl = {
   ret_ty : srt_smt;
   name: string;
 }
+let pretty_func_decl (fd: func_decl) : string = 
+  let prefix = Format.sprintf "(declare-fun %s (" fd.name in 
+  let args = String.concat " " @@ List.map pretty_sort fd.arg_tys in 
+  let suffix = Format.sprintf ") %s)" @@ pretty_sort fd.ret_ty in 
+    prefix ^ args ^ suffix
 
-  let conv_sort (e: C.t) (args: C.t Array.t) : srt_smt option = 
-    if equal_ctor e c_cust_sort then Some (Custom_sort (extract_str @@ a_last args))
-    else if equal_ctor e c_int_sort then Some Smt_int 
-    else if equal_ctor e c_bool_sort then Some Smt_bool
-    else if equal_ctor e c_bv_sort then Some (Smt_bv None)
-    else 
-      let _ = Feedback.msg_debug @@ Pp.str "unhandled case for:" in 
-      let _ = Feedback.msg_debug @@ Constr.debug_print e in 
-      None
+let conv_sort (e: C.t) (args: C.t Array.t) : srt_smt option = 
+  if equal_ctor e c_cust_sort then Some (Custom_sort (extract_str @@ a_last args))
+  else if equal_ctor e c_int_sort then Some Smt_int 
+  else if equal_ctor e c_bool_sort then Some Smt_bool
+  else if equal_ctor e c_bv_sort then Some (Smt_bv None)
+  else 
+    let _ = Feedback.msg_debug @@ Pp.str "unhandled case for:" in 
+    let _ = Feedback.msg_debug @@ Constr.debug_print e in 
+    None
 
 module ConstructorMap = Map.Make ( struct
   type t = Names.constructor ;;
@@ -379,11 +386,10 @@ let add_ind (name: string) (ctor: C.t) (decl: ind_decl) =
   add_sort ctor (Custom_sort name) ;
   Hashtbl.add ind_tbl name decl
 
-let conv_ind_tbl (tbl: (string, ind_decl) Hashtbl.t) =
+let conv_str_tbl (tbl: (string, 'a) Hashtbl.t) =
   StringMap.of_seq @@ Hashtbl.to_seq tbl
 
-let init_inds () = 
-  conv_ind_tbl ind_tbl
+let init_inds () = conv_str_tbl ind_tbl
 
 let pretty_ind_decl (name: string) (decl: ind_decl) = 
   let Ind_decl decls = decl in 
@@ -426,6 +432,7 @@ let builtin_arity (b: builtin_syms) =
 type printing_ctx = {
   ctx_sorts : Ms_sorts.srt_smt ConstructorMap.t ;
   ctx_inds : ind_decl StringMap.t ;
+  ctx_fun_decls : func_decl StringMap.t;
   ctx_fun_symbs : string ConstructorMap.t ;
   ctx_fun_arity : int ConstructorMap.t ;
   ctx_fun_builtin : builtin_syms ConstructorMap.t ;
@@ -434,6 +441,7 @@ type printing_ctx = {
 let empty_ctx = {
   ctx_sorts = ConstructorMap.empty ;
   ctx_inds = StringMap.empty ;
+  ctx_fun_decls = StringMap.empty ;
   ctx_fun_symbs = ConstructorMap.empty;
   ctx_fun_arity = ConstructorMap.empty ;
   ctx_fun_builtin = ConstructorMap.empty ;
@@ -443,13 +451,18 @@ let debug_ctx (ctx: printing_ctx) =
   let worker_c f = (fun k v -> 
       Pp.(++) (Pp.(++) (C.debug_print @@ C.mkConstruct k) (Pp.str " |-> ")) (Pp.str @@ f v)
     ) in
-  let worker_str = (fun k v -> 
+  let worker_ind = (fun k v -> 
       Pp.(++) (Pp.(++) (Pp.str k) (Pp.str " |-> ")) (Pp.str @@ pretty_ind_decl k v)
+    ) in
+  let worker_fd = (fun k v -> 
+      Pp.(++) (Pp.(++) (Pp.str k) (Pp.str " |-> ")) (Pp.str @@ pretty_func_decl v)
     ) in
   let _ = Feedback.msg_debug @@ Pp.str "ctx_sorts:" in 
   let _ = Feedback.msg_debug @@ debug_constr_map ctx.ctx_sorts (worker_c pretty_sort) in 
   let _ = Feedback.msg_debug @@ Pp.str "ctx_inds:" in 
-  let _ = Feedback.msg_debug @@ debug_string_map ctx.ctx_inds worker_str in 
+  let _ = Feedback.msg_debug @@ debug_string_map ctx.ctx_inds worker_ind in 
+  let _ = Feedback.msg_debug @@ Pp.str "ctx_uf_decls:" in 
+  let _ = Feedback.msg_debug @@ debug_string_map ctx.ctx_fun_decls worker_fd in 
   let _ = Feedback.msg_debug @@ Pp.str "ctx_fun_symbs:" in 
   let _ = Feedback.msg_debug @@ debug_constr_map ctx.ctx_fun_symbs (worker_c (fun x -> x)) in 
   let _ = Feedback.msg_debug @@ Pp.str "ctx_fun_arity:" in 
@@ -578,9 +591,53 @@ let add_ctx_sort_ind (ctx: printing_ctx) (kv: (ConstructorMap.key * (srt_smt opt
   | _ -> raise bedef
   end
 
-let load_fun_symbs (ctx: printing_ctx) (x: C.t) = ConstructorMap.empty
+let extract_smt_ufun (x: C.t) = 
+  let f, es = C.destApp x in
+  if equal_ctor f c_smt_funinterp then 
+    Some (extract_str @@ a_last es)
+  else if equal_ctor f c_smt_fprim then 
+    if C.isApp @@ a_last es then 
+      let f', es' = C.destApp @@ a_last es in 
+        if equal_ctor f' c_ms_fun_sym then 
+          let _ = debug_pp @@ Pp.str "coercing to string:" in 
+          let _ = debug_pp @@ C.debug_print (a_last es') in 
+          let r = (extract_str @@ a_last es') in 
+          let _ = debug_pp @@ Pp.(++) (Pp.str "result is:" ) (Pp.str r) in
+          Some r
+        else 
+          None
+    else
+      None
+  else
+    None
 
-let load_packed_sfun (ctx : printing_ctx) (x: C.t)  = 
+
+let load_packed_sfun (x: C.t)  = 
+  let _ = debug_pp @@ Pp.str "loading packed sfun:" in 
+  let _ = debug_pp @@ C.debug_print x in 
+  let f, es = C.destApp x  in 
+  if equal_ctor f c_smt_psf || equal_ctor f c_smt_psr then 
+      Some (fst (C.destConstruct @@ a_last es))
+  else if equal_ctor f c_smt_psl then 
+      None
+  else 
+    let _ = Feedback.msg_debug @@ Pp.str "expected psf/psr/psl in load_packed_sfun" in 
+    let _ = Feedback.msg_debug @@ C.debug_print f in 
+    raise @@ BadExpr "bad construct in load_packed_sfun"
+
+let load_packed_sfun_name (x: C.t) = 
+  begin match extract_pair load_packed_sfun extract_smt_ufun x with
+  | Some ctor, Some name -> Some (ctor, name)
+  | _, _ -> None
+  end
+
+let load_fun_symbs (x: C.t) = 
+  ConstructorMap.of_seq @@ List.to_seq @@
+    List.filter_map load_packed_sfun_name @@ extract_list (fun x -> x) x
+
+let load_packed_sfun_arity (ctx : printing_ctx) (x: C.t)  = 
+  let _ = debug_pp @@ Pp.str "loading packed sfun arity:" in 
+  let _ = debug_pp @@ C.debug_print x in
   let f, es = C.destApp x  in 
   if equal_ctor f c_smt_psf || equal_ctor f c_smt_psr then 
     let args = extract_list (extract_sort ctx) es.(1) in 
@@ -592,8 +649,23 @@ let load_packed_sfun (ctx : printing_ctx) (x: C.t)  =
     let _ = Feedback.msg_debug @@ C.debug_print f in 
     raise @@ BadExpr "bad construct in load_packed_sfun"
 
+let load_fun_decl (ctx: printing_ctx) (x: C.t) : func_decl option = 
+  let l, r = extract_pair (fun x -> x) (fun x -> x) x in 
+  let lf, les = C.destApp l in 
+  let rf, res = C.destApp r in 
+  if equal_ctor rf c_smt_funinterp then 
+    let name = extract_str @@ a_last res in 
+    if equal_ctor lf c_smt_psf || equal_ctor lf c_smt_psr then 
+      let arg_tys = extract_list (extract_sort ctx) les.(1) in 
+      let ret_ty = extract_sort ctx les.(2) in 
+        Some {arg_tys; ret_ty; name}
+    else
+      None
+  else
+    None
+
 let load_arity (ctx: printing_ctx) (x: C.t) = 
-  let sfun, r = extract_pair (load_packed_sfun ctx) (fun x -> x) x in 
+  let sfun, r = extract_pair (load_packed_sfun_arity ctx) (fun x -> x) x in 
   begin match sfun with 
   | Inl x -> x
   | Inr x -> 
@@ -602,8 +674,16 @@ let load_arity (ctx: printing_ctx) (x: C.t) =
       (x, 0)
     else
       raise @@ BadExpr "expected fprim in load arity"
-
   end
+
+let load_fun_decls (ctx: printing_ctx) (x: C.t) = 
+  let worker x = 
+    begin match x with 
+    | Some fd -> Some (fd.name, fd)
+    | None -> None
+    end in 
+  StringMap.of_seq @@ List.to_seq @@ List.filter_map worker @@ extract_list (load_fun_decl ctx) x
+
 
 let load_fun_arity (ctx: printing_ctx) (x: C.t) = ConstructorMap.of_seq @@ List.to_seq @@ extract_list (load_arity ctx) x
 let load_fun_builtin (ctx: printing_ctx)  (x: C.t) = ConstructorMap.empty
@@ -616,7 +696,8 @@ let load_ctx (x: C.t) =
       let c_funs = a_last args in 
       let sorts_inds = load_ctx_sorts c_sorts in 
       let init_ctx = List.fold_left add_ctx_sort_ind empty_ctx sorts_inds in { init_ctx with
-        ctx_fun_symbs = load_fun_symbs init_ctx c_funs;
+        ctx_fun_decls = load_fun_decls init_ctx c_funs ;
+        ctx_fun_symbs = load_fun_symbs c_funs;
         ctx_fun_arity = load_fun_arity init_ctx c_funs ; 
         ctx_fun_builtin = load_fun_builtin init_ctx c_funs ; 
       }
@@ -631,12 +712,6 @@ let load_ctx (x: C.t) =
     let _ = Feedback.msg_debug @@ C.debug_print x in
     raise bedef
       
-
-let pretty_func_decl (fd: func_decl) : string = 
-  let prefix = Format.sprintf "(declare-fun %s (" fd.name in 
-  let args = String.concat " " @@ List.map pretty_sort fd.arg_tys in 
-  let suffix = Format.sprintf ") %s)" @@ pretty_sort fd.ret_ty in 
-    prefix ^ args ^ suffix
   
 
 let fun_symb_tbl : (Names.constructor, string) Hashtbl.t = Hashtbl.create 100
@@ -644,9 +719,13 @@ let fun_arity_tbl : (Names.constructor, int) Hashtbl.t = Hashtbl.create 100
 let fun_builtin_tbl : (Names.constructor, builtin_syms) Hashtbl.t = Hashtbl.create 5
 let fun_decl_tbl : (string, func_decl) Hashtbl.t = Hashtbl.create 5
 
+
+let init_fun_decls () = conv_str_tbl fun_decl_tbl
+
 let init_printing_ctx () = {
   ctx_sorts = init_sorts () ;
   ctx_inds = init_inds () ;
+  ctx_fun_decls = init_fun_decls ();
   ctx_fun_symbs = ConstructorMap.of_seq @@ Hashtbl.to_seq fun_symb_tbl ;
   ctx_fun_arity = ConstructorMap.of_seq @@ Hashtbl.to_seq fun_arity_tbl ;
   ctx_fun_builtin = ConstructorMap.of_seq @@ Hashtbl.to_seq fun_builtin_tbl ;
@@ -1037,9 +1116,6 @@ type query_opts =
     negate_toplevel : bool ;
   }
 
-let get_decls () = 
-  Hashtbl.to_seq_values fun_decl_tbl
-
 let in_map k mp = 
   begin match StringMap.find_opt mp k with 
   | Some _ -> true
@@ -1050,7 +1126,7 @@ let build_query (ctx: printing_ctx) (opts: query_opts) (e: C.t)  : string =
   let ind_sorts, us_sorts = List.partition (in_map ctx.ctx_inds) @@ custom_sorts ctx.ctx_sorts in 
   let us_decls = List.map (fun s -> Format.sprintf "(declare-sort %s 0)" s) us_sorts in 
   let ind_decls = List.map (fun s -> pretty_ind_decl s (StringMap.find s ctx.ctx_inds)) ind_sorts in 
-  let fun_decls = List.map pretty_func_decl @@ List.of_seq @@ get_decls () in 
+  let fun_decls = List.map pretty_func_decl @@ List.map snd @@ List.of_seq @@ StringMap.to_seq @@ ctx.ctx_fun_decls in 
   let prefix = String.concat "\n" @@ us_decls @ ind_decls @ fun_decls in 
   let q_str = if opts.refute_query then 
     Format.sprintf "(assert (not %s))" (pretty_fm ctx e) 
@@ -1194,6 +1270,8 @@ let load_printing_ctx (x: C.t) =
   let _ = debug_pp @@ Pp.str "loading ctx:" in 
   let _ = debug_ctx ctx in 
   let _ = Hashtbl.add_seq sort_tbl @@ ConstructorMap.to_seq ctx.ctx_sorts in 
+  let _ = Hashtbl.add_seq ind_tbl @@ StringMap.to_seq ctx.ctx_inds in 
+  let _ = Hashtbl.add_seq fun_decl_tbl @@ StringMap.to_seq ctx.ctx_fun_decls in
   let _ = Hashtbl.add_seq fun_symb_tbl @@ ConstructorMap.to_seq ctx.ctx_fun_symbs in 
   let _ = Hashtbl.add_seq fun_arity_tbl @@ ConstructorMap.to_seq ctx.ctx_fun_arity in 
   let _ = Hashtbl.add_seq fun_builtin_tbl @@ ConstructorMap.to_seq ctx.ctx_fun_builtin in 

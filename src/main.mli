@@ -47,6 +47,7 @@ module StringMap : (Map.S with type key = string)
 type printing_ctx = {
   ctx_sorts : Ms_sorts.srt_smt ConstructorMap.t ;
   ctx_inds : ind_decl StringMap.t;
+  ctx_fun_decls : func_decl StringMap.t;
   ctx_fun_symbs : string ConstructorMap.t ;
   ctx_fun_arity : int ConstructorMap.t ;
   ctx_fun_builtin : builtin_syms ConstructorMap.t ;

@@ -195,52 +195,17 @@ Section ListFuncs.
       (SMTSig.PSF sig _ _ app_f, FUninterp "app")
     ; (SMTSig.PSF sig _ _ rev_f, FUninterp "rev")
     ; (SMTSig.PSF sig _ _ len_f, FUninterp "len")
+    ; (SMTSig.PSF sig _ _ cons_A_f, FPrim (F_sym "cons"))
+    ; (SMTSig.PSF sig _ _ nil_A_f, FPrim (F_sym "nil"))
     ; (SMTSig.PSF sig _ _ tail_rev_f, FUninterp "tail_rev")
-    ; (SMTSig.PSR sig _ In_r, FUninterp "In")
+    ; (SMTSig.PSR sig _ sort_prop In_r, FUninterp "In")
     ; (SMTSig.PSF sig _ _ add_f, FPrim (F_sym "+"))
     ; (SMTSig.PSL sig Z _ _ z_const_f, FPrim IntLit)
   ]).
 
 
-
-  (* The inductive declaration puts "cons" and "nil" in scope as SMT function symbols, 
-    but the rest of our functions/relations still need to be declared. 
-    We do this with the RegisterSMTUF vernacular. 
-    The syntax for this vernacular is:
-
-    RegisterSMTUF "<function name>" sorts.
-
-    where sorts is a list of sort symbols, argument sorts followed by the return sort.
-  *)
-
-  RegisterSMTUF "app" sort_list_A sort_list_A sort_list_A.
-  RegisterSMTUF "rev" sort_list_A sort_list_A.
-  RegisterSMTUF "len" sort_list_A sort_Z.
-  RegisterSMTUF "tail_rev" sort_list_A sort_list_A sort_list_A.
-  RegisterSMTUF "In" sort_A sort_list_A sort_prop.
-
-  RegisterSMTFun cons_A_f "cons" 2.
-  RegisterSMTFun nil_A_f "nil" 0.
-  RegisterSMTFun app_f "app" 2.
-  RegisterSMTFun rev_f "rev" 1.
-  RegisterSMTFun tail_rev_f "tail_rev" 2.
-  RegisterSMTFun len_f "len" 1.
-  RegisterSMTFun In_r "In" 2.
-  RegisterSMTFun add_f "+" 2.
-
   (* Finally we need to handle integer literals *)
   RegisterSMTBuiltin z_const_f IntLit.
-
-  Definition printing_ctx : SMTSig.smt_sig sig := (SMTSig.MkSMTSig sig 
-    [   (sort_Z, SortBase SInt)
-      ; (sort_A, SortBase (SCustom "A"))
-      ; (sort_prop, SortBase SBool)
-      ; (sort_list_A, SortInd "A_list" (SICases [
-          ("cons"%string, [SISort (SCustom "A"); SIRec]%list) 
-        ; ("nil"%string, nil) 
-      ]))
-    ]
-    nil).
 
   Require Import MirrorSolve.Reflection.Tactics.
 
@@ -249,17 +214,7 @@ Section ListFuncs.
 
   Ltac check_goal_unsat := 
     match goal with 
-    | |- ?G => check_unsat_neg_func (SMTSig.MkSMTSig sig 
-    [   
-      (sort_Z, SortBase SInt)
-      ; (sort_A, SortBase (SCustom "A"))
-      ; (sort_prop, SortBase SBool)
-      ; (sort_list_A, SortInd "A_list" (SICases [
-          ("cons"%string, [SISort (SCustom "A"); SIRec]%list) 
-        ; ("nil"%string, nil) 
-      ]))
-    ]
-    nil) G; eapply UnsoundAxioms.interp_true
+    | |- ?G => check_unsat_neg G; eapply UnsoundAxioms.interp_true
     end.
 
   Create HintDb list_eqns.
@@ -289,8 +244,6 @@ Section ListFuncs.
     prep_proof;
     quote_reflect_list;
     check_goal_unsat.
-
-  Set MirrorSolve Debug.
 
   Lemma app_app_one : 
     forall (a: A) (l r : list_A), 

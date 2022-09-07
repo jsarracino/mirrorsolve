@@ -179,21 +179,27 @@ Section ListFuncs.
   *)
   Definition match_tacs' := ((is_z_term, tacLit sig fm_model z_lit (fun x => (sort_Z; x)) (fun x _ => (sort_Z; TFun sig (z_const_f x) hnil)) ltac:(solve_lit_wf)) :: match_tacs)%list.
 
-  (* The section variable A is an uninterpreted sort in SMT. *)
-  RegisterCustomSort sort_A "A".
 
+  Require MirrorSolve.SMTSig.
+
+  Mirror Load Ctx (SMTSig.MkSMTSig sig 
+  [   (sort_Z, SortBase SInt)
+    ; (sort_A, SortBase (SCustom "A"))
+    ; (sort_prop, SortBase SBool)
+    ; (sort_list_A, SortInd "A_list" (SICases [
+        ("cons"%string, [SISort (SCustom "A"); SIRec]%list) 
+      ; ("nil"%string, nil) 
+    ]))
+  ]
+  nil).
   (*  The inductive sort list A maps to an inductive smt sort,
       specified as a sum (coq list) of products (also a coq list),
       with cons and nil constructors.
   *)
-  RegisterSMTInd sort_list_A (SICases [
+  (* RegisterSMTInd sort_list_A (SICases [
       ("cons"%string, [SISort (SCustom "A"); SIRec]%list) (* This declares an smt constructor named cons with an "A" argument and a recursive argument (i.e. the inner list) *)
     ; ("nil"%string, nil) (* This declares an smt constructor named nil with no arguments *)
-  ]) "A_list".
-
-  (* Map the Z sort to SMT Int, and the bool sort to SMT bool *)
-  RegisterSMTSort sort_Z SInt.
-  RegisterSMTSort sort_prop SBool.
+  ]) "A_list". *)
 
   (* The inductive declaration puts "cons" and "nil" in scope as SMT function symbols, 
     but the rest of our functions/relations still need to be declared. 
@@ -223,6 +229,17 @@ Section ListFuncs.
   (* Finally we need to handle integer literals *)
   RegisterSMTBuiltin z_const_f IntLit.
 
+  Definition printing_ctx : SMTSig.smt_sig sig := (SMTSig.MkSMTSig sig 
+    [   (sort_Z, SortBase SInt)
+      ; (sort_A, SortBase (SCustom "A"))
+      ; (sort_prop, SortBase SBool)
+      ; (sort_list_A, SortInd "A_list" (SICases [
+          ("cons"%string, [SISort (SCustom "A"); SIRec]%list) 
+        ; ("nil"%string, nil) 
+      ]))
+    ]
+    nil).
+
   Require Import MirrorSolve.Reflection.Tactics.
 
   Transparent denote_tm.
@@ -230,7 +247,17 @@ Section ListFuncs.
 
   Ltac check_goal_unsat := 
     match goal with 
-    | |- ?G => check_unsat_neg_func G G; eapply UnsoundAxioms.interp_true
+    | |- ?G => check_unsat_neg_func (SMTSig.MkSMTSig sig 
+    [   
+      (sort_Z, SortBase SInt)
+      ; (sort_A, SortBase (SCustom "A"))
+      ; (sort_prop, SortBase SBool)
+      ; (sort_list_A, SortInd "A_list" (SICases [
+          ("cons"%string, [SISort (SCustom "A"); SIRec]%list) 
+        ; ("nil"%string, nil) 
+      ]))
+    ]
+    nil) G; eapply UnsoundAxioms.interp_true
     end.
 
   Create HintDb list_eqns.
@@ -260,6 +287,8 @@ Section ListFuncs.
     prep_proof;
     quote_reflect_list;
     check_goal_unsat.
+
+  Set MirrorSolve Debug.
 
   Lemma app_app_one : 
     forall (a: A) (l r : list_A), 

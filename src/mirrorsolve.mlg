@@ -281,6 +281,15 @@ VERNAC COMMAND EXTEND InterpCmd CLASSIFIED AS QUERY
   }
 END
 
+VERNAC COMMAND EXTEND InterpCmd CLASSIFIED AS QUERY
+| [ "Mirror" "Load" "Ctx" constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let (sigma', e') = Constrintern.interp_constr_evars env sigma e in 
+    Main.load_printing_ctx (EConstr.to_constr sigma' e')
+  }
+END
+
 TACTIC EXTEND DebugMemory
 | ["print_mem"] ->  {
   let stats = Gc.stat () in
@@ -300,6 +309,7 @@ TACTIC EXTEND DebugMemory
   Proofview.tclUNIT ()
 }
 END
+
 
 
 TACTIC EXTEND MapHintTbl 

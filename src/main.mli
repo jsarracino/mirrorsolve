@@ -46,6 +46,7 @@ module StringMap : (Map.S with type key = string)
 
 type printing_ctx = {
   ctx_sorts : Ms_sorts.srt_smt ConstructorMap.t ;
+  ctx_inds : ind_decl StringMap.t;
   ctx_fun_symbs : string ConstructorMap.t ;
   ctx_fun_arity : int ConstructorMap.t ;
   ctx_fun_builtin : builtin_syms ConstructorMap.t ;
@@ -101,3 +102,5 @@ val set_backend_solver : string -> unit
 val set_smt_language : string -> unit
 
 val reg_ind_decl : string -> EConstr.t -> EConstr.t -> unit
+
+val load_printing_ctx : Constr.t -> unit

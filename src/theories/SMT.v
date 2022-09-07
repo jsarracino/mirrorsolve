@@ -18,11 +18,13 @@ Inductive smt_ind :=
 
 Inductive smt_sort := 
   | SortBase : smt_sort_base -> smt_sort 
-  | SortInd : smt_ind -> smt_sort.
+  | SortInd : string -> smt_ind -> smt_sort.
 
 Register SIRec as ms.core.smt_ind_rec.
 Register SISort as ms.core.smt_ind_sort.
 Register SICases as ms.core.smt_ind_cases. 
+Register SortBase as ms.core.smt_sort_base.
+Register SortInd as ms.core.smt_sort_ind.
 
 Inductive smt_fun_base := 
   | F_sym : string -> smt_fun_base

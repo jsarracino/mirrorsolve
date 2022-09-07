@@ -95,9 +95,9 @@ let c_unit () = get_coq "core.unit.tt"
 
 let c_vhere () = get_coq "ms.core.vhere"
 let c_vthere () = get_coq "ms.core.vthere"
-let c_int_sort = get_coq "ms.core.smt_int"
-let c_bool_sort = get_coq "ms.core.smt_bool"
-let c_bv_sort () = get_coq "ms.bv.smt_bv"
+let c_int_sort () = get_coq "ms.core.smt_int"
+let c_bool_sort () = get_coq "ms.core.smt_bool"
+let c_bv_sort () = get_coq "ms.core.smt_bv"
 let c_cust_sort () = get_coq "ms.core.smt_custom"
 
 let c_si_rec = get_coq "ms.core.smt_ind_rec"
@@ -121,6 +121,11 @@ let c_char_ctor = get_coq "core.ascii.ascii"
 
 let c_str_cons = get_coq "core.string.string"
 let c_str_nil = get_coq "core.string.empty"
+
+let c_mk_smt_sig () = get_coq "ms.smt.mk_smt_sig"
+
+let c_smt_sort_base () = get_coq "ms.core.smt_sort_base"
+let c_smt_sort_ind () = get_coq "ms.core.smt_sort_ind"
 
 
 let equal_ctor (l: C.t) (r: unit -> C.t) : bool = 
@@ -261,6 +266,37 @@ let rec extract_str_list (e: C.t) : char list =
 let extract_str (e: C.t) : string = 
   String.of_seq @@ List.to_seq @@ extract_str_list e
 
+let rec extract_list (inner: C.t -> 'a) (e: C.t) : 'a list =
+  if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    if equal_ctor f c_cons then
+      let v = inner es.(Array.length es - 2) in
+      let vs = extract_list inner (a_last es) in  
+        v :: vs
+    else if equal_ctor f c_nil then []
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected cons and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print f) in
+      raise @@ BadExpr "expected cons in extract_list"
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected nil/cons and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+    raise @@ BadExpr "expected nil/cons in extract_list"
+
+let extract_pair (l: C.t -> 'a) (r: C.t -> 'b) (x: C.t) : 'a * 'b = 
+  if C.isApp x then 
+    let f, es = C.destApp x in 
+    if equal_ctor f c_pair then 
+      l es.(Array.length es - 2), r (a_last es)
+    else
+      let _ = Feedback.msg_debug (Pp.str "Expected pair constructor and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print f) in
+      raise @@ BadExpr "expected pair constructor in extract_pair"
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected an app and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print x) in
+    raise @@ BadExpr "expected app in extract_pair"
+
 open Ms_sorts
 
 type func_decl = {
@@ -271,11 +307,11 @@ type func_decl = {
 
   let conv_sort (e: C.t) (args: C.t Array.t) : srt_smt option = 
     if equal_ctor e c_cust_sort then Some (Custom_sort (extract_str @@ a_last args))
-    else if equal_ctor e (fun _ -> c_int_sort) then Some Smt_int 
-    else if equal_ctor e (fun _ -> c_bool_sort) then Some Smt_bool
+    else if equal_ctor e c_int_sort then Some Smt_int 
+    else if equal_ctor e c_bool_sort then Some Smt_bool
     else if equal_ctor e c_bv_sort then Some (Smt_bv None)
     else 
-      let _ = Feedback.msg_debug @@ Pp.str "unhanded case for:" in 
+      let _ = Feedback.msg_debug @@ Pp.str "unhandled case for:" in 
       let _ = Feedback.msg_debug @@ Constr.debug_print e in 
       None
 
@@ -285,6 +321,14 @@ module ConstructorMap = Map.Make ( struct
     let env = Global.env() in 
     Environ.QConstruct.compare env l r
 end) ;;
+
+(* let prim_sort_tbl : (Names.constructor, srt_smt) Hashtbl.t = 
+  let worker x = fst @@ C.destConstruct @@ x () in 
+  Hashtbl.of_seq @@ List.to_seq @@ [
+      (worker c_bv_sort, Smt_bv None)
+    ; (worker c_int_sort, Smt_int)
+    ; (worker c_bool_sort, Smt_bool)
+  ] *)
 
 let sort_tbl : (Names.constructor, srt_smt) Hashtbl.t = 
   Hashtbl.create 5 
@@ -348,6 +392,11 @@ let pretty_ind_decl (name: string) (decl: ind_decl) =
 let debug_tbl (tbl : ('a, 'b) Hashtbl.t) (printer: 'a -> 'b -> Pp.t) : Pp.t = 
   Pp.pr_vertical_list (fun (x, y) -> printer x y) @@ List.of_seq @@ Hashtbl.to_seq tbl
 
+let debug_constr_map (tbl : 'v ConstructorMap.t) (printer: ConstructorMap.key -> 'v -> Pp.t) : Pp.t = 
+  Pp.pr_vertical_list (fun (x, y) -> printer x y) @@ List.of_seq @@ ConstructorMap.to_seq tbl
+
+let debug_string_map (tbl : 'v StringMap.t) (printer: StringMap.key -> 'v -> Pp.t) : Pp.t = 
+  Pp.pr_vertical_list (fun (x, y) -> printer x y) @@ List.of_seq @@ StringMap.to_seq tbl
 
 type builtin_syms = 
   | Smt_int_lit
@@ -370,10 +419,153 @@ let builtin_arity (b: builtin_syms) =
 
 type printing_ctx = {
   ctx_sorts : Ms_sorts.srt_smt ConstructorMap.t ;
+  ctx_inds : ind_decl StringMap.t ;
   ctx_fun_symbs : string ConstructorMap.t ;
   ctx_fun_arity : int ConstructorMap.t ;
   ctx_fun_builtin : builtin_syms ConstructorMap.t ;
 }
+
+let empty_ctx = {
+  ctx_sorts = ConstructorMap.empty ;
+  ctx_inds = StringMap.empty ;
+  ctx_fun_symbs = ConstructorMap.empty;
+  ctx_fun_arity = ConstructorMap.empty ;
+  ctx_fun_builtin = ConstructorMap.empty ;
+}
+
+let debug_ctx (ctx: printing_ctx) = 
+  let worker_c f = (fun k v -> 
+      Pp.(++) (Pp.(++) (C.debug_print @@ C.mkConstruct k) (Pp.str " |-> ")) (Pp.str @@ f v)
+    ) in
+  let worker_str = (fun k v -> 
+      Pp.(++) (Pp.(++) (Pp.str k) (Pp.str " |-> ")) (Pp.str @@ pretty_ind_decl k v)
+    ) in
+  let _ = Feedback.msg_debug @@ Pp.str "ctx_sorts:" in 
+  let _ = Feedback.msg_debug @@ debug_constr_map ctx.ctx_sorts (worker_c pretty_sort) in 
+  let _ = Feedback.msg_debug @@ Pp.str "ctx_inds:" in 
+  let _ = Feedback.msg_debug @@ debug_string_map ctx.ctx_inds worker_str in 
+  let _ = Feedback.msg_debug @@ Pp.str "ctx_fun_symbs:" in 
+  let _ = Feedback.msg_debug @@ debug_constr_map ctx.ctx_fun_symbs (worker_c (fun x -> x)) in 
+  let _ = Feedback.msg_debug @@ Pp.str "ctx_fun_arity:" in 
+  let _ = Feedback.msg_debug @@ debug_constr_map ctx.ctx_fun_arity (worker_c string_of_int) in 
+  let _ = Feedback.msg_debug @@ Pp.str "ctx_fun_builtin:" in 
+  let _ = Feedback.msg_debug @@ debug_constr_map ctx.ctx_fun_builtin (worker_c pretty_builtin) in 
+    ()
+
+
+let extract_ind_base (base: srt_smt) (e: C.t) = 
+  let _ = debug_pp @@ Pp.str "extracting ind base from:" in
+  let _ = debug_pp @@ Constr.debug_print e in  
+  if C.isApp e then 
+    (* SISort <sort> *)
+    let f, es = C.destApp e in 
+    let ctor, args = C.destApp @@ a_last es in 
+    begin match conv_sort ctor args with 
+    | Some s -> s
+    | None -> 
+      let _ = Feedback.msg_debug @@ Pp.str "couldn't convert sort for:" in 
+      let _ = Feedback.msg_debug @@ Constr.debug_print @@ a_last es in 
+      raise bedef
+    end
+  else
+    if e = c_si_rec then base else
+      let _ = Feedback.msg_debug (Pp.str "Expected smt_ind_base and got:") in
+      let _ = Feedback.msg_debug (Constr.debug_print e) in
+        raise bedef
+
+let extract_ind_case (base: srt_smt) (e: C.t) : string * srt_smt list =
+    (* the overall structure is string * list sort *)
+  let _ = debug_pp @@ Pp.str "extracting ind case..." in 
+  if C.isApp e then 
+    let _, es = C.destApp e in 
+    let args = extract_list (extract_ind_base base) (a_last es) in 
+    let cname = extract_str (es.(Array.length es - 2)) in 
+      cname, args
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected app in ind_case and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise bedef
+
+let extract_ind_decl (base: srt_smt) (e: C.t) = 
+  let _ = debug_pp @@ Pp.str "extracting ind decl..." in 
+  if C.isApp e then 
+    (* SICases <cases> *)
+    let _, es = C.destApp e in 
+    Ind_decl (extract_list (extract_ind_case base) (a_last es))
+  else
+    let _ = Feedback.msg_debug (Pp.str "Expected app in extract_ind_decl and got:") in
+    let _ = Feedback.msg_debug (Constr.debug_print e) in
+      raise bedef
+
+(* extract a member of SMT.v:smt_sort *)
+let extract_smt_srt x = 
+  let f, es = C.destApp x in 
+  if equal_ctor f c_smt_sort_base then 
+    let inner = a_last es in 
+    if C.isApp inner then 
+      let f, args = C.destApp inner in
+        Inl (conv_sort f args)
+    else
+      Inl (conv_sort inner [||])
+  else if equal_ctor f c_smt_sort_ind then
+    let name = extract_str es.(0) in 
+    Inr (name, extract_ind_decl (Custom_sort name) @@ a_last es)
+  else
+    raise bedef
+
+
+let load_ctx_sort (x: C.t)  = 
+  let extract_ctor x = 
+    if C.isConstruct x then 
+      fst (C.destConstruct x)
+    else raise @@ BadExpr "expected construct in extract_ctor" in
+  extract_pair extract_ctor extract_smt_srt x
+let load_ctx_sorts (x: C.t) = 
+  let _ = debug_pp @@ Pp.str "loading ctx from:" in 
+  let _ = debug_pp @@ C.debug_print x in 
+    extract_list load_ctx_sort x
+
+let add_ctx_sort_ind (ctx: printing_ctx) (kv: (ConstructorMap.key * (srt_smt option, string * ind_decl) sum)) : printing_ctx = 
+  let k, ov = kv in 
+  begin match ov with 
+  | Inl (Some srt) -> { ctx with 
+      ctx_sorts = ConstructorMap.add k srt ctx.ctx_sorts
+    }
+  | Inr (name, i_decl) -> { ctx with 
+      ctx_sorts = ConstructorMap.add k (Custom_sort name) ctx.ctx_sorts ;
+      ctx_inds = StringMap.add name i_decl ctx.ctx_inds ;
+    }
+  | _ -> raise bedef
+  end
+
+let load_fun_symbs (x: C.t) = ConstructorMap.empty
+let load_fun_arity (x: C.t) = ConstructorMap.empty
+let load_fun_builtin (x: C.t) = ConstructorMap.empty
+
+let load_ctx (x: C.t) = 
+  if C.isApp x then 
+    let f, args = C.destApp x in 
+    if equal_ctor f c_mk_smt_sig then 
+      let c_sorts = args.(Array.length args - 2) in 
+      let c_funs = a_last args in 
+      let sorts_inds = load_ctx_sorts c_sorts in 
+      let init_ctx = List.fold_left add_ctx_sort_ind empty_ctx sorts_inds in { init_ctx with
+        ctx_fun_symbs = load_fun_symbs c_funs;
+        ctx_fun_arity = load_fun_arity c_funs ; 
+        ctx_fun_builtin = load_fun_builtin c_funs ; 
+      }
+    else
+      let _ = Feedback.msg_debug @@ Pp.str "unexpected smt_sig builder in load_ctx:" in
+      let _ = Feedback.msg_debug @@ C.debug_print f in
+      let _ = Feedback.msg_debug @@ Pp.str "actual builder is:" in
+      let _ = Feedback.msg_debug @@ C.debug_print (c_mk_smt_sig () ) in
+      raise bedef
+  else
+    let _ = Feedback.msg_debug @@ Pp.str "unexpected ctx in load_ctx:" in
+    let _ = Feedback.msg_debug @@ C.debug_print x in
+    raise bedef
+      
+
 
 let lookup_ctx_sort ctx x = ConstructorMap.find_opt x ctx.ctx_sorts
 let lookup_ctx_symb ctx x = ConstructorMap.find_opt x ctx.ctx_fun_symbs
@@ -389,11 +581,7 @@ let extract_prim_sort (ctx: printing_ctx) (e: C.t) =
       | None ->
         let _ = Feedback.msg_debug (Pp.str "Expected sort and got:") in
         let _ = Feedback.msg_debug (Constr.debug_print e) in
-        let _ = Feedback.msg_debug @@ Pp.str "sorts:" in 
-        let _ = Feedback.msg_debug @@ debug_tbl sort_tbl @@ 
-          (fun k v -> 
-            Pp.(++) (Pp.(++) (C.debug_print e) (Pp.str " |-> ")) (Pp.str @@ pretty_sort v)
-          ) in 
+        let _ = debug_ctx ctx in 
         raise @@ BadExpr "unexpected constructor for sorts (see debug)"   
       end 
   else
@@ -425,11 +613,11 @@ let fun_decl_tbl : (string, func_decl) Hashtbl.t = Hashtbl.create 5
 
 let init_printing_ctx () = {
   ctx_sorts = init_sorts () ;
+  ctx_inds = init_inds () ;
   ctx_fun_symbs = ConstructorMap.of_seq @@ Hashtbl.to_seq fun_symb_tbl ;
   ctx_fun_arity = ConstructorMap.of_seq @@ Hashtbl.to_seq fun_arity_tbl ;
   ctx_fun_builtin = ConstructorMap.of_seq @@ Hashtbl.to_seq fun_builtin_tbl ;
 }
-
 
 let lookup_symb = Hashtbl.find_opt fun_symb_tbl
 
@@ -524,69 +712,6 @@ let rec extract_ctx (e: C.t) : C.t list =
     let _ = Feedback.msg_debug (Pp.str (Format.sprintf "Expected snoc/nil and got:")) in
     let _ = Feedback.msg_debug (Constr.debug_print e) in
     raise @@ BadExpr "expected csnoc/cnil inside ctx list"
-
-let rec extract_list (inner: C.t -> 'a) (e: C.t) : 'a list =
-  if C.isApp e then 
-    let (f, es) = C.destApp e in 
-    if equal_ctor f c_cons then
-      let v = inner es.(Array.length es - 2) in
-      let vs = extract_list inner (a_last es) in  
-        v :: vs
-    else if equal_ctor f c_nil then []
-    else
-      let _ = Feedback.msg_debug (Pp.str "Expected cons and got:") in
-      let _ = Feedback.msg_debug (Constr.debug_print f) in
-      raise @@ BadExpr "expected cons in extract_list"
-  else
-    let _ = Feedback.msg_debug (Pp.str "Expected nil/cons and got:") in
-    let _ = Feedback.msg_debug (Constr.debug_print e) in
-    raise @@ BadExpr "expected nil/cons in extract_list"
-
-
-
-let extract_ind_base (base: srt_smt) (e: C.t) = 
-  let _ = debug_pp @@ Pp.str "extracting ind base from:" in
-  let _ = debug_pp @@ Constr.debug_print e in  
-  if C.isApp e then 
-    (* SISort <sort> *)
-    let f, es = C.destApp e in 
-    let ctor, args = C.destApp @@ a_last es in 
-    begin match conv_sort ctor args with 
-    | Some s -> s
-    | None -> 
-      let _ = Feedback.msg_debug @@ Pp.str "couldn't convert sort for:" in 
-      let _ = Feedback.msg_debug @@ Constr.debug_print @@ a_last es in 
-      raise bedef
-    end
-  else
-    if e = c_si_rec then base else
-      let _ = Feedback.msg_debug (Pp.str "Expected smt_ind_base and got:") in
-      let _ = Feedback.msg_debug (Constr.debug_print e) in
-        raise bedef
-
-let extract_ind_case (base: srt_smt) (e: C.t) : string * srt_smt list =
-    (* the overall structure is string * list sort *)
-  let _ = debug_pp @@ Pp.str "extracting ind case..." in 
-  if C.isApp e then 
-    let _, es = C.destApp e in 
-    let args = extract_list (extract_ind_base base) (a_last es) in 
-    let cname = extract_str (es.(Array.length es - 2)) in 
-      cname, args
-  else
-    let _ = Feedback.msg_debug (Pp.str "Expected app in ind_case and got:") in
-    let _ = Feedback.msg_debug (Constr.debug_print e) in
-      raise bedef
-
-let extract_ind_decl (base: srt_smt) (e: C.t) = 
-  let _ = debug_pp @@ Pp.str "extracting ind decl..." in 
-  if C.isApp e then 
-    (* SICases <cases> *)
-    let _, es = C.destApp e in 
-    Ind_decl (extract_list (extract_ind_case base) (a_last es))
-  else
-    let _ = Feedback.msg_debug (Pp.str "Expected app in extract_ind_decl and got:") in
-    let _ = Feedback.msg_debug (Constr.debug_print e) in
-      raise bedef
 
 let rec c_n_tuple_to_bools (e: C.t) : bool list =
   if e = c_unit () then []
@@ -889,11 +1014,9 @@ let in_map k mp =
   end
 
 let build_query (ctx: printing_ctx) (opts: query_opts) (e: C.t)  : string = 
-  let sorts = init_sorts () in 
-  let inds = init_inds () in  
-  let ind_sorts, us_sorts = List.partition (in_map inds) @@ custom_sorts sorts in 
+  let ind_sorts, us_sorts = List.partition (in_map ctx.ctx_inds) @@ custom_sorts ctx.ctx_sorts in 
   let us_decls = List.map (fun s -> Format.sprintf "(declare-sort %s 0)" s) us_sorts in 
-  let ind_decls = List.map (fun s -> pretty_ind_decl s (StringMap.find s inds)) ind_sorts in 
+  let ind_decls = List.map (fun s -> pretty_ind_decl s (StringMap.find s ctx.ctx_inds)) ind_sorts in 
   let fun_decls = List.map pretty_func_decl @@ List.of_seq @@ get_decls () in 
   let prefix = String.concat "\n" @@ us_decls @ ind_decls @ fun_decls in 
   let q_str = if opts.refute_query then 
@@ -912,7 +1035,7 @@ let dump_query (ctx: printing_ctx) (e: EConstr.t) : unit =
 let rec check_interp ?(ctx_e  = None) (e: C.t) (negate_toplevel: bool) : string = 
   let ctx = 
     begin match ctx_e with 
-    | Some _ 
+    | Some ctx_e -> load_ctx ctx_e
     | None -> init_printing_ctx () 
     end in 
   if C.isApp e then 
@@ -1032,3 +1155,11 @@ let reg_ind_decl (name: string) (ctor_e: EConstr.t) (ind_decl_e : EConstr.t) : u
   let _ = debug_pp @@ Pp.str "extracting decl now" in 
   let decl = extract_ind_decl (Custom_sort name) ind_e in 
   add_ind name ctor decl
+
+let load_printing_ctx (x: C.t) = 
+  let ctx = load_ctx x in 
+  let _ = Hashtbl.add_seq sort_tbl @@ ConstructorMap.to_seq ctx.ctx_sorts in 
+  let _ = Hashtbl.add_seq fun_symb_tbl @@ ConstructorMap.to_seq ctx.ctx_fun_symbs in 
+  let _ = Hashtbl.add_seq fun_arity_tbl @@ ConstructorMap.to_seq ctx.ctx_fun_arity in 
+  let _ = Hashtbl.add_seq fun_builtin_tbl @@ ConstructorMap.to_seq ctx.ctx_fun_builtin in 
+  ()

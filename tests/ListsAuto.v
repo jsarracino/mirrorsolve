@@ -191,15 +191,17 @@ Section ListFuncs.
       ; ("nil"%string, nil) 
     ]))
   ]
-  nil).
-  (*  The inductive sort list A maps to an inductive smt sort,
-      specified as a sum (coq list) of products (also a coq list),
-      with cons and nil constructors.
-  *)
-  (* RegisterSMTInd sort_list_A (SICases [
-      ("cons"%string, [SISort (SCustom "A"); SIRec]%list) (* This declares an smt constructor named cons with an "A" argument and a recursive argument (i.e. the inner list) *)
-    ; ("nil"%string, nil) (* This declares an smt constructor named nil with no arguments *)
-  ]) "A_list". *)
+  [
+      (SMTSig.PSF sig _ _ app_f, FUninterp "app")
+    ; (SMTSig.PSF sig _ _ rev_f, FUninterp "rev")
+    ; (SMTSig.PSF sig _ _ len_f, FUninterp "len")
+    ; (SMTSig.PSF sig _ _ tail_rev_f, FUninterp "tail_rev")
+    ; (SMTSig.PSR sig _ In_r, FUninterp "In")
+    ; (SMTSig.PSF sig _ _ add_f, FPrim (F_sym "+"))
+    ; (SMTSig.PSL sig Z _ _ z_const_f, FPrim IntLit)
+  ]).
+
+
 
   (* The inductive declaration puts "cons" and "nil" in scope as SMT function symbols, 
     but the rest of our functions/relations still need to be declared. 

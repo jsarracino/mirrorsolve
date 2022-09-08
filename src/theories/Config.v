@@ -19,12 +19,18 @@ Definition map_with_index {A B} (f: nat -> A -> B) (xs: list A) : list B :=
 Require MirrorSolve.Reflection.Core.
 Require Import MirrorSolve.Utils.
 
+(* Given a substitution key-value, if the LHS is a Coq variable, increment the DB indexing.
+   This is useful when substituting under a product.
+*)
 Definition inc_var : term * term -> term * term := fun '(k, v) => 
   match k with 
   | tRel n => (tRel (S n), v)
   | _ => (k, v)
   end.
 
+(* Given an environment of key-value substitutions, replace all LHS with the correpsonding RHS.
+   Adjusts variable DB indices in the keys as it goes (i.e. to correctly substitute under binders)
+*)
 Fixpoint subst_terms (env: list (term * term)) (t: term) := 
   match find _ _ Core.eq_term t env with 
   | Some t' => t'
@@ -38,6 +44,8 @@ Fixpoint subst_terms (env: list (term * term)) (t: term) :=
     end
   end.
 
+(* Some monadic operations but for the TemplateMonad
+ *)
 Polymorphic Fixpoint sequence {A} (acts: list (TemplateMonad A)) : TemplateMonad (list A) := 
   match acts with 
   | [] => tmReturn []
@@ -56,12 +64,18 @@ Polymorphic Definition fmap {A B} (f: A -> B) (t: TemplateMonad A) : TemplateMon
 Polymorphic Definition liftM {A B} (f: A -> B) : A -> TemplateMonad B := 
   fun a => tmReturn (f a).
 
+(* Quote a term twice, i.e. get a term that corresponds to the quoted term of x.
+   This is useful for writing metafunctions (e.g. generating the branches of a term match statement)
+*)
 Polymorphic Definition tmQuote2 {X} (x: X) := 
   tmQuote x >>= tmQuote.
 
+(* not sure why I need this? *)
 Polymorphic Definition make_ind_ctor (ind: inductive) (u: Instance.t) (idx: nat) (x: constructor_body) : term := 
-    tConstruct ind idx u.
+  tConstruct ind idx u.
 
+(* given a list of terms, return a term that when evaluated, will produce a list of unquoted terms
+ *)
 Polymorphic Fixpoint make_list {A} (ts: list term) : TemplateMonad term := 
   match ts with 
   | nil => 
@@ -74,24 +88,24 @@ Polymorphic Fixpoint make_list {A} (ts: list term) : TemplateMonad term :=
     tmQuote (v :: vs)
   end.
 
-
 Require Import MirrorSolve.FirstOrder.
 
 Section Config.
 
   Set Universe Polymorphism.
 
+  (* Helper functions for building sort inductives *)
+
   Definition mk_ctor_body (x: ident) : constructor_body := {| 
     cstr_name := "sort_" ++ x;
     cstr_args := [];
     cstr_indices := [];
-    cstr_type := tRel 0;
+    cstr_type := tRel 0; (* The parent type (i.e. sorts) *)
     cstr_arity := 0;
   |}.
 
   MetaCoq Quote Definition set_term := (Set).
   MetaCoq Quote Definition typ_term := (Type@{sorts_level}).
-
 
   Definition sorts_one_body (names: list ident) : one_inductive_body := {|
     ind_name := "sorts";
@@ -118,6 +132,10 @@ Section Config.
   Definition mk_sorts_ctor (ind: inductive) (u: Instance.t) (i: nat) (name: ident) : term := 
     tConstruct ind i u.
 
+  (* Given a list of names for sorts, make an inductive type with constructors for each name.
+    e.g. add_sorts ["bool"; "int"] adds an inductive sorts := sort_bool | sort_int, 
+    and returns terms for the new constructors e.g. [sort_bool; sort_int]
+  *)
   Definition add_sorts (names: list ident) : TemplateMonad (list term) := 
     tmMkInductive' (sorts_body names) ;;
     tmPrint "added inductive definition for sorts" ;;
@@ -128,6 +146,9 @@ Section Config.
     | _ => tmFail "sorts is not an inductive!"
     end.
 
+  (* helper functions for building the semantics of sorts 
+  *)
+
   MetaCoq Quote Definition t_bool := (bool).
   MetaCoq Quote Definition t_prop := (Prop).
 
@@ -136,6 +157,7 @@ Section Config.
     bbody := if Core.eq_term r t_prop then t_bool else r
   |}.
 
+  (* packed types for opaque hlists, so that end-users can combine different functions in the same list *)
   Definition packed := {T & T}.
   Notation pack x := (existT _ _ x).
 
@@ -153,6 +175,8 @@ Section Config.
   Definition tm_make_interp_branches_p (xs: list packed) : TemplateMonad (list (branch term)) := 
     mapM do_one_branch xs.
 
+  (* Quote and destruct a type as an inductive, 
+     and return the quoted term as well as the inductive *)
   Definition quote_dest_ind (t: Type) := 
     sorts_term <- tmQuote t ;;
     match sorts_term with 
@@ -162,6 +186,19 @@ Section Config.
       tmPrint sorts_term ;;
       tmFail "bad sort input"
     end.
+
+  (* Given a list of quoted RHS types, as well as a type for inductive sorts, 
+    add an interpretation function "interp_sorts" which evaluates each constructor of sorts to the corresponding RHS type
+    e.g. if sorts := sort_bool | sort_int, then
+       add_interp_sorts [quote bool; quote Z] sorts 
+
+       adds a definition:
+       Definition interp_sorts (x: sorts) := 
+        match x with 
+        | sort_bool => bool
+        | sort_int => Z
+        end.
+    *)
 
   Definition add_interp_sorts (tys: list term) (sorts: Type) := 
     '(sort_term, ind) <- quote_dest_ind sorts ;;
@@ -183,6 +220,8 @@ Section Config.
         brs
       )
     ).
+
+  (* similar to above but take packed types as input (instead of quoted types, e.g. pack Z) *)
 
   Definition add_interp_sorts_p (tys: list packed) (sorts: Type) := 
     '(sort_term, ind) <- quote_dest_ind sorts ;;
@@ -207,6 +246,7 @@ Section Config.
 
   Require Coq.Strings.BinaryString.
 
+  (* helper functions for syntax and semantics of function symbols *)
   Definition n_to_str (n: nat) : string := 
     BinaryString.of_nat n.
 
@@ -263,8 +303,15 @@ Section Config.
     cstr_arity := 0;
   |}.
 
-  Definition funs_one_body (z_index: option term) (t_nil : term) (fun_args_term: term) (fun_ret_term: term)
-  (names: list ident) (indices: list (list term)) (funs_type: term) : one_inductive_body := {|
+  Definition funs_one_body 
+    (z_index: option term) (* index for Z, Z constants are special-cased *)
+    (t_nil : term) (* quoted nil, needs to be passed due to universe stuff *)
+    (fun_args_term: term) (* quoted type of args *)
+    (fun_ret_term: term) (* quoted type of ret *)
+    (names: list ident)  (* names for each of the function symbols *)
+    (indices: list (list term)) (* args + return type indices for individual symbols *)
+    (funs_type: term) (* overall type of function symbols *)
+    : one_inductive_body := {|
     ind_name := "fol_funs";
     ind_indices := [ {| 
         decl_name := (mkBindAnn nAnon Relevant);
@@ -287,6 +334,7 @@ Section Config.
     ind_relevance := Relevant
   |}.
 
+  (* same arguments as above *)
   Definition funs_body (z_index : option term) (t_nil: term) (funs_arg_term : term) (funs_ret_term: term) (names: list ident) (indices: list (list term)) (funs_type : term) : mutual_inductive_body := {| 
     ind_finite := Finite;
     ind_npars := 0;
@@ -298,6 +346,7 @@ Section Config.
     ind_variance := None;
   |}.
 
+  (* analogous arguments as for *)
   Definition rel_one_body (rel_args_term: term)
   (names: list ident) (indices: list (list term)) (rel_type: term) : one_inductive_body := {|
     ind_name := "fol_rels";
@@ -326,14 +375,16 @@ Section Config.
     ind_variance := None;
   |}.
 
+  (* get the type of a global constant (possibly crashes for inductives) *)
   Definition get_typ (x: global_decl) := 
     match x with 
     | ConstantDecl body => body.(cst_type)
     | InductiveDecl mind => hole
     end.
-  
- 
 
+  (* flatten a quoted product type into a list of individual terms, e.g.
+    normalize_sort_term (quote (bool -> Z -> Z)) => [quote bool; quote Z; quote Z]
+  *)
   Fixpoint normalize_sort_term (t: term) : list term := 
     match t with 
     | tProd _ ty bod => normalize_sort_term ty ++ normalize_sort_term bod
@@ -349,6 +400,7 @@ Section Config.
 
   Require Import MirrorSolve.Utils.
   Import KernameComp.
+  (* compare two kernal names for quality *)
   Definition kername_eqb l r :=
     match compare l r with 
     | Eq => true
@@ -360,6 +412,9 @@ Section Config.
 
   Definition should_filter (k: kername) := inb _ kername_eqb k [eq_kname; pos_kname].
 
+  (* Get the sorts in a list of declarations. 
+     Discard eq and positive because they are not used.
+  *)
   Fixpoint get_sorts' ( decls: global_declarations ) : list term := 
     match decls with 
     | nil => nil
@@ -374,8 +429,10 @@ Section Config.
 
   Require MirrorSolve.Reflection.Core.
 
+  (* Given a list of decls, return the unique sorts in the decls *)
   Definition get_sorts decls := uniq _ Core.eq_term (get_sorts' decls).
 
+  (* unquote a list of terms to a particular type (sorts) *)
   Fixpoint unquote_indices_helper (sorts: Type) (terms: list term) : TemplateMonad (list sorts) := 
     match terms with 
     | [] => tmReturn []
@@ -385,6 +442,7 @@ Section Config.
       tmReturn (x :: x')
     end.
 
+  (* optionall split a list into a last element and a prefix *)
   Fixpoint get_last {A} (xs: list A) : option (list A * A) := 
     match xs with 
     | nil => None
@@ -399,6 +457,9 @@ Section Config.
       end
     end.
 
+  (* given a list of quoted type indices,
+    unquote the indices and split out the return type index (i.e. the last index)
+   *)
   Fixpoint unquote_fun_indices (sorts: Type) (indices: list (list term)) : TemplateMonad (list (list sorts * sorts)) := 
     match indices with 
     | [] => tmReturn []
@@ -412,9 +473,12 @@ Section Config.
       end
     end.
 
+  (* Similar for functions, except relations don't have a return type (so we don't need to split out a return type index) *)
+
   Definition unquote_rel_indices (sorts: Type) (indices: list (list term)) : TemplateMonad (list (list sorts)) := 
     mapM (unquote_indices_helper sorts) indices.
 
+  (* Quote a set of function indices + return types *)
   Fixpoint quote_fun_indices (sorts: Type) (indices : list (list sorts * sorts)) : TemplateMonad (list (list term)) :=
     match indices with 
     | nil => tmReturn nil
@@ -425,6 +489,7 @@ Section Config.
       tmReturn ([args_term; ret_term] :: r)
     end.
 
+  (* Quote a set of relation indices *)
   Fixpoint quote_rel_indices (sorts: Type) (indices : list (list sorts)) : TemplateMonad (list (list term)) :=
     match indices with 
     | nil => tmReturn nil
@@ -434,6 +499,10 @@ Section Config.
       tmReturn ([args_term] :: r)
     end.
 
+  (* Given a list of function names and corresponding argument + return type indices, 
+    make a function symbol inductive declaration.
+    Does *not* handle Z constants.
+  *)
   Definition add_funs_type (sorts: Type) (names: list ident) (indices : list (list sorts * sorts)) : TemplateMonad unit := 
     arg_term <- tmQuote (list sorts) ;;
     ret_term <- tmQuote sorts ;;
@@ -442,6 +511,9 @@ Section Config.
     indices' <- quote_fun_indices sorts indices ;;
     tmMkInductive' (funs_body None nil_term arg_term ret_term names indices' funs_ty_term).
 
+  (* Get a name for a simple type (e.g. a section variable or a plain inductive).
+     TODO: generalize to applied types, e.g. list A
+  *)
   Definition get_ty_name (t: term) : TemplateMonad ident := 
     match t with 
     | tInd ind _ => tmReturn (snd ind.(inductive_mind))
@@ -452,7 +524,6 @@ Section Config.
       tmPrint t ;;
       tmFail "get_ty_name"
     end.
-
 
   Definition make_names (xs: list term) : TemplateMonad (list ident) := 
     mapM get_ty_name xs.
@@ -482,6 +553,8 @@ Section Config.
     | _ => tmFail "sorts_mind_body called with non-ind input"
     end.
 
+  (* Given a packed function or inductive type, 
+    return a list of function names and indices for function symbols *)
   Definition gather_sorts (t: packed) : TemplateMonad (list (ident * list term)) := 
     t' <- tmQuotePacked t ;;
     match t' with 
@@ -496,7 +569,7 @@ Section Config.
       tmFail "unrecognized term in gather sorts"
     end.
 
-
+  (* lift the above to a list of packed function/inductive types *)
   Fixpoint gather_sorts_all (xs: list packed) : TemplateMonad (list ( ident * list term)) := 
     match xs with 
     | nil => tmReturn nil
@@ -506,6 +579,10 @@ Section Config.
       tmReturn (t ++ t')%list
     end.
 
+  (* Take a list of argument types and process it for functions/relations:
+     for functions, do nothing (signal by returning inl)
+     for relations, drop the final return type: later code will replace with a bool return type. Signal by returning inr.
+  *)
   Fixpoint conv_fun_rel (tys: list term) : TemplateMonad (list term + list term) :=
     match tys with 
     | [] => tmFail "check_fun_rel on empty type"
@@ -519,6 +596,7 @@ Section Config.
       end
     end.
 
+  (* given a set of names and unprocessed indices, split into function and relation indices *)
   Definition split_fun_rel (x: ident * list term) : TemplateMonad (ident * (list term + list term)) := 
     r <- conv_fun_rel x.2 ;;
     tmReturn (x.1, r).
@@ -542,12 +620,14 @@ Section Config.
 
   Definition config_level : Universe.t := Universe.of_levels (inr (Level.Level "Config.17")).
 
+  (* extract a universe out of a term or return a default *)
   Definition extr_univ (t: term) : Universe.t := 
     match t with 
     | tSort u => u
     | _ => config_level
     end.
 
+  (* replace a universe level in a term  *)
   Fixpoint rep_sorts_level (univ: Universe.t) (t: term) := 
     match t with 
     | tSort _ => tSort univ
@@ -600,9 +680,9 @@ Section Config.
     end.
 
   Record translation_table := {
-    mp_srts : list (term * term) ;
-    mp_funs : list (term * term) ; 
-    mp_rels : list (term * term) ;
+    mp_srts : list (term * term) ; (* map from original sorts to new sort constructors, e.g. quote Z |-> quote (sort_Z) *)
+    mp_funs : list (term * term) ; (* map from original funs to new fun constructors, e.g. quote rev |-> quote (rev_f) *)
+    mp_rels : list (term * term) ; (* map from original rels to new rel constructors, e.g. quote In |-> quote (In_r) *)
   }.
 
   Definition all_symbs (t: translation_table) := List.app t.(mp_funs) t.(mp_rels).
@@ -611,6 +691,9 @@ Section Config.
 
   Definition is_z_srt (t: term) := Core.eq_term t t_z.
 
+  (* Go through a key-value list of sorts and check if Z is around. 
+     If it is, return the corresponding sort constructor for Z (e.g. sort_Z)
+   *)
   Fixpoint gather_z_const (srts: list (term * term)) : option term := 
     match srts with 
     | [] => None
@@ -618,7 +701,11 @@ Section Config.
       if is_z_srt typ then Some idx else gather_z_const xs 
     end.
 
-
+  (* Main automation function. Given a quoted term for Type, a list of packed functions/inductives, and a list of packed relations/inductives, 
+    add syntax and semantics for sorts,
+    syntax for functions and relations,
+    and return a translation table recording a map from the quoted sorts/functions/constructors to the new syntaxes.
+    *)
 
   Definition add_funs (typ_term: term) (funs: list packed) (rels: list packed) : TemplateMonad translation_table := 
     names_indices <- gather_sorts_all (List.app funs rels) ;;
@@ -676,7 +763,7 @@ Section Config.
     end.
 
 
-  (* code for autogenerating boolean term tests *)
+  (* helper functions for autogenerating boolean term tests *)
 
   Definition mk_test_lambda (t: term) : term := 
     tLambda {| binder_name := BasicAst.nNamed "t"; binder_relevance := Relevant |}
@@ -752,6 +839,7 @@ Section Config.
     end
   .
 
+  (* Helper function for generating a signature, given sorts, funs, and rels. *)
   Definition gen_sig'
     (sort_type : term)
     (fun_type: term)
@@ -786,10 +874,11 @@ Section Config.
 
   Require MirrorSolve.FirstOrder.
   Require MirrorSolve.Reflection.Tactics.
-  Definition pack_fs (s: FirstOrder.signature) (m: FirstOrder.model s) := {args_r & s.(sig_funs) args_r.1 args_r.2}.
-  Definition pack_rs (s: FirstOrder.signature) (m: FirstOrder.model s) := {args & s.(sig_rels) args}.
 
-
+  (* Unquote a term as a function symbol. This is tricky because the type of the function symbol is dependent,
+    so we make use of several holes for the argument and return sorts.
+    Magically it works out!!
+  *)
   Definition coerce_tac_syn_f {s: FirstOrder.signature} {m: FirstOrder.model s} (t: term)  : TemplateMonad (Tactics.tac_syn s m) := 
     a <- tmUnquoteTyped (list (s.(sig_sorts))) hole ;;
     r <- tmUnquoteTyped (s.(sig_sorts)) hole ;;
@@ -828,6 +917,9 @@ Section Config.
     matches_term <- tmQuote sort_matches ;;
     tmMkDefinition "match_sorts" matches_term.
 
+  (* Given a signature, model, and translation table, add boolean term matches for elements in the translation table. 
+     The definitions are saved to "match_tacs" for funs/rels and "match_sorts" for sorts.
+   *)
   Definition add_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (t: translation_table) : TemplateMonad unit := 
     add_symb_matches s m t ;;
     add_sort_matches s m t.

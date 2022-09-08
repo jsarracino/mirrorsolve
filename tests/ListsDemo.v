@@ -196,19 +196,19 @@ Section ListFuncs.
   *)
 
   RegisterSMTUF "app" sort_lA sort_lA sort_lA.
-  RegisterSMTUF "rev" sort_lA sort_lA.
+  (* RegisterSMTUF "rev" sort_lA sort_lA.
   RegisterSMTUF "len" sort_lA sort_Z.
-  RegisterSMTUF "tail_rev" sort_lA sort_lA sort_lA.
+  RegisterSMTUF "tail_rev" sort_lA sort_lA sort_lA. *)
 
   RegisterSMTFun cons_f "cons" 2.
   RegisterSMTFun nil_f "nil" 0.
   RegisterSMTFun my_app_f "app" 2.
-  RegisterSMTFun my_rev_f "rev" 1.
+  (* RegisterSMTFun my_rev_f "rev" 1.
   RegisterSMTFun my_len_f "len" 1.
-  RegisterSMTFun plus_f "+" 2.
+  RegisterSMTFun plus_f "+" 2. *)
 
   (* Finally we need to handle integer literals *)
-  RegisterSMTBuiltin z_const_f IntLit.
+  (* RegisterSMTBuiltin z_const_f IntLit. *)
 
   Transparent denote_tm.
   Require Import MirrorSolve.Axioms.
@@ -222,10 +222,10 @@ Section ListFuncs.
 
   Hint Resolve app_equation_1 : list_eqns.
   Hint Resolve app_equation_2 : list_eqns.
-  Hint Resolve rev_equation_1 : list_eqns.
+  (* Hint Resolve rev_equation_1 : list_eqns.
   Hint Resolve rev_equation_2 : list_eqns.
   Hint Resolve len_equation_1 : list_eqns.
-  Hint Resolve len_equation_2 : list_eqns.
+  Hint Resolve len_equation_2 : list_eqns. *)
 
   Ltac prep_proof := 
     hints_foreach (fun x => pose proof x) "list_eqns";
@@ -247,54 +247,26 @@ Section ListFuncs.
     forall (a: A) (l r : list), 
       app (app l (a :: nil)) r = app l (a :: r).
   Proof.
-    induction l; intros.
-    - autorewrite with app.
-      trivial.
-    - autorewrite with app.
-      f_equal.
-      eapply IHl.
-  Qed.
-
-  Lemma app_app_one' : 
-    forall (a: A) (l r : list), 
-      app (app l (a :: nil)) r = app l (a :: r).
-  Proof.
     induction l; mirrorsolve.
   Qed.
-
-  Hint Immediate app_app_one' : list_eqns.
-
-  Lemma app_assoc' : 
-    forall (x y z: list),
-      app (app x y) z = app x (app y z).
-  Proof.
-    induction x; mirrorsolve.
-  Qed.
+  Hint Immediate app_app_one : list_eqns.
 
   Lemma app_assoc : 
     forall (x y z: list),
       app (app x y) z = app x (app y z).
   Proof.
-    induction x; intros.
-    - autorewrite with app.
-      trivial.
-    - autorewrite with app.
-      f_equal.
-      eapply IHx.
+    induction x; mirrorsolve.
   Qed.
-
-  Hint Immediate app_assoc' : list_eqns.
+  Hint Immediate app_assoc : list_eqns.
 
   Lemma app_nil_r : 
     forall l, app l nil = l.
   Proof.
     induction l; mirrorsolve.
   Qed.
-
   Hint Immediate app_nil_r : list_eqns.
+  
   Notation rev' := ListFuncs.rev.
-
-  (* SetSMTSolver "z3". *)
   
   Lemma rev_app : 
     forall (l r : list), 
@@ -302,7 +274,6 @@ Section ListFuncs.
   Proof.
     induction l; mirrorsolve.
   Qed.
-
   Hint Immediate rev_app : list_eqns.
 
   Lemma rev_rev : 

@@ -24,3 +24,15 @@ let get_coq ref : Constr.t =
       | Some (_, x) -> raise @@ MissingGlobConst ("polymorphic global: " ^ ref)
       | None -> raise @@ MissingGlobConst ("unregistered global: " ^ ref)
       end
+
+
+let fetch_const (x: Constr.t) = 
+  if Constr.isConst x then 
+    let v, _ = Constr.destConst x in 
+    let x' = Global.lookup_constant v in
+    begin match x'.const_body with 
+    | Def x -> Some x
+    | _ -> None
+    end
+  else 
+    None

@@ -395,7 +395,7 @@ SetSMTSolver "cvc5".
 
 Lemma emp_is_emp' : forall R, is_emp R = true -> matches (emp R) nil.
 Proof.
-  assert (@nil ascii = @nil ascii ++ []) by mirrorsolve.
+  (* assert (@nil ascii = @nil ascii ++ []) by mirrorsolve. *)
   induction R ; 
   try mirrorsolve.
 Qed.

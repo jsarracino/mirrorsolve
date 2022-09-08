@@ -196,6 +196,8 @@ let rec c_pos_to_int (e: C.t) : int =
     else raise bedef
 
   let c_int_to_int (e: C.t) : int =
+    let _ = debug_pp @@ Pp.str "extracting int from:" in
+    let _ = debug_pp @@ C.debug_print e in
     if e = c_int_zero () then 
       let _ = debug_pp @@ Pp.str "returning 0" in
       0 
@@ -613,17 +615,32 @@ let extract_smt_ufun (x: C.t) =
 
 
 let load_packed_sfun (x: C.t)  = 
-  let _ = debug_pp @@ Pp.str "loading packed sfun:" in 
+  let _ = debug_pp @@ Pp.str "loading packed sfun (psf/psr):" in 
   let _ = debug_pp @@ C.debug_print x in 
-  let f, es = C.destApp x  in 
+  let f, es = C.destApp x in 
   if equal_ctor f c_smt_psf || equal_ctor f c_smt_psr then 
-      Some (fst (C.destConstruct @@ a_last es))
+    Some (fst (C.destConstruct @@ a_last es))
   else if equal_ctor f c_smt_psl then 
-      None
+    None
   else 
     let _ = Feedback.msg_debug @@ Pp.str "expected psf/psr/psl in load_packed_sfun" in 
     let _ = Feedback.msg_debug @@ C.debug_print f in 
     raise @@ BadExpr "bad construct in load_packed_sfun"
+
+let load_packed_psl (x: C.t)  = 
+  let _ = debug_pp @@ Pp.str "loading packed sfun (psl):" in 
+  let _ = debug_pp @@ C.debug_print x in 
+  let f, es = C.destApp x  in 
+  if equal_ctor f c_smt_psf || equal_ctor f c_smt_psr then 
+    None
+  else if equal_ctor f c_smt_psl then 
+    Some (fst @@ C.destConstruct @@ a_last es)
+  else 
+    let _ = Feedback.msg_debug @@ Pp.str "expected psf/psr/psl in load_packed_sfun" in 
+    let _ = Feedback.msg_debug @@ C.debug_print f in 
+    raise @@ BadExpr "bad construct in load_packed_sfun"
+  
+
 
 let load_packed_sfun_name (x: C.t) = 
   begin match extract_pair load_packed_sfun extract_smt_ufun x with
@@ -671,7 +688,7 @@ let load_arity (ctx: printing_ctx) (x: C.t) =
   | Inr x -> 
     let f, es = C.destApp r in 
     if equal_ctor f c_smt_fprim then
-      (x, 0)
+      (x, 1)
     else
       raise @@ BadExpr "expected fprim in load arity"
   end
@@ -684,11 +701,36 @@ let load_fun_decls (ctx: printing_ctx) (x: C.t) =
     end in 
   StringMap.of_seq @@ List.to_seq @@ List.filter_map worker @@ extract_list (load_fun_decl ctx) x
 
+let extract_builtin (x: C.t) = 
+  let f, es = C.destApp x in 
+  if equal_ctor f c_smt_fprim then 
+    let inner = a_last es in
+    if C.isConstruct inner then 
+      if equal_ctor inner c_builtin_bool_lit then
+        Some (Smt_bool_lit)
+      else if equal_ctor inner c_builtin_int_lit then
+        Some (Smt_int_lit)
+      else
+        None
+    else
+      None
+  else
+    None
 
-let load_fun_arity (ctx: printing_ctx) (x: C.t) = ConstructorMap.of_seq @@ List.to_seq @@ extract_list (load_arity ctx) x
-let load_fun_builtin (ctx: printing_ctx)  (x: C.t) = ConstructorMap.empty
+let load_builtin (x: C.t) = 
+  begin match extract_pair load_packed_psl extract_builtin x with 
+  | Some x, Some y -> Some (x, y)
+  | _, _ -> None
+  end
 
-let load_ctx (x: C.t) = 
+let load_fun_arity (ctx: printing_ctx) (x: C.t) = 
+  ConstructorMap.of_seq @@ List.to_seq @@ extract_list (load_arity ctx) x
+let load_fun_builtin (ctx: printing_ctx)  (x: C.t) = 
+  ConstructorMap.of_seq @@ 
+    Seq.filter_map (fun x -> x) @@ 
+      List.to_seq @@ extract_list load_builtin x
+
+let rec load_ctx (x: C.t) = 
   if C.isApp x then 
     let f, args = C.destApp x in 
     if equal_ctor f c_mk_smt_sig then 
@@ -707,6 +749,14 @@ let load_ctx (x: C.t) =
       let _ = Feedback.msg_debug @@ Pp.str "actual builder is:" in
       let _ = Feedback.msg_debug @@ C.debug_print (c_mk_smt_sig () ) in
       raise bedef
+  else if C.isConst x then 
+    begin match Util.fetch_const x with 
+    | Some x -> load_ctx x
+    | None -> 
+      let _ = Feedback.msg_debug @@ Pp.str "could not resolve constant??" in 
+      let _ = Feedback.msg_debug @@ C.debug_print x in 
+      raise @@ BadExpr "opaque constant in load_ctx"
+    end
   else
     let _ = Feedback.msg_debug @@ Pp.str "unexpected ctx in load_ctx:" in
     let _ = Feedback.msg_debug @@ C.debug_print x in
@@ -730,11 +780,6 @@ let init_printing_ctx () = {
   ctx_fun_arity = ConstructorMap.of_seq @@ Hashtbl.to_seq fun_arity_tbl ;
   ctx_fun_builtin = ConstructorMap.of_seq @@ Hashtbl.to_seq fun_builtin_tbl ;
 }
-
-let lookup_symb = Hashtbl.find_opt fun_symb_tbl
-
-let lookup_arity = Hashtbl.find_opt fun_arity_tbl
-let lookup_builtin = Hashtbl.find_opt fun_builtin_tbl
 
 (* let lookup_fun_decl = Hashtbl.find_opt fun_decl_tbl *)
 
@@ -915,6 +960,8 @@ let pretty_bv (e: C.t) : string =
 let pretty_builtin (args: C.t array) (b: builtin_syms) (arity: int) = 
   let _ = debug_pp @@ Pp.str "printing builtin:" in 
   let _ = debug_pp @@ Pp.str (pretty_builtin b) in  
+  let _ = debug_pp @@ Pp.str "and arity:" in 
+  let _ = debug_pp @@ Pp.int arity in  
   let _ = debug_pp @@ Pp.str "with args:" in 
   let _ = debug_pp @@ format_args args in  
   begin match b, arity with 
@@ -924,19 +971,20 @@ let pretty_builtin (args: C.t array) (b: builtin_syms) (arity: int) =
     pretty_int @@ a_last args
   | Smt_bool_lit, 1 -> 
     pretty_bool @@ a_last args
-  | _, _ -> raise bedef
+  | _, _ -> 
+    raise @@ BadExpr "bad builtin/arity in pretty_builtin"
   end
 
-let rec pretty_fun (f: C.t) (args: C.t list) : string = 
+let rec pretty_fun (ctx: printing_ctx) (f: C.t) (args: C.t list) : string = 
   if C.isConstruct f then 
     let (f_name, _) = C.destConstruct f in 
-    begin match lookup_symb f_name, lookup_builtin f_name, lookup_arity f_name with 
+    begin match lookup_ctx_symb ctx f_name, lookup_ctx_builtin ctx f_name, lookup_ctx_arity ctx f_name with 
     | Some fs, None, Some n ->
       if n = List.length args then
         if n = 0 then 
           fs
         else
-          let pretty_args = if fs = "concat" then List.rev @@ (List.map pretty_tm args) else (List.map pretty_tm args) in 
+          let pretty_args = if fs = "concat" then List.rev @@ (List.map (pretty_tm ctx) args) else (List.map (pretty_tm ctx) args) in 
           Format.sprintf "(%s %s)" fs @@ String.concat " " pretty_args
       else
         let _ = Feedback.msg_debug @@ Pp.str "mismatch in declared and actual arities for:" in 
@@ -970,7 +1018,7 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
       (* n hi lo *)
       let hi = c_binnat_to_int @@ f_args.(Array.length f_args - 2) in 
       let lo = c_binnat_to_int @@ a_last f_args in 
-      let inner = pretty_tm @@ List.nth args 0 in 
+      let inner = pretty_tm ctx @@ List.nth args 0 in 
         Format.sprintf "((_ extract %n %n) %s)" hi lo inner
     else if equal_ctor f' c_ufun_ctor then
       (* handle uninterpreted fun *)
@@ -980,7 +1028,7 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
       | Some fdecl -> 
         let arity = List.length fdecl.arg_tys in 
         if arity = 0 then name else 
-          Format.sprintf "(%s %s)" name @@ String.concat " " @@ List.map pretty_tm args
+          Format.sprintf "(%s %s)" name @@ String.concat " " @@ List.map (pretty_tm ctx) args
       | _ -> 
         let _ = debug_pp @@ Pp.str @@ Format.sprintf "missing uf definition for %s" name in
         let _ = Feedback.msg_debug @@ Pp.str "ufs:" in 
@@ -992,16 +1040,16 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
       end
     else if equal_ctor f' c_cfun_ctor then 
       (* recurse on interior for concrete functions *)
-      pretty_fun (a_last f_args) args
+      pretty_fun ctx (a_last f_args) args
     else 
-      begin match lookup_symb f'', lookup_builtin f'', lookup_arity f'' with 
+      begin match lookup_ctx_symb ctx f'', lookup_ctx_builtin ctx f'', lookup_ctx_arity ctx f'' with 
       | None, Some sym, Some n -> pretty_builtin f_args sym n
       | Some fs, None, Some n -> 
         if n = List.length args then
           if n = 0 then 
             fs
           else
-            let pretty_args = if fs = "concat" then List.rev @@ (List.map pretty_tm args) else (List.map pretty_tm args) in 
+            let pretty_args = if fs = "concat" then List.rev @@ (List.map (pretty_tm ctx) args) else (List.map (pretty_tm ctx) args) in 
             Format.sprintf "(%s %s)" fs @@ String.concat " " pretty_args
         else
           raise bedef
@@ -1013,7 +1061,7 @@ let rec pretty_fun (f: C.t) (args: C.t list) : string =
     let _ = debug_pp @@ Pp.str "unexpected function interior:" in
     let _ = debug_pp @@ C.debug_print f in
     raise bedef
-and pretty_tm (tm: C.t) : string = 
+and pretty_tm (ctx: printing_ctx) (tm: C.t) : string = 
   let _ = debug_pp @@ Pp.str "extracting tm:" in
   let _ = debug_pp @@ (Constr.debug_print tm) in
   if C.isApp tm then 
@@ -1025,7 +1073,7 @@ and pretty_tm (tm: C.t) : string =
         let _ = debug_pp @@ Pp.str "extracted args to:" in 
         let _ = debug_pp @@ format_args (Array.of_list fargs) in 
         let fe = es.(Array.length es - 2) in 
-        pretty_fun fe fargs
+        pretty_fun ctx fe fargs
       else if equal_ctor f c_var then 
         let _ = debug_pp @@ Pp.str "extracting var" in
         let suff = debruijn_idx (a_last es) in
@@ -1042,7 +1090,7 @@ let rec pretty_fm (ctx: printing_ctx) (e: C.t) : string =
     | C.App(f, es) -> 
       if equal_ctor f c_eq then 
         let _ = debug_pp @@ Pp.str "extracting eq" in
-        let a1, a2 = pretty_tm es.(Array.length es - 2), pretty_tm (a_last es) in
+        let a1, a2 = pretty_tm ctx es.(Array.length es - 2), pretty_tm ctx (a_last es) in
           Format.sprintf "(= %s %s)" a1 a2
       else if equal_ctor f c_impl then 
         let _ = debug_pp @@ Pp.str "extracting impl" in
@@ -1072,7 +1120,7 @@ let rec pretty_fm (ctx: printing_ctx) (e: C.t) : string =
         let _ = debug_pp @@ Pp.str "extracted args to:" in 
         let _ = debug_pp @@ format_args (Array.of_list fargs) in 
         let fe = es.(Array.length es - 2) in 
-        pretty_fun fe fargs
+        pretty_fun ctx fe fargs
 
       else if equal_ctor f c_tt then 
         let _ = debug_pp @@ Pp.str "extracting true" in

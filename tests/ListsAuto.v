@@ -182,7 +182,7 @@ Section ListFuncs.
 
   Require MirrorSolve.SMTSig.
 
-  Mirror Load Ctx (SMTSig.MkSMTSig sig 
+  Definition list_theory := (SMTSig.MkSMTSig sig 
   [   (sort_Z, SortBase SInt)
     ; (sort_A, SortBase (SCustom "A"))
     ; (sort_prop, SortBase SBool)
@@ -190,9 +190,7 @@ Section ListFuncs.
         ("cons"%string, [SISort (SCustom "A"); SIRec]%list) 
       ; ("nil"%string, nil) 
     ]))
-  ]
-  [
-      (SMTSig.PSF sig _ _ app_f, FUninterp "app")
+  ] [ (SMTSig.PSF sig _ _ app_f, FUninterp "app")
     ; (SMTSig.PSF sig _ _ rev_f, FUninterp "rev")
     ; (SMTSig.PSF sig _ _ len_f, FUninterp "len")
     ; (SMTSig.PSF sig _ _ cons_A_f, FPrim (F_sym "cons"))
@@ -203,10 +201,6 @@ Section ListFuncs.
     ; (SMTSig.PSL sig Z _ _ z_const_f, FPrim IntLit)
   ]).
 
-
-  (* Finally we need to handle integer literals *)
-  RegisterSMTBuiltin z_const_f IntLit.
-
   Require Import MirrorSolve.Reflection.Tactics.
 
   Transparent denote_tm.
@@ -214,7 +208,7 @@ Section ListFuncs.
 
   Ltac check_goal_unsat := 
     match goal with 
-    | |- ?G => check_unsat_neg G; eapply UnsoundAxioms.interp_true
+    | |- ?G => check_unsat_neg_func list_theory G; eapply UnsoundAxioms.interp_true
     end.
 
   Create HintDb list_eqns.

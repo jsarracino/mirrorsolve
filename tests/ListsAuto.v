@@ -129,6 +129,10 @@ Section ListFuncs.
     xs' <- tmQuote xs ;;
     tmMkDefinition "trans_tbl" xs'
   ).
+
+  Check tmMkDefinition.
+
+  Check trans_tbl.
     
   MetaCoq Run (
     gen_sig typ_term sorts fol_funs fol_rels
@@ -141,7 +145,7 @@ Section ListFuncs.
 
   Equations interp_fun args ret (f: fol_funs args ret) (hargs : HList.t interp_sorts args) : interp_sorts ret := {
     interp_fun _ _ nil_A_f _ := [];
-    interp_fun _ _ cons_A_f (x ::: l ::: hnil):= x :: l;
+    interp_fun _ _ cons_A_f (x ::: y ::: hnil) := x :: y;
     interp_fun _ _ app_f (l ::: r ::: hnil):= app l r;
     interp_fun _ _ rev_f (x ::: hnil) := ListFuncs.rev x;
     interp_fun _ _ tail_rev_f (x ::: l ::: hnil) := tail_rev x l;
@@ -156,11 +160,8 @@ Section ListFuncs.
 
   (* We can wrap these definitions together with the previous signature to get a first-order logic *model* for mirrorsolve! *)
 
-  Program Definition fm_model : model sig := {|
-    FirstOrder.mod_sorts := interp_sorts;
-    FirstOrder.mod_fns := interp_fun;
-    FirstOrder.mod_rels := interp_rel;
-  |}.
+  Definition fm_model := 
+    Build_model sig interp_sorts interp_fun interp_rel.
 
   (* Next we configure the reflection logic for mirrorsolve. 
     So we're going to connect the first-order logic syntax and semantics with Coq's AST in MetaCoq. 
@@ -181,6 +182,17 @@ Section ListFuncs.
 
 
   Require MirrorSolve.SMTSig.
+
+  MetaCoq Run (
+    v <- tmQuote list_A ;; 
+    v' <- translate_smt_sort v ;;
+    v'' <- tmEval all v' ;;
+    tmPrint v''
+  ).
+
+  Definition make_theory_sorts (x: term * term) : TemplateMonad (sig.(sig_sorts) * smt_sort) :=
+    sort_sym <- tmUnquoteTyped _ x.2 ;;
+    tmReturn (sort_sym, SortBase SInt).
 
   Definition list_theory := (SMTSig.MkSMTSig sig 
   [   (sort_Z, SortBase SInt)
@@ -243,8 +255,9 @@ Section ListFuncs.
     forall (a: A) (l r : list_A), 
       app (ListFuncs.app l (a::[])) r = app l (a :: r).
   Proof.
-    induction l; mirrorsolve.
+    induction l; hammer.
   Qed.
+
 
   Hint Immediate app_app_one : list_eqns.
 
@@ -252,7 +265,7 @@ Section ListFuncs.
     forall (x y z: list_A),
       app (app x y) z = app x (app y z).
   Proof.
-    induction x; mirrorsolve.
+    induction x; hammer.
   Qed.
 
   Hint Immediate app_assoc : list_eqns.
@@ -260,7 +273,7 @@ Section ListFuncs.
   Lemma app_nil_r : 
     forall l, app l [] = l.
   Proof.
-    induction l; mirrorsolve.
+    induction l; hammer.
   Qed.
 
   Hint Immediate app_nil_r : list_eqns.
@@ -271,7 +284,7 @@ Section ListFuncs.
     forall (l r : list_A), 
       ListFuncs.rev (app l r) = app (ListFuncs.rev r) (ListFuncs.rev l).
   Proof.
-    induction l; mirrorsolve.
+    induction l; hammer.
   Qed.
 
   Hint Immediate rev_app : list_eqns.
@@ -280,7 +293,7 @@ Section ListFuncs.
     forall (l : list_A), 
       ListFuncs.rev (ListFuncs.rev l) = l.
   Proof.
-    induction l; mirrorsolve.
+    induction l; hammer.
   Qed.
 
   Hint Immediate rev_rev : list_eqns.

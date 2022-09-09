@@ -88,3 +88,14 @@ Section AssocList.
   Definition assoc (k : K) (v : V) xs := (k, v) :: xs.
 
 End AssocList.
+
+
+Fixpoint drop_last {A} (xs: list A) : list A := 
+  match xs with 
+  | nil => nil
+  | x :: xs => 
+    match xs with 
+    | nil => nil
+    | _ => x :: drop_last xs
+    end
+  end.

@@ -924,4 +924,79 @@ Section Config.
     add_symb_matches s m t ;;
     add_sort_matches s m t.
 
+  Require Import MirrorSolve.SMT.
+
+  Definition translate_cstr_type_base (sorts: list smt_ind_base) (x: term) :  TemplateMonad smt_ind_base := 
+    if is_z_srt x then 
+      tmReturn (SISort SInt)
+    else if orb (Core.eq_term x t_prop) (Core.eq_term x t_bool) then 
+      tmReturn (SISort SBool)
+    else
+      match x with 
+      | tVar nme => tmReturn (SISort (SCustom (String.to_string nme)))
+      | tRel v => 
+        match nth_error sorts v with 
+        | Some x => tmReturn x
+        | None => 
+          tmPrint sorts ;;
+          tmPrint x ;;
+          tmFail "db index out of bounds in translate_cstr_type_base"
+        end
+      | _ => 
+        tmPrint x ;;
+        tmFail "unhandled term in translate_cstr_type_base"
+      end.
+
+  Fixpoint translate_cstr_type (sorts: list smt_ind_base) (x: term) : TemplateMonad (list smt_ind_base) := 
+    match x with 
+    | tProd _ ty bod => 
+      ty' <- translate_cstr_type_base sorts ty ;; 
+      r <- translate_cstr_type (ty' :: sorts) bod ;;
+      tmReturn (ty' :: r)
+    | _ =>
+      inner <- translate_cstr_type_base sorts x ;; 
+      tmReturn [inner]
+    end.
+
+
+  Definition translate_constructor_body (ctor: constructor_body) : TemplateMonad (string * list smt_ind_base) := 
+    inner <- translate_cstr_type [SIRec] ctor.(cstr_type) ;; 
+    tmReturn (String.to_string ctor.(cstr_name), drop_last inner ).
+
+  Definition translate_smt_ind (x: inductive) : TemplateMonad smt_ind := 
+    ind <- tmQuoteInductive x.(inductive_mind) ;; 
+    match ind.(ind_bodies) with 
+    | [v] => 
+      cases <- mapM translate_constructor_body v.(ind_ctors) ;;
+      tmReturn (SICases cases)
+    | _ => tmFail "unhandled mutual inductive in translate_smt_ind"
+    end.
+
+  Definition translate_smt_sort (x: term) : TemplateMonad smt_sort := 
+    if orb (Core.eq_term x t_prop) (Core.eq_term x t_bool) then 
+      tmReturn (SortBase SBool)
+    else if is_z_srt x then 
+      tmReturn (SortBase SInt)
+    else 
+      match x with 
+      | tVar nme => tmReturn (SortBase (SCustom (String.to_string nme)))
+      | tInd ind _ => 
+        r <- translate_smt_ind ind ;;
+        let name := String.to_string ind.(inductive_mind).2 in 
+          tmReturn (SortInd name r)
+      | _ => 
+        tmPrint x ;;
+        tmFail "unrecognized sort in translate_smt_sort"
+      end.
+
+  Require Import MirrorSolve.SMTSig.
+  Definition translate_one_sort_binding (s: signature) (kv: term * term) : TemplateMonad (s.(sig_sorts) * smt_sort) := 
+    srt_symb <- tmUnquoteTyped s.(sig_sorts) kv.1 ;; 
+    smt_srt <- translate_smt_sort kv.2 ;; 
+    tmReturn (srt_symb, smt_srt).
+
+  Definition build_printing_ctx (s: signature) (tbl: translation_table) : TemplateMonad (smt_sig s) := 
+    srts <- mapM (translate_one_sort_binding s) tbl.(mp_srts) ;; 
+    tmReturn (MkSMTSig s srts nil).
+
 End Config.

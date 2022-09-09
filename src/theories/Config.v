@@ -442,7 +442,7 @@ Section Config.
       tmReturn (x :: x')
     end.
 
-  (* optionall split a list into a last element and a prefix *)
+  (* optionally split a list into a last element and a prefix *)
   Fixpoint get_last {A} (xs: list A) : option (list A * A) := 
     match xs with 
     | nil => None
@@ -562,7 +562,7 @@ Section Config.
     | tConst name _ => 
       y <- tmQuoteConstant name true ;;
       x <- tmEval all (sorts_constant_body y) ;;
-      tmReturn [(snd name, x)]
+      tmReturn [(name.2, x)]
     | _ => 
       tmMsg "unrecognized term" ;;
       tmPrint t' ;;
@@ -1005,16 +1005,72 @@ Section Config.
       end.
 
   Require Import MirrorSolve.SMTSig.
+
   Definition translate_one_sort_binding (s: signature) (kv: term * term) : TemplateMonad (s.(sig_sorts) * smt_sort) := 
-    srt_symb <- tmUnquoteTyped s.(sig_sorts) kv.1 ;; 
-    smt_srt <- translate_smt_sort kv.2 ;; 
+    srt_symb <- tmUnquoteTyped s.(sig_sorts) kv.2 ;; 
+    smt_srt <- translate_smt_sort kv.1 ;; 
     tmReturn (srt_symb, smt_srt).
 
+  Definition lookup_ind (x: inductive) : TemplateMonad one_inductive_body := 
+    parent_inds <- tmQuoteInductive x.(inductive_mind) ;;
+    match nth_error parent_inds.(ind_bodies) x.(inductive_ind) with 
+    | Some x => tmReturn x 
+    | None => tmFail "error looking up inductive?"
+    end.
+
+  (* given a constant or a constructor for a inductive, return the name of the constant/constructor. *)
+  Definition get_global_name (t: term) : TemplateMonad ident := 
+    match t with 
+    | tConst x _ => tmReturn x.2
+    | tConstruct ind i _ => 
+      parent_ind <- lookup_ind ind ;; 
+      match nth_error parent_ind.(ind_ctors) i with 
+      | Some x => tmReturn x.(cstr_name)
+      | None => tmFail "error looking up constructor in get_global_name"
+      end
+    | _ => 
+      tmPrint t ;;
+      tmFail "get_global_name called with not a const or constructor"
+    end.
+
+  Definition translate_one_fun (s: signature) (x: term * term) : TemplateMonad (packed_sfun s * smt_fun) := 
+    args <- tmUnquoteTyped (list s.(sig_sorts)) hole ;;
+    ret <- tmUnquoteTyped s.(sig_sorts) hole ;;
+    f <- tmUnquoteTyped (s.(sig_funs) args ret) x.2 ;; 
+    name <- (get_global_name x.1) >>= liftM String.to_string ;;
+    match x.1 with 
+    | tConst _ _ => 
+      tmReturn (SMTSig.PSF s _ _ f, FUninterp name)
+    | tConstruct _ _ _ => 
+      tmReturn (SMTSig.PSF s _ _ f, FPrim (F_sym name))
+    | _ => 
+      tmPrint "don't know how to handle term:" ;;
+      tmPrint x.1 ;; 
+      tmFail "unexpected term in translate_one_fun"
+    end.
+
+  Definition translate_one_rel (s: signature) (sort_prop : s.(sig_sorts)) (x: term * term) : TemplateMonad (packed_sfun s * smt_fun) := 
+      args <- tmUnquoteTyped (list s.(sig_sorts)) hole ;;
+      f <- tmUnquoteTyped (s.(sig_rels) args) x.2 ;; 
+      name <- (get_global_name x.1) >>= liftM String.to_string ;;
+      match x.1 with 
+      | tConst _ _ => 
+        tmReturn (SMTSig.PSR s _ sort_prop f, FUninterp name)
+      | tConstruct _ _ _ => 
+        tmReturn (SMTSig.PSR s _ sort_prop f, FPrim (F_sym name))
+      | _ => 
+        tmPrint "don't know how to handle term:" ;;
+        tmPrint x.1 ;; 
+        tmFail "unexpected term in translate_one_fun"
+      end.
+
   (* Build a printing ctx (smt_sig) for a signature and translation table.
-    TODO: implement funs and rels 
+    TODO: implement constants
   *)
-  Definition build_printing_ctx (s: signature) (tbl: translation_table) : TemplateMonad (smt_sig s) := 
+  Definition build_printing_ctx (s: signature) (sort_prop: s.(sig_sorts)) (tbl: translation_table) : TemplateMonad (smt_sig s) := 
     srts <- mapM (translate_one_sort_binding s) tbl.(mp_srts) ;; 
-    tmReturn (MkSMTSig s srts nil).
+    funs <- mapM (translate_one_fun s) tbl.(mp_funs) ;;
+    rels <- mapM (translate_one_rel s sort_prop) tbl.(mp_rels) ;;
+    tmReturn (MkSMTSig s srts (funs ++ rels)).
 
 End Config.

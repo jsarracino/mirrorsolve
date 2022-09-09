@@ -4,14 +4,14 @@ type srt_smt =
   | Smt_bool 
   | Custom_sort of string
 
-let valid_sort (s: srt_smt) : bool = 
+let valid_sort (s: srt_smt) : bool * string = 
   begin match s with 
-  | Smt_bv (Some n) -> n > 0
-  | Smt_bv None -> false
+  | Smt_bv (Some n) -> n > 0, "negative bitvector width"
+  | Smt_bv None -> false, "missing bitvector width"
   | Custom_sort s -> 
-    String.length s > 0 && s.[0] = Char.uppercase_ascii s.[0]
+    String.length s > 0 && s.[0] = Char.uppercase_ascii s.[0], "empty name or first letter must be uppercase"
   | Smt_int 
-  | Smt_bool -> true
+  | Smt_bool -> true, "inconceivable"
   end
 let pretty_sort (s: srt_smt) : string = 
   begin match s with 

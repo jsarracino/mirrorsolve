@@ -1131,7 +1131,11 @@ let rec pretty_fm (ctx: printing_ctx) (e: C.t) : string =
       else if equal_ctor f c_forall then
         let _ = debug_pp @@ Pp.str "extracting forall" in
         let v_sort = extract_sort ctx es.(2) in
-        if not (valid_sort v_sort) then pretty_fm ctx (a_last es) 
+        let sort_ok, sort_warning = valid_sort v_sort in 
+        if not sort_ok then 
+          let _ = Feedback.msg_debug @@ Pp.(++) (Pp.str "WARNING: invalid sort, ") (Pp.str sort_warning) in 
+          let _ = Feedback.msg_debug @@ Pp.str @@ pretty_sort v_sort in 
+          pretty_fm ctx (a_last es) 
         else 
           let v_suff = List.length (extract_ctx es.(1)) in
           let v_name = Format.sprintf "fvar_%n" v_suff in

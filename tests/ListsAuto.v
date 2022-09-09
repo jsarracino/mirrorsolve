@@ -34,22 +34,22 @@ Section ListFuncs.
      plugin configuration. For verification of the same proofs but on normal lists, see tests/Lists.v.
   *)
 
-  Inductive list_A := | nil_A | cons_A : A -> list_A -> list_A.
+  Inductive List_A := | nil_A | cons_A : A -> List_A -> List_A.
 
   Infix "::" := cons_A.
   Notation "[]" := nil_A.
 
-  Inductive even_list : list_A -> Prop := 
-  | even_nil : even_list []
+  Inductive Even_list : List_A -> Prop := 
+  | even_nil : Even_list []
   | even_cons : 
-    forall xs (es: even_list xs),
-      forall x x', even_list (x :: x' :: xs).
+    forall xs (es: Even_list xs),
+      forall x x', Even_list (x :: x' :: xs).
 
   (* We will make use of a hint database to reflect recursive coq functions into SMT logic.
      For now, don't worry about it, but it's handy to use Equations for recursion to make use of the generated equations.
    *)
 
-  Equations app (l: list_A) (r: list_A) : list_A := {
+  Equations app (l: List_A) (r: List_A) : List_A := {
     app [] r := r;
     app (x :: l') r := x :: app l' r;
   }.
@@ -57,17 +57,17 @@ Section ListFuncs.
   Check app_equation_1. (* forall r : list A, app [] r = r *)
   Check app_equation_2. (* forall (x : A) (l' r : list A), app (x :: l') r = x :: app l' r *)
   
-  Equations rev (xs: list_A) : list_A := {
+  Equations rev (xs: List_A) : List_A := {
     rev [] := [];
     rev (x :: l') := app (rev l') (x :: []);
   }.
 
-  Equations tail_rev (xs: list_A) (acc: list_A) : list_A := {
+  Equations tail_rev (xs: List_A) (acc: List_A) : List_A := {
     tail_rev [] acc := acc;
     tail_rev (x :: xs') acc := tail_rev xs' (x :: acc);
   }.
 
-  Equations In (x: A) (l: list_A) : Prop := {
+  Equations In (x: A) (l: List_A) : Prop := {
     In x [] := False;
     In x (x' :: l') := x = x' \/ In x l';
   }.
@@ -81,7 +81,7 @@ Section ListFuncs.
   Qed.
 
   Lemma In_equation_2' : 
-    forall (x x' : A) (l' : list_A),
+    forall (x x' : A) (l' : List_A),
       In x (x' :: l') <-> (x = x' \/ In x l').
   Proof.
     intros.
@@ -93,7 +93,7 @@ Section ListFuncs.
   (* For simplicity we use Z instead of nat or N, because Z translates directly to SMT. 
      We could also use nat or N and use the N2Z functor to convert goals from nat/N to Z. 
   *)
-  Equations len (xs: list_A) : Z := {
+  Equations len (xs: List_A) : Z := {
     len [] := 0;
     len (_ :: xs) := len xs + 1;
   }.
@@ -118,13 +118,13 @@ Section ListFuncs.
     xs <- add_funs typ_term [
         pack ListFuncs.rev
       ; pack ListFuncs.app
-      ; pack ListFuncs.list_A
+      ; pack ListFuncs.List_A
       ; pack ListFuncs.tail_rev
       ; pack ListFuncs.len
       ; pack Z.add
     ] [ 
         pack ListFuncs.In 
-      (* ; pack ListFuncs.even_list *)
+      (* ; pack ListFuncs.Even_list *)
     ];;
     xs' <- tmQuote xs ;;
     tmMkDefinition "trans_tbl" xs'
@@ -184,34 +184,31 @@ Section ListFuncs.
   Require MirrorSolve.SMTSig.
 
   MetaCoq Run (
-    v <- tmQuote list_A ;; 
-    v' <- translate_smt_sort v ;;
-    v'' <- tmEval all v' ;;
-    tmPrint v''
+    ctx <- build_printing_ctx sig sort_prop trans_tbl ;; 
+    ctx' <- tmEval all ctx ;;
+    rhs <- tmQuote ctx' ;; 
+    tmMkDefinition "fol_theory" rhs
   ).
 
-  Definition make_theory_sorts (x: term * term) : TemplateMonad (sig.(sig_sorts) * smt_sort) :=
-    sort_sym <- tmUnquoteTyped _ x.2 ;;
-    tmReturn (sort_sym, SortBase SInt).
-
-  Definition list_theory := (SMTSig.MkSMTSig sig 
-  [   (sort_Z, SortBase SInt)
-    ; (sort_A, SortBase (SCustom "A"))
-    ; (sort_prop, SortBase SBool)
-    ; (sort_list_A, SortInd "A_list" (SICases [
-        ("cons"%string, [SISort (SCustom "A"); SIRec]%list) 
-      ; ("nil"%string, nil) 
-    ]))
-  ] [ (SMTSig.PSF sig _ _ app_f, FUninterp "app")
+  (* Definition list_theory := (SMTSig.MkSMTSig sig 
+  [(sort_Z, SortBase SInt); (sort_A, SortBase (SCustom "A"));
+       (sort_List_A,
+       SortInd "List_A"
+         (SICases
+            [("nil_A"%string, nil);
+            ("cons_A"%string, [SISort (SCustom "A"); SIRec])]));
+       (sort_prop, SortBase SBool)]%list
+  [ (SMTSig.PSF sig _ _ app_f, FUninterp "app")
     ; (SMTSig.PSF sig _ _ rev_f, FUninterp "rev")
     ; (SMTSig.PSF sig _ _ len_f, FUninterp "len")
-    ; (SMTSig.PSF sig _ _ cons_A_f, FPrim (F_sym "cons"))
-    ; (SMTSig.PSF sig _ _ nil_A_f, FPrim (F_sym "nil"))
+    ; (SMTSig.PSF sig _ _ cons_A_f, FPrim (F_sym "cons_A"))
+    ; (SMTSig.PSF sig _ _ nil_A_f, FPrim (F_sym "nil_A"))
     ; (SMTSig.PSF sig _ _ tail_rev_f, FUninterp "tail_rev")
     ; (SMTSig.PSR sig _ sort_prop In_r, FUninterp "In")
     ; (SMTSig.PSF sig _ _ add_f, FPrim (F_sym "+"))
     ; (SMTSig.PSL sig Z _ _ z_const_f, FPrim IntLit)
-  ]).
+  ]%list
+  ). *)
 
   Require Import MirrorSolve.Reflection.Tactics.
 
@@ -220,7 +217,7 @@ Section ListFuncs.
 
   Ltac check_goal_unsat := 
     match goal with 
-    | |- ?G => check_unsat_neg_func list_theory G; eapply UnsoundAxioms.interp_true
+    | |- ?G => check_unsat_neg_func fol_theory G; eapply UnsoundAxioms.interp_true
     end.
 
   Create HintDb list_eqns.
@@ -233,8 +230,8 @@ Section ListFuncs.
   Hint Resolve tail_rev_equation_2 : list_eqns.
   Hint Resolve In_equation_1' : list_eqns.
   Hint Resolve In_equation_2' : list_eqns.
-  Hint Resolve len_equation_1 : list_eqns.
-  Hint Resolve len_equation_2 : list_eqns.
+  (* Hint Resolve len_equation_1 : list_eqns.
+  Hint Resolve len_equation_2 : list_eqns. *)
 
   Ltac prep_proof := 
     hints_foreach (fun x => pose proof x) "list_eqns";
@@ -252,20 +249,20 @@ Section ListFuncs.
     check_goal_unsat.
 
   Lemma app_app_one : 
-    forall (a: A) (l r : list_A), 
+    forall (a: A) (l r : List_A), 
       app (ListFuncs.app l (a::[])) r = app l (a :: r).
   Proof.
-    induction l; hammer.
+    induction l; mirrorsolve.
   Qed.
 
 
   Hint Immediate app_app_one : list_eqns.
 
   Lemma app_assoc : 
-    forall (x y z: list_A),
+    forall (x y z: List_A),
       app (app x y) z = app x (app y z).
   Proof.
-    induction x; hammer.
+    induction x; mirrorsolve.
   Qed.
 
   Hint Immediate app_assoc : list_eqns.
@@ -273,7 +270,7 @@ Section ListFuncs.
   Lemma app_nil_r : 
     forall l, app l [] = l.
   Proof.
-    induction l; hammer.
+    induction l; mirrorsolve.
   Qed.
 
   Hint Immediate app_nil_r : list_eqns.
@@ -281,25 +278,25 @@ Section ListFuncs.
   SetSMTSolver "cvc5".
 
   Lemma rev_app : 
-    forall (l r : list_A), 
+    forall (l r : List_A), 
       ListFuncs.rev (app l r) = app (ListFuncs.rev r) (ListFuncs.rev l).
   Proof.
-    induction l; hammer.
+    induction l; mirrorsolve.
   Qed.
 
   Hint Immediate rev_app : list_eqns.
 
   Lemma rev_rev : 
-    forall (l : list_A), 
+    forall (l : List_A), 
       ListFuncs.rev (ListFuncs.rev l) = l.
   Proof.
-    induction l; hammer.
+    induction l; mirrorsolve.
   Qed.
 
   Hint Immediate rev_rev : list_eqns.
 
   Lemma tail_rev_spec : 
-    forall (l acc : list_A), 
+    forall (l acc : List_A), 
       tail_rev l acc = ListFuncs.app (ListFuncs.rev l) acc.
   Proof.
     induction l; mirrorsolve.
@@ -308,7 +305,7 @@ Section ListFuncs.
   Hint Immediate tail_rev_spec : list_eqns.
 
   Lemma tail_rev_sound : 
-    forall (l : list_A), 
+    forall (l : List_A), 
       ListFuncs.rev l = tail_rev l [].
   Proof.
     induction l; mirrorsolve.
@@ -316,23 +313,23 @@ Section ListFuncs.
 
   Hint Immediate tail_rev_sound : list_eqns.
 
-  Lemma app_len : 
-    forall (l r : list_A), 
+  (* Lemma app_len : 
+    forall (l r : List_A), 
       len (app l r) = (len l + len r)%Z.
   Proof.
     induction l; mirrorsolve.
   Qed.
 
-  Hint Immediate app_len : list_eqns.
+  Hint Immediate app_len : list_eqns. *)
 
-  Lemma rev_len :
-    forall (l: list_A), 
+  (* Lemma rev_len :
+    forall (l: List_A), 
       len l = len (ListFuncs.rev l).
   Proof.
     induction l; mirrorsolve.
   Qed.
   
-  Hint Immediate rev_len : list_eqns.
+  Hint Immediate rev_len : list_eqns. *)
 
   Lemma app_In : 
     forall x l r,

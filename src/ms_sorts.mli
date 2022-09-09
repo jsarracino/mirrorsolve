@@ -4,7 +4,7 @@ type srt_smt =
   | Smt_bool 
   | Custom_sort of string
 
-val valid_sort : srt_smt -> bool
+val valid_sort : srt_smt -> bool * string
 val pretty_sort : srt_smt -> string
 
 

@@ -926,7 +926,12 @@ Section Config.
 
   Require Import MirrorSolve.SMT.
 
-  Definition translate_cstr_type_base (sorts: list smt_ind_base) (x: term) :  TemplateMonad smt_ind_base := 
+  (* helper functions for building an smt_sig theory from a translation table *)
+
+  (* Convert a basic (not inductive or product) type to a smt type.
+     Generally types can be products so the translation uses a typing environment env.
+  *)
+  Definition translate_cstr_type_base (env: list smt_ind_base) (x: term) :  TemplateMonad smt_ind_base := 
     if is_z_srt x then 
       tmReturn (SISort SInt)
     else if orb (Core.eq_term x t_prop) (Core.eq_term x t_bool) then 
@@ -935,10 +940,10 @@ Section Config.
       match x with 
       | tVar nme => tmReturn (SISort (SCustom (String.to_string nme)))
       | tRel v => 
-        match nth_error sorts v with 
+        match nth_error env v with 
         | Some x => tmReturn x
         | None => 
-          tmPrint sorts ;;
+          tmPrint env ;;
           tmPrint x ;;
           tmFail "db index out of bounds in translate_cstr_type_base"
         end
@@ -947,18 +952,27 @@ Section Config.
         tmFail "unhandled term in translate_cstr_type_base"
       end.
 
-  Fixpoint translate_cstr_type (sorts: list smt_ind_base) (x: term) : TemplateMonad (list smt_ind_base) := 
+  (* Translate a nested type (including products) into a list of types,
+     adding bound types to the environment as it goes.
+      e.g. Int -> Int -> Bool |-> [SInt; SInt; SBool]
+  *)
+  Fixpoint translate_cstr_type (env: list smt_ind_base) (x: term) : TemplateMonad (list smt_ind_base) := 
     match x with 
     | tProd _ ty bod => 
-      ty' <- translate_cstr_type_base sorts ty ;; 
-      r <- translate_cstr_type (ty' :: sorts) bod ;;
+      ty' <- translate_cstr_type_base env ty ;; 
+      r <- translate_cstr_type (ty' :: env) bod ;;
       tmReturn (ty' :: r)
     | _ =>
-      inner <- translate_cstr_type_base sorts x ;; 
+      inner <- translate_cstr_type_base env x ;; 
       tmReturn [inner]
     end.
 
-
+  (* Translate the type of an inductive constructor to a list of correpsonding smt_types.
+     The typing environment starts with SIRec because Coq represents references to the 
+     parent inductive type with a tRel 0 term. 
+     Drop the final element of the resulting type (which will always be SIRec, i.e. the parent inductive)
+     because it is implicit in the definition of smt_ind.
+   *)
   Definition translate_constructor_body (ctor: constructor_body) : TemplateMonad (string * list smt_ind_base) := 
     inner <- translate_cstr_type [SIRec] ctor.(cstr_type) ;; 
     tmReturn (String.to_string ctor.(cstr_name), drop_last inner ).
@@ -972,6 +986,7 @@ Section Config.
     | _ => tmFail "unhandled mutual inductive in translate_smt_ind"
     end.
 
+  (* package the functions above into a clean Type |-> smt_sort conversion function *)
   Definition translate_smt_sort (x: term) : TemplateMonad smt_sort := 
     if orb (Core.eq_term x t_prop) (Core.eq_term x t_bool) then 
       tmReturn (SortBase SBool)
@@ -995,6 +1010,9 @@ Section Config.
     smt_srt <- translate_smt_sort kv.2 ;; 
     tmReturn (srt_symb, smt_srt).
 
+  (* Build a printing ctx (smt_sig) for a signature and translation table.
+    TODO: implement funs and rels 
+  *)
   Definition build_printing_ctx (s: signature) (tbl: translation_table) : TemplateMonad (smt_sig s) := 
     srts <- mapM (translate_one_sort_binding s) tbl.(mp_srts) ;; 
     tmReturn (MkSMTSig s srts nil).

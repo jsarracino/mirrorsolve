@@ -1049,6 +1049,12 @@ Section Config.
       tmFail "unexpected term in translate_one_fun"
     end.
 
+  Definition translate_override_fun (s: signature) (x: term * String.string) : TemplateMonad (packed_sfun s * smt_fun) := 
+    args <- tmUnquoteTyped (list s.(sig_sorts)) hole ;;
+    ret <- tmUnquoteTyped s.(sig_sorts) hole ;;
+    f <- tmUnquoteTyped (s.(sig_funs) args ret) x.1 ;; 
+    tmReturn (SMTSig.PSF s _ _ f, FPrim (F_sym x.2)).
+
   Definition translate_one_rel (s: signature) (sort_prop : s.(sig_sorts)) (x: term * term) : TemplateMonad (packed_sfun s * smt_fun) := 
       args <- tmUnquoteTyped (list s.(sig_sorts)) hole ;;
       f <- tmUnquoteTyped (s.(sig_rels) args) x.2 ;; 
@@ -1064,13 +1070,35 @@ Section Config.
         tmFail "unexpected term in translate_one_fun"
       end.
 
-  (* Build a printing ctx (smt_sig) for a signature and translation table.
-    TODO: implement constants
+  Definition translate_override_rel (s: signature) (sort_prop : s.(sig_sorts)) (x: term * String.string) : TemplateMonad (packed_sfun s * smt_fun) := 
+    args <- tmUnquoteTyped (list s.(sig_sorts)) hole ;;
+    f <- tmUnquoteTyped (s.(sig_rels) args) x.1 ;; 
+    tmReturn (SMTSig.PSR s _ sort_prop f, FPrim (F_sym x.2)).
+
+  Definition unpack_pair (x: packed * String.string) : TemplateMonad (term * String.string) := 
+    r <- tmQuotePacked x.1 ;; 
+    tmReturn (r, x.2).
+
+  Definition partition_mp (mp: list (term * term)) (overrides : list (term * String.string)) : (list (term * term)) * (list (term * String.string)) := 
+    let override_terms := map fst overrides in 
+    let orig := remove_all _ _ Core.eq_term override_terms mp in 
+    let news := find_all _ _ Core.eq_term override_terms mp in 
+    let new_with_name := join (eqb := Core.eq_term) news overrides in 
+    (orig, map (fun '(x, (y, z)) => (y, z)) new_with_name).
+
+
+  (* Build a printing ctx (smt_sig) for a signature and translation table, 
+     using a list of function symbol overrides 
   *)
-  Definition build_printing_ctx (s: signature) (sort_prop: s.(sig_sorts)) (tbl: translation_table) : TemplateMonad (smt_sig s) := 
+  Definition build_printing_ctx (s: signature) (sort_prop: s.(sig_sorts)) (tbl: translation_table) (overrides : list (packed * String.string)) : TemplateMonad (smt_sig s) := 
     srts <- mapM (translate_one_sort_binding s) tbl.(mp_srts) ;; 
-    funs <- mapM (translate_one_fun s) tbl.(mp_funs) ;;
-    rels <- mapM (translate_one_rel s sort_prop) tbl.(mp_rels) ;;
-    tmReturn (MkSMTSig s srts (funs ++ rels)).
+    overrides <- mapM unpack_pair overrides ;;
+    let (norm_funs, over_funs) := partition_mp tbl.(mp_funs) overrides in 
+    let (norm_rels, over_rels) := partition_mp tbl.(mp_rels) overrides in
+    funs <- mapM (translate_one_fun s) norm_funs ;;
+    rels <- mapM (translate_one_rel s sort_prop) norm_rels ;;
+    funs_over <- mapM (translate_override_fun s) over_funs ;; 
+    rels_over <- mapM (translate_override_rel s sort_prop) over_rels ;;
+    tmReturn (MkSMTSig s srts (funs ++ funs_over ++ rels ++ rels_over)).
 
 End Config.

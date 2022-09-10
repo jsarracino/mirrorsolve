@@ -183,8 +183,16 @@ Section ListFuncs.
 
   Require MirrorSolve.SMTSig.
 
+  (* 
+    TODO: add an arguments to build_printing_ctx: 
+      a list of overrides, to map coq terms to smt symbols instead of uninterpreted functions.
+        for example (pack Z.add, F_sym "+")
+    TODO: add an assoc-list of primitives to translation table
+      for example (z_const_f, IntLit)
+  *)
+
   MetaCoq Run (
-    ctx <- build_printing_ctx sig sort_prop trans_tbl ;; 
+    ctx <- build_printing_ctx sig sort_prop trans_tbl [(pack Z.add, "+"%string)];; 
     ctx' <- tmEval all ctx ;;
     rhs <- tmQuote ctx' ;; 
     tmMkDefinition "fol_theory" rhs

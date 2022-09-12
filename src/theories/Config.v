@@ -71,7 +71,6 @@ Polymorphic Definition liftM {A B} (f: A -> B) : A -> TemplateMonad B :=
 Polymorphic Definition tmQuote2 {X} (x: X) := 
   tmQuote x >>= tmQuote.
 
-(* not sure why I need this? *)
 Polymorphic Definition make_ind_ctor (ind: inductive) (u: Instance.t) (idx: nat) (x: constructor_body) : term := 
   tConstruct ind idx u.
 
@@ -87,6 +86,29 @@ Polymorphic Fixpoint make_list {A} (ts: list term) : TemplateMonad term :=
     vs_term <- @make_list A ts' ;;
     vs <- tmUnquoteTyped (list A) vs_term ;;
     tmQuote (v :: vs)
+  end.
+
+Polymorphic Definition lookup_ind (x: inductive) : TemplateMonad one_inductive_body := 
+  parent_inds <- tmQuoteInductive x.(inductive_mind) ;;
+  match nth_error parent_inds.(ind_bodies) x.(inductive_ind) with 
+  | Some x => tmReturn x 
+  | None => tmFail "error looking up inductive?"
+  end.
+
+(* given a constant or a constructor for a inductive, return the name of the constant/constructor. *)
+Polymorphic Definition get_global_name (t: term) : TemplateMonad ident := 
+  match t with 
+  | tConst x _ => tmReturn x.2
+  | tConstruct ind i _ => 
+    parent_ind <- lookup_ind ind ;; 
+    match nth_error parent_ind.(ind_ctors) i with 
+    | Some x => tmReturn x.(cstr_name)
+    | None => tmFail "error looking up constructor in get_global_name"
+    end
+  | tInd ind _ => tmReturn ind.(inductive_mind).2
+  | _ => 
+    tmPrint t ;;
+    tmFail "get_global_name called with not a const or constructor"
   end.
 
 Require Import MirrorSolve.FirstOrder.
@@ -548,16 +570,34 @@ Section Config.
   
   Definition get_ctor_name (x: constructor_body) : ident := x.(cstr_name).
 
+  Definition make_rel_ind_type (t: term) : option (list term) := 
+    let tys := normalize_sort_term t in 
+    match get_last tys with 
+    | Some (_, x) => 
+      if Core.eq_term x t_prop then Some tys else None
+    | _ => None
+    end.
+
+  Definition is_prop_ind (i: inductive) : TemplateMonad bool := 
+    ind <- lookup_ind i ;;
+    let tys := normalize_sort_term ind.(ind_type) in 
+    match get_last tys with 
+    | Some (_, x) => tmReturn (Core.eq_term x t_prop)
+    | _ => tmReturn false
+    end.
+
   Definition sorts_mind_body (t: term) : TemplateMonad (list (ident * list term)) := 
     match t with 
     | tInd ind  _ => 
       x <- tmQuoteInductive ind.(inductive_mind) ;;
       match x.(ind_bodies) with 
       | [i] => 
-        (* tmPrint "ctor types:" ;;  *)
-        x <- tmEval all (map (fun c => c.(cstr_type)) i.(ind_ctors)) ;;
-        tmPrint x ;;
-        tmReturn ( map (fun c => (get_ctor_name c, get_ctor_type t c)) i.(ind_ctors))
+        match make_rel_ind_type i.(ind_type) with 
+        | Some tys => 
+          tmReturn [(i.(ind_name), tys)]
+        | None => 
+          tmReturn ( map (fun c => (get_ctor_name c, get_ctor_type t c)) i.(ind_ctors))
+        end
       | _ => tmFail "mutually inductive inds are not currently supported"
       end
     | _ => tmFail "sorts_mind_body called with non-ind input"
@@ -674,7 +714,11 @@ Section Config.
   Definition get_orig_funs (x: packed) : TemplateMonad (list (term)) := 
     x <- tmQuotePacked x ;;
     match x with 
-    | tInd ind u => get_ind_ctors ind u 
+    | tInd ind u => 
+      tst <- is_prop_ind ind ;; 
+      if (tst: bool)
+      then tmReturn [x]
+      else get_ind_ctors ind u 
     | _ => tmReturn [x]
     end.
 
@@ -722,6 +766,9 @@ Section Config.
 
   Definition add_funs (typ_term: term) (funs: list packed) (rels: list packed) : TemplateMonad translation_table := 
     names_indices <- gather_sorts_all (List.app funs rels) ;;
+    (* tmPrint "names_indices:" ;; 
+    to_print <- tmEval all names_indices ;;
+    tmPrint to_print ;;  *)
     names_funs_rels <- fmap split_sum_list (mapM split_fun_rel names_indices) ;; 
 
     let '(names_funs, fun_indices) := List.split names_funs_rels.1 in 
@@ -1026,28 +1073,6 @@ Section Config.
     smt_srt <- translate_smt_sort kv.1 ;; 
     tmReturn (srt_symb, smt_srt).
 
-  Definition lookup_ind (x: inductive) : TemplateMonad one_inductive_body := 
-    parent_inds <- tmQuoteInductive x.(inductive_mind) ;;
-    match nth_error parent_inds.(ind_bodies) x.(inductive_ind) with 
-    | Some x => tmReturn x 
-    | None => tmFail "error looking up inductive?"
-    end.
-
-  (* given a constant or a constructor for a inductive, return the name of the constant/constructor. *)
-  Definition get_global_name (t: term) : TemplateMonad ident := 
-    match t with 
-    | tConst x _ => tmReturn x.2
-    | tConstruct ind i _ => 
-      parent_ind <- lookup_ind ind ;; 
-      match nth_error parent_ind.(ind_ctors) i with 
-      | Some x => tmReturn x.(cstr_name)
-      | None => tmFail "error looking up constructor in get_global_name"
-      end
-    | _ => 
-      tmPrint t ;;
-      tmFail "get_global_name called with not a const or constructor"
-    end.
-
   Definition translate_one_fun (s: signature) (x: term * term) : TemplateMonad (packed_sfun s * smt_fun) := 
     args <- tmUnquoteTyped (list s.(sig_sorts)) hole ;;
     ret <- tmUnquoteTyped s.(sig_sorts) hole ;;
@@ -1077,12 +1102,12 @@ Section Config.
       match x.1 with 
       | tConst _ _ => 
         tmReturn (SMTSig.PSR s _ sort_prop f, FUninterp name)
-      | tConstruct _ _ _ => 
-        tmReturn (SMTSig.PSR s _ sort_prop f, FPrim (F_sym name))
+      | tInd ind _ => 
+        tmReturn (SMTSig.PSR s _ sort_prop f, FUninterp name)
       | _ => 
         tmPrint "don't know how to handle term:" ;;
         tmPrint x.1 ;; 
-        tmFail "unexpected term in translate_one_fun"
+        tmFail "unexpected term in translate_one_rel"
       end.
 
   Definition translate_override_rel (s: signature) (sort_prop : s.(sig_sorts)) (x: term * String.string) : TemplateMonad (packed_sfun s * smt_fun) := 

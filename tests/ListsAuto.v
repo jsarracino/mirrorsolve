@@ -39,12 +39,6 @@ Section ListFuncs.
   Infix "::" := cons_A.
   Notation "[]" := nil_A.
 
-  Inductive Even_list : List_A -> Prop := 
-  | even_nil : Even_list []
-  | even_cons : 
-    forall xs (es: Even_list xs),
-      forall x x', Even_list (x :: x' :: xs).
-
   (* We will make use of a hint database to reflect recursive coq functions into SMT logic.
      For now, don't worry about it, but it's handy to use Equations for recursion to make use of the generated equations.
    *)
@@ -85,7 +79,6 @@ Section ListFuncs.
       In x (x' :: l') <-> (x = x' \/ In x l').
   Proof.
     intros.
-    (* simpl. *)
     autorewrite with In.
     intuition eauto.
   Qed.
@@ -97,6 +90,30 @@ Section ListFuncs.
     len [] := 0;
     len (_ :: xs) := len xs + 1;
   }.
+
+  Inductive NoDup : List_A -> Prop :=
+  | NoDup_nil : NoDup []
+  | NoDup_cons : forall x l, ~ In x l -> NoDup l -> NoDup (x::l).
+
+  Lemma NoDup_equation_1 : 
+    NoDup [] <-> True.
+  Proof.
+    intuition eauto || econstructor.
+  Qed.
+
+  Lemma NoDup_equation_2 : 
+    forall x l, 
+      NoDup (x :: l) <-> (
+      ~ In x l  /\  NoDup l 
+    ).
+  Proof.
+    intuition eauto.
+    - inversion H; subst.
+      contradiction.
+    - inversion H; subst.
+      trivial.
+    - econstructor; eauto.
+  Qed.
 
   (* Next we set up a first-order logic for lists, app, rev, tail_rev, In, and len.
    *)
@@ -124,15 +141,11 @@ Section ListFuncs.
       ; pack Z.add
     ] [ 
         pack ListFuncs.In 
-      (* ; pack ListFuncs.Even_list *)
+      ; pack ListFuncs.NoDup
     ];;
     xs' <- tmQuote xs ;;
     tmMkDefinition "trans_tbl" xs'
   ).
-
-  Check tmMkDefinition.
-
-  Check trans_tbl.
     
   MetaCoq Run (
     gen_sig typ_term sorts fol_funs fol_rels
@@ -155,7 +168,8 @@ Section ListFuncs.
   }.
   
   Equations interp_rel args (r: fol_rels args) (hargs : HList.t interp_sorts args) : Prop := {
-    interp_rel _ In_r (x ::: l ::: hnil)  := In x l;
+    interp_rel _ In_r (x ::: l ::: hnil)  := In x l ;
+    interp_rel _ NoDup_r (x ::: hnil) := NoDup x;
   }.
 
   (* We can wrap these definitions together with the previous signature to get a first-order logic *model* for mirrorsolve! *)
@@ -170,7 +184,6 @@ Section ListFuncs.
   MetaCoq Run (
     add_matches sig fm_model trans_tbl
   ).
-
   Require Import MirrorSolve.Reflection.Tactics.
   (* TODO: 
     to infer this code, turn the wf condition into a typeclass,
@@ -179,7 +192,6 @@ Section ListFuncs.
   
   *)
   Definition match_tacs' := ((is_z_term, tacLit sig fm_model z_lit (fun x => (sort_Z; x)) (fun x _ => (sort_Z; TFun sig (z_const_f x) hnil)) ltac:(solve_lit_wf)) :: match_tacs)%list.
-
 
   Require MirrorSolve.SMTSig.
 
@@ -212,6 +224,8 @@ Section ListFuncs.
   Hint Resolve In_equation_2' : list_eqns.
   Hint Resolve len_equation_1 : list_eqns.
   Hint Resolve len_equation_2 : list_eqns.
+  Hint Resolve NoDup_equation_1 : list_eqns.
+  Hint Resolve NoDup_equation_2 : list_eqns.
 
   Ltac prep_proof := 
     hints_foreach (fun x => pose proof x) "list_eqns";
@@ -255,7 +269,7 @@ Section ListFuncs.
 
   Hint Immediate app_nil_r : list_eqns.
 
-  SetSMTSolver "cvc5".
+  SetSMTSolver "z3".
 
   Lemma rev_app : 
     forall (l r : List_A), 
@@ -288,6 +302,7 @@ Section ListFuncs.
     forall (l : List_A), 
       ListFuncs.rev l = tail_rev l [].
   Proof.
+    idtac "tail_rev_sound".
     induction l; mirrorsolve.
   Qed.
 
@@ -315,6 +330,7 @@ Section ListFuncs.
     forall x l r,
       In x (app l r) <-> In x l \/ In x r.
   Proof.
+    idtac "app_In".
     induction l; mirrorsolve.
   Qed.
 
@@ -326,6 +342,56 @@ Section ListFuncs.
   Proof.
     induction l; mirrorsolve.
   Qed.
+
+  Hint Immediate in_rev : list_eqns.
+
+  Lemma NoDup_remove :
+    forall l l' a, 
+    NoDup (app l (a::l')) -> 
+    NoDup (app l l') /\ ~In a (app l l').
+  Proof.
+    idtac "NoDup_remove".
+    induction l; mirrorsolve.
+  Qed.
+
+  Hint Immediate NoDup_remove : list_eqns.
+
+  Lemma NoDup_remove_1 : 
+    forall l l' a,  
+      NoDup (app l (a::l')) -> NoDup (app l l').
+  Proof.
+    induction l; mirrorsolve.
+  Qed.
+
+  Hint Immediate NoDup_remove_1 : list_eqns.
+
+  Lemma NoDup_remove_2 : 
+    forall l l' a, 
+      NoDup (app l (a::l')) -> 
+      ~In a (app l l').
+  Proof.
+    induction l; mirrorsolve.
+  Qed.
+
+  Hint Immediate NoDup_remove_2 : list_eqns.
+
+  Theorem NoDup_cons_iff :
+    forall a l, 
+      NoDup (a::l) <-> 
+      ~ In a l /\ NoDup l.
+  Proof.
+    induction l; mirrorsolve.
+  Qed.
+
+  Hint Immediate NoDup_cons_iff : list_eqns.
+
+  Lemma NoDup_rev :
+    forall l,
+      NoDup l -> NoDup (rev l).
+  Proof.
+    induction l; mirrorsolve.
+  Qed.
+  
 
 End ListFuncs.
   

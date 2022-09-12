@@ -829,17 +829,20 @@ Ltac extract_goal s m sed mt mi t :=
   let f := fresh "fm" in 
   evar (f: FirstOrder.fm s (SLNil _));
   time "pose" pose proof (@denote_extract_specialized_rev s m sed mt mi (reindex_vars t) f) as H;
+  set (t' := reindex_vars t);
+  time "reindex" vm_compute in t';
+  subst t';
   match goal with
   | H: ?Eq -> _ -> _ |- _ => 
     assert (H': Eq) by (
       match goal with 
       | H := ?F |- _ => 
-        change_no_check H with F at 1
+        time "change_no_check" change_no_check H with F at 1
       end;
-      exact eq_refl
+      time "exact eq_refl" exact eq_refl
     )
   end;
-  specialize (H H').
+  time "specialize" specialize (H H').
 
 Ltac reflect_goal s m sed mt mi t := 
   time "extract" extract_goal s m sed mt mi t;

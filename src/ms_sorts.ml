@@ -4,12 +4,33 @@ type srt_smt =
   | Smt_bool 
   | Custom_sort of string
 
+let list_all fs = 
+  List.fold_left (fun acc f x -> acc x && f x) (fun _ -> true) fs
+let between l r x = 
+  Char.code l <= Char.code x && 
+  Char.code x <= Char.code r
+
+let is_upper c = between 'A' 'Z' c
+let is_alpha_num c = 
+  (between '0' '9' c) || 
+  (between 'A' 'Z' c) || 
+  (between 'a' 'z' c) || 
+  c = '_'
+
+let check_sort_name s = 
+  let tests = [
+      (fun s -> String.length s > 0)
+    ; (fun s -> is_upper s.[0])
+    ; (fun s -> String.for_all is_alpha_num s)
+  ] in 
+  list_all tests s
+
 let valid_sort (s: srt_smt) : bool * string = 
   begin match s with 
   | Smt_bv (Some n) -> n > 0, "negative bitvector width"
   | Smt_bv None -> false, "missing bitvector width"
   | Custom_sort s -> 
-    String.length s > 0 && s.[0] = Char.uppercase_ascii s.[0], "empty name or first letter must be uppercase"
+    check_sort_name s, "empty name; or first letter must be uppercase; or name contains invalid symbols"
   | Smt_int 
   | Smt_bool -> true, "inconceivable"
   end

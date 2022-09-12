@@ -7,6 +7,14 @@ Require Import MetaCoq.Template.Checker.
 Definition eq_predicate {T: Type} (eq_T: T -> T -> bool) (l r: predicate T) : bool :=
   forallb2 eq_T l.(pparams) r.(pparams) && eq_T l.(preturn) r.(preturn).
 
+Definition eqb_univ (u1 u2 : Universe.t) : bool :=
+  match u1, u2 with
+  | Universe.lSProp, Universe.lSProp => true
+  | Universe.lProp, Universe.lProp => true
+  | Universe.lType _, Universe.lType _ => true
+  | _, _ => false
+  end.
+
 Fixpoint eq_term (l r: term) : bool := 
   match l with
   | tRel n =>
@@ -24,9 +32,9 @@ Fixpoint eq_term (l r: term) : bool :=
     | tEvar ev' args' => (Nat.eqb ev ev' && forallb2 eq_term args args')%bool
     | _ => false
     end
-  | tSort _ =>
+  | tSort lu =>
     match r with
-    | tSort _ => true
+    | tSort ru => eqb_univ lu ru
     | _ => false
     end
   | tCast f _ T =>

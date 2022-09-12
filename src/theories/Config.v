@@ -1,5 +1,6 @@
 From MetaCoq.Template Require Import All Loader.
 Import MCMonadNotation.
+Require Import MirrorSolve.SMT.
 
 Require Import Coq.Strings.String.
 
@@ -311,7 +312,13 @@ Section Config.
     (names: list ident)  (* names for each of the function symbols *)
     (indices: list (list term)) (* args + return type indices for individual symbols *)
     (funs_type: term) (* overall type of function symbols *)
-    : one_inductive_body := {|
+    : one_inductive_body * list (nat * smt_fun_base) (* resulting funs inductive, and indices + const type for consts *)
+    := 
+    let consts := 
+      match z_index with 
+      | Some x => [z_const_ctor x t_nil] 
+      | _ => [] 
+      end in ({|
     ind_name := "fol_funs";
     ind_indices := [ {| 
         decl_name := (mkBindAnn nAnon Relevant);
@@ -329,22 +336,24 @@ Section Config.
     ind_ctors := 
       List.app 
         (map (fun '(name, idxs) => mk_fun_ctor name idxs) (List.combine names indices))
-        (match z_index with | Some x => [z_const_ctor x t_nil] | _ => [] end );
+        consts
+        ;
     ind_projs := [];
     ind_relevance := Relevant
-  |}.
+  |} , map_with_index (fun i x => (i + length indices, x)) [IntLit]). 
 
   (* same arguments as above *)
-  Definition funs_body (z_index : option term) (t_nil: term) (funs_arg_term : term) (funs_ret_term: term) (names: list ident) (indices: list (list term)) (funs_type : term) : mutual_inductive_body := {| 
+  Definition funs_body (z_index : option term) (t_nil: term) (funs_arg_term : term) (funs_ret_term: term) (names: list ident) (indices: list (list term)) (funs_type : term) : 
+    mutual_inductive_body * (inductive -> list (term * smt_fun_base)) (* convert const constructors into terms *)
+  := 
+    let (bodies, consts) := funs_one_body z_index t_nil funs_arg_term funs_ret_term names indices funs_type in ({| 
     ind_finite := Finite;
     ind_npars := 0;
     ind_params := [];
-    ind_bodies := [
-      funs_one_body z_index t_nil funs_arg_term funs_ret_term names indices funs_type
-    ];
+    ind_bodies := [ bodies ];
     ind_universes := Monomorphic_ctx;
     ind_variance := None;
-  |}.
+  |}, fun funs_ind => map (fun '(i, sfb) => (tConstruct funs_ind i Instance.empty, sfb)) consts).
 
   (* analogous arguments as for *)
   Definition rel_one_body (rel_args_term: term)
@@ -509,7 +518,8 @@ Section Config.
     funs_ty_term <- tmQuote (list sorts -> sorts -> Type) ;;
     nil_term <- tmQuote (@nil sorts) ;;
     indices' <- quote_fun_indices sorts indices ;;
-    tmMkInductive' (funs_body None nil_term arg_term ret_term names indices' funs_ty_term).
+    let '(r, _) := funs_body None nil_term arg_term ret_term names indices' funs_ty_term in 
+    tmMkInductive' r.
 
   (* Get a name for a simple type (e.g. a section variable or a plain inductive).
      TODO: generalize to applied types, e.g. list A
@@ -679,10 +689,13 @@ Section Config.
       end
     end.
 
+  
+
   Record translation_table := {
     mp_srts : list (term * term) ; (* map from original sorts to new sort constructors, e.g. quote Z |-> quote (sort_Z) *)
     mp_funs : list (term * term) ; (* map from original funs to new fun constructors, e.g. quote rev |-> quote (rev_f) *)
     mp_rels : list (term * term) ; (* map from original rels to new rel constructors, e.g. quote In |-> quote (In_r) *)
+    mp_consts: list (term * smt_fun_base) ; (* map from added constant terms to corresponding smt constants e.g. quote z_const_f |-> IntLit *)
   }.
 
   Definition all_symbs (t: translation_table) := List.app t.(mp_funs) t.(mp_rels).
@@ -732,7 +745,8 @@ Section Config.
 
       idx' <- unquote_fun_indices srt (map (map (subst_terms sorted_indices)) fun_indices) ;;
       idx'' <- quote_fun_indices srt idx' ;;
-      tmMkInductive' (funs_body z_const_opt nil_term arg_term ret_term names_funs idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) ) ;;
+      let (r, consts_builder) := funs_body z_const_opt nil_term arg_term ret_term names_funs idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term)  in 
+      tmMkInductive' r ;;
       tmMsg "added function symbol inductive fol_funs" ;;
 
       idx' <- unquote_rel_indices srt (map (map (subst_terms sorted_indices)) rel_indices) ;;
@@ -754,6 +768,7 @@ Section Config.
             mp_srts := sorted_indices ;
             mp_funs := List.combine (concat orig_funs) (map_with_index (make_ind_ctor ind_f []) x'.(ind_ctors)) ;
             mp_rels := List.combine (concat orig_rels) (map_with_index (make_ind_ctor ind_r []) y'.(ind_ctors)) ;
+            mp_consts := consts_builder ind_f ;
           |}
 
         | _ , _ => tmFail "unexpected size of funs/rels  inductive"
@@ -924,7 +939,7 @@ Section Config.
     add_symb_matches s m t ;;
     add_sort_matches s m t.
 
-  Require Import MirrorSolve.SMT.
+  
 
   (* helper functions for building an smt_sig theory from a translation table *)
 
@@ -1075,6 +1090,23 @@ Section Config.
     f <- tmUnquoteTyped (s.(sig_rels) args) x.1 ;; 
     tmReturn (SMTSig.PSR s _ sort_prop f, FPrim (F_sym x.2)).
 
+  Definition translate_const (s: signature) (x: term * smt_fun_base) : TemplateMonad (packed_sfun s * smt_fun) := 
+    args <- tmUnquoteTyped (list s.(sig_sorts)) hole ;;
+    ret <- tmUnquoteTyped s.(sig_sorts) hole ;;
+    match x.2 with 
+    | BoolLit => 
+      f <- tmUnquoteTyped (forall (b: bool), s.(sig_funs) args ret) x.1 ;;
+      tmReturn (SMTSig.PSL s _ _ _ f, FPrim x.2)
+    | IntLit => 
+      f <- tmUnquoteTyped (forall (z: BinNums.Z), s.(sig_funs) args ret) x.1 ;;
+      tmReturn (SMTSig.PSL s _ _ _ f, FPrim x.2)
+    | _ => 
+      tmPrint x.2 ;; 
+      tmPrint x.1 ;; 
+      tmFail "unhandled literal type in translate_const"
+    end.
+
+
   Definition unpack_pair (x: packed * String.string) : TemplateMonad (term * String.string) := 
     r <- tmQuotePacked x.1 ;; 
     tmReturn (r, x.2).
@@ -1099,6 +1131,7 @@ Section Config.
     rels <- mapM (translate_one_rel s sort_prop) norm_rels ;;
     funs_over <- mapM (translate_override_fun s) over_funs ;; 
     rels_over <- mapM (translate_override_rel s sort_prop) over_rels ;;
-    tmReturn (MkSMTSig s srts (funs ++ funs_over ++ rels ++ rels_over)).
+    consts <- mapM (translate_const s) tbl.(mp_consts) ;; 
+    tmReturn (MkSMTSig s srts (funs ++ funs_over ++ rels ++ rels_over ++ consts)).
 
 End Config.

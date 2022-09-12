@@ -183,40 +183,12 @@ Section ListFuncs.
 
   Require MirrorSolve.SMTSig.
 
-  (* 
-    TODO: add an arguments to build_printing_ctx: 
-      a list of overrides, to map coq terms to smt symbols instead of uninterpreted functions.
-        for example (pack Z.add, F_sym "+")
-    TODO: add an assoc-list of primitives to translation table
-      for example (z_const_f, IntLit)
-  *)
-
   MetaCoq Run (
     ctx <- build_printing_ctx sig sort_prop trans_tbl [(pack Z.add, "+"%string)];; 
     ctx' <- tmEval all ctx ;;
     rhs <- tmQuote ctx' ;; 
     tmMkDefinition "fol_theory" rhs
   ).
-
-  (* Definition list_theory := (SMTSig.MkSMTSig sig 
-  [(sort_Z, SortBase SInt); (sort_A, SortBase (SCustom "A"));
-       (sort_List_A,
-       SortInd "List_A"
-         (SICases
-            [("nil_A"%string, nil);
-            ("cons_A"%string, [SISort (SCustom "A"); SIRec])]));
-       (sort_prop, SortBase SBool)]%list
-  [ (SMTSig.PSF sig _ _ app_f, FUninterp "app")
-    ; (SMTSig.PSF sig _ _ rev_f, FUninterp "rev")
-    ; (SMTSig.PSF sig _ _ len_f, FUninterp "len")
-    ; (SMTSig.PSF sig _ _ cons_A_f, FPrim (F_sym "cons_A"))
-    ; (SMTSig.PSF sig _ _ nil_A_f, FPrim (F_sym "nil_A"))
-    ; (SMTSig.PSF sig _ _ tail_rev_f, FUninterp "tail_rev")
-    ; (SMTSig.PSR sig _ sort_prop In_r, FUninterp "In")
-    ; (SMTSig.PSF sig _ _ add_f, FPrim (F_sym "+"))
-    ; (SMTSig.PSL sig Z _ _ z_const_f, FPrim IntLit)
-  ]%list
-  ). *)
 
   Require Import MirrorSolve.Reflection.Tactics.
 
@@ -238,8 +210,8 @@ Section ListFuncs.
   Hint Resolve tail_rev_equation_2 : list_eqns.
   Hint Resolve In_equation_1' : list_eqns.
   Hint Resolve In_equation_2' : list_eqns.
-  (* Hint Resolve len_equation_1 : list_eqns.
-  Hint Resolve len_equation_2 : list_eqns. *)
+  Hint Resolve len_equation_1 : list_eqns.
+  Hint Resolve len_equation_2 : list_eqns.
 
   Ltac prep_proof := 
     hints_foreach (fun x => pose proof x) "list_eqns";
@@ -321,23 +293,23 @@ Section ListFuncs.
 
   Hint Immediate tail_rev_sound : list_eqns.
 
-  (* Lemma app_len : 
+  Lemma app_len : 
     forall (l r : List_A), 
       len (app l r) = (len l + len r)%Z.
   Proof.
     induction l; mirrorsolve.
   Qed.
 
-  Hint Immediate app_len : list_eqns. *)
+  Hint Immediate app_len : list_eqns.
 
-  (* Lemma rev_len :
+  Lemma rev_len :
     forall (l: List_A), 
       len l = len (ListFuncs.rev l).
   Proof.
     induction l; mirrorsolve.
   Qed.
   
-  Hint Immediate rev_len : list_eqns. *)
+  Hint Immediate rev_len : list_eqns.
 
   Lemma app_In : 
     forall x l r,

@@ -107,17 +107,23 @@ Section Tactics.
     | n_lit => BinNums.N
     end.
 
+  Class LitWF 
+    lit 
+    (dl: lit_ty lit -> {ty & mod_sorts ty}) 
+    (el : lit_ty lit -> forall c, {ty & tm s c ty} ) := MkLitWF {
+    e_d_wf : 
+      forall l c v ty tm, 
+        el l c = (ty; tm) -> 
+        dl l = (ty; interp_tm v tm);
+  }.
+
   Inductive tac_syn :=
     | tacFun : 
       forall (fs: fun_sym), tac_syn
     | tacRel : 
       forall (rs: rel_sym), tac_syn
     | tacLit : 
-      forall (lit : tac_lits) (denote_lit: lit_ty lit -> {ty & mod_sorts ty}) (extract_lit: lit_ty lit -> forall c, {ty & tm s c ty}), 
-        (forall l c v ty tm, 
-          extract_lit l c = (ty; tm) -> 
-          denote_lit l = (ty; interp_tm v tm)) ->
-      tac_syn.
+      forall l {dl el} {wf: LitWF l dl el}, tac_syn.
 
   Fixpoint denote_tac_args (tac_args: list sorts) (opt_args: list (option ({ty & mod_sorts ty}))) : option (denote_args tac_args) := 
     match opt_args with 
@@ -625,6 +631,7 @@ Section Tactics.
     - destruct (denote_lit _ _); 
       inversion H0.
       do 2 f_equal.
+      destruct wf as [e].
       eapply e.
       trivial.
   Qed.
@@ -884,7 +891,8 @@ Ltac solve_lit_wf :=
   end;
   f_equal.
 
-Notation tac_bool s m f f' H := (tacLit s m bool_lit f f' H).
-(* Notation tac_bool_auto s m f f' := (tacLit s m bool_lit f f' ltac:(solve_bool_wf)). *)
+Arguments tacLit {_ _} _ {_ _ _}.
+
 Notation tac_fun s f := (tacFun _ _ (Mk_fun_sym s _ _ f)).
 Notation tac_rel s f := (tacRel _ _ (Mk_rel_sym s _ f)).
+

@@ -34,7 +34,9 @@ Section ListFuncs.
      plugin configuration. For verification of the same proofs but on normal lists, see tests/Lists.v.
   *)
 
-  Inductive List_A := | nil_A | cons_A : A -> List_A -> List_A.
+  Inductive List_A := 
+  | nil_A 
+  | cons_A : A -> List_A -> List_A.
 
   Infix "::" := cons_A.
   Notation "[]" := nil_A.
@@ -93,7 +95,10 @@ Section ListFuncs.
 
   Inductive NoDup : List_A -> Prop :=
   | NoDup_nil : NoDup []
-  | NoDup_cons : forall x l, ~ In x l -> NoDup l -> NoDup (x::l).
+  | NoDup_cons : forall x l, 
+    ~ In x l -> 
+    NoDup l -> 
+    NoDup (x::l).
 
   Lemma NoDup_equation_1 : 
     NoDup [] <-> True.
@@ -130,7 +135,6 @@ Section ListFuncs.
   Universe foo.
   MetaCoq Quote Definition typ_term := Type@{foo}.
 
-  (* TODO: support for inductive relations *)
   MetaCoq Run (
     xs <- add_funs typ_term [
         pack ListFuncs.rev
@@ -191,7 +195,14 @@ Section ListFuncs.
     and tell TemplateCoq to do typeclass resolution where the ltac is called
   
   *)
-  Definition match_tacs' := ((is_z_term, tacLit sig fm_model z_lit (fun x => (sort_Z; x)) (fun x _ => (sort_Z; TFun sig (z_const_f x) hnil)) ltac:(solve_lit_wf)) :: match_tacs)%list.
+
+  Instance wf_z : LitWF sig fm_model z_lit (fun x => (sort_Z; x)) (fun x _ => (sort_Z; TFun sig (z_const_f x) hnil)).
+  econstructor.
+  solve_lit_wf.
+  Defined.
+  
+  Definition match_tacs' := (
+    (is_z_term, tacLit z_lit) :: match_tacs)%list.
 
   Require MirrorSolve.SMTSig.
 

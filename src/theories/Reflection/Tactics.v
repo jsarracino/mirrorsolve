@@ -107,15 +107,24 @@ Section Tactics.
     | n_lit => BinNums.N
     end.
 
-  Class LitWF 
-    lit 
-    (dl: lit_ty lit -> {ty & mod_sorts ty}) 
-    (el : lit_ty lit -> forall c, {ty & tm s c ty} ) := MkLitWF {
-    e_d_wf : 
-      forall l c v ty tm, 
-        el l c = (ty; tm) -> 
-        dl l = (ty; interp_tm v tm);
+  Class LitWF lit := MkLitWF {
+      dl: lit_ty lit -> {ty & mod_sorts ty} ;
+      el : lit_ty lit -> forall c, {ty & tm s c ty} ;
+      e_d_wf : 
+        forall l c v ty tm, 
+          el l c = (ty; tm) -> 
+          dl l = (ty; interp_tm v tm);
   }.
+
+  Definition z_wf ty (f: BinNums.Z -> s.(sig_funs) [] ty) : LitWF z_lit := 
+    @MkLitWF z_lit 
+      (fun x => (ty; mod_fns s m [] ty (f x) hnil))
+      (fun x _ => (_; TFun s (f x) hnil)) (
+        fun _ _ _ _ _ H => 
+          match H with 
+          | eq_refl => eq_refl
+          end
+    ).
 
   Inductive tac_syn :=
     | tacFun : 
@@ -123,7 +132,7 @@ Section Tactics.
     | tacRel : 
       forall (rs: rel_sym), tac_syn
     | tacLit : 
-      forall l {dl el} {wf: LitWF l dl el}, tac_syn.
+      forall l {wf: LitWF l}, tac_syn.
 
   Fixpoint denote_tac_args (tac_args: list sorts) (opt_args: list (option ({ty & mod_sorts ty}))) : option (denote_args tac_args) := 
     match opt_args with 
@@ -268,9 +277,9 @@ Section Tactics.
         (apply_denote_rel _ wrapped_args (conv_rel (mod_rels s m _ rs.(deep_r)))))
       | None => None
       end
-    | tacLit lit dt _ _ => 
+    | tacLit lit _ => 
       match denote_lit lit t with 
-      | Some dlit => Some (inl (dt dlit))
+      | Some dlit => Some (inl (dl dlit))
       | None => None
       end
     end.
@@ -365,9 +374,9 @@ Section Tactics.
       | Some x => Some (inr x)
       | None => None
       end
-    | tacLit lit _ ef _ => 
+    | tacLit lit _ => 
       match denote_lit lit t with 
-      | Some dlit => Some (inl (ef dlit c))
+      | Some dlit => Some (inl (el dlit c))
       | None => None
       end
     end.
@@ -445,7 +454,7 @@ Section Tactics.
     clear deep_f0.
     revert H0.
     revert H.
-    revert el.
+    revert el0.
     revert er.
     induction args_f0;
     intros;
@@ -462,7 +471,7 @@ Section Tactics.
       * destruct (extract_args args_f0 er) eqn:?;
         try congruence.
         erewrite IHargs_f0; eauto.
-      * destruct (denote_tac_args args_f0 el); trivial.
+      * destruct (denote_tac_args args_f0 el0); trivial.
   Qed.
 
   Lemma extract_denote_args_r_none: 
@@ -477,7 +486,7 @@ Section Tactics.
     clear deep_r0.
     revert H0.
     revert H.
-    revert el.
+    revert el0.
     revert er.
     induction args_r0;
     intros;
@@ -494,7 +503,7 @@ Section Tactics.
       * destruct (extract_args args_r0 er) eqn:?;
         try congruence.
         erewrite IHargs_r0; eauto.
-      * destruct (denote_tac_args args_r0 el); trivial.
+      * destruct (denote_tac_args args_r0 el0); trivial.
   Qed.
 
   Lemma extract_denote_tac_none: 
@@ -631,7 +640,7 @@ Section Tactics.
     - destruct (denote_lit _ _); 
       inversion H0.
       do 2 f_equal.
-      destruct wf as [e].
+      destruct wf as [? ? e].
       eapply e.
       trivial.
   Qed.
@@ -891,7 +900,9 @@ Ltac solve_lit_wf :=
   end;
   f_equal.
 
-Arguments tacLit {_ _} _ {_ _ _}.
+Check tacLit.
+
+Arguments tacLit {_ _} _ {_}.
 
 Notation tac_fun s f := (tacFun _ _ (Mk_fun_sym s _ _ f)).
 Notation tac_rel s f := (tacRel _ _ (Mk_rel_sym s _ f)).

@@ -5,6 +5,7 @@ Require Import MirrorSolve.SMT.
 Require Import Coq.Strings.String.
 
 Require Import Coq.Lists.List.
+Require Import MirrorSolve.HLists.
 Open Scope bs.
 
 Universe sorts_level.
@@ -162,10 +163,9 @@ Section Config.
   Definition add_sorts (names: list ident) : TemplateMonad (list term) := 
     tmMkInductive' (sorts_body names) ;;
     tmPrint "added inductive definition for sorts" ;;
-    srts <- tmLocate "sorts" ;; 
-    match srts with 
-    | nil => tmFail "new sort not named sorts"
-    | (IndRef i) :: _ => tmReturn (map_with_index (mk_sorts_ctor i []) names)
+    srt <- tmLocate1 "sorts" ;; 
+    match srt with 
+    | IndRef i => tmReturn (map_with_index (mk_sorts_ctor i []) names)
     | _ => tmFail "sorts is not an inductive!"
     end.
 
@@ -777,51 +777,47 @@ Section Config.
     sorted_indices <- add_sorts_indices (fun_indices ++ rel_indices ++ [[t_prop]]) ;; 
     let z_const_opt := gather_z_const sorted_indices in 
 
-    srts <- tmLocate "sorts" ;;
-    match srts with 
-    | [] => tmFail "error making sorts"
-    | srt :: _ =>
-      srt <- tmUnquoteTyped Type (monomorph_globref_term srt) ;;
-      add_interp_sorts (fst (split sorted_indices)) srt ;;
+    srts <- tmLocate1 "sorts" ;;
+    srt <- tmUnquoteTyped Type (monomorph_globref_term srts) ;;
+    add_interp_sorts (fst (split sorted_indices)) srt ;;
 
-      arg_term <- tmQuote (list srt) ;;
-      ret_term <- tmQuote srt ;;
-      funs_ty_term <- tmQuote (list srt -> srt -> Type) ;;
-      rels_ty_term <- tmQuote (list srt -> Type) ;;
-      nil_term <- tmQuote (@nil srt) ;;
+    arg_term <- tmQuote (list srt) ;;
+    ret_term <- tmQuote srt ;;
+    funs_ty_term <- tmQuote (list srt -> srt -> Type) ;;
+    rels_ty_term <- tmQuote (list srt -> Type) ;;
+    nil_term <- tmQuote (@nil srt) ;;
 
-      idx' <- unquote_fun_indices srt (map (map (subst_terms sorted_indices)) fun_indices) ;;
-      idx'' <- quote_fun_indices srt idx' ;;
-      let (r, consts_builder) := funs_body z_const_opt nil_term arg_term ret_term names_funs idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term)  in 
-      tmMkInductive' r ;;
-      tmMsg "added function symbol inductive fol_funs" ;;
+    idx' <- unquote_fun_indices srt (map (map (subst_terms sorted_indices)) fun_indices) ;;
+    idx'' <- quote_fun_indices srt idx' ;;
+    let (r, consts_builder) := funs_body z_const_opt nil_term arg_term ret_term names_funs idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term)  in 
+    tmMkInductive' r ;;
+    tmMsg "added function symbol inductive fol_funs" ;;
 
-      idx' <- unquote_rel_indices srt (map (map (subst_terms sorted_indices)) rel_indices) ;;
-      idx'' <- quote_rel_indices srt idx' ;;
-      tmMkInductive' (rel_body arg_term names_rels idx'' (rep_sorts_level (extr_univ typ_term) rels_ty_term) ) ;;
-      tmMsg "added relation symbol inductive fol_rels" ;;
+    idx' <- unquote_rel_indices srt (map (map (subst_terms sorted_indices)) rel_indices) ;;
+    idx'' <- quote_rel_indices srt idx' ;;
+    tmMkInductive' (rel_body arg_term names_rels idx'' (rep_sorts_level (extr_univ typ_term) rels_ty_term) ) ;;
+    tmMsg "added relation symbol inductive fol_rels" ;;
 
-      funs' <- tmLocate "fol_funs" ;;
-      rels' <- tmLocate "fol_rels" ;;
-      match funs', rels' with 
-      | IndRef ind_f :: _, IndRef ind_r :: _ => 
-        x <- tmQuoteInductive ind_f.(inductive_mind) ;;
-        y <- tmQuoteInductive ind_r.(inductive_mind) ;;
-        match x.(ind_bodies), y.(ind_bodies) with 
-        | [x'], [y'] => 
-          orig_funs <- mapM get_orig_funs funs ;;
-          orig_rels <- mapM get_orig_funs rels ;;
-          tmReturn {|
-            mp_srts := sorted_indices ;
-            mp_funs := List.combine (concat orig_funs) (map_with_index (make_ind_ctor ind_f []) x'.(ind_ctors)) ;
-            mp_rels := List.combine (concat orig_rels) (map_with_index (make_ind_ctor ind_r []) y'.(ind_ctors)) ;
-            mp_consts := consts_builder ind_f ;
-          |}
+    funs' <- tmLocate1 "fol_funs" ;;
+    rels' <- tmLocate1 "fol_rels" ;;
+    match funs', rels' with 
+    | IndRef ind_f, IndRef ind_r => 
+      x <- tmQuoteInductive ind_f.(inductive_mind) ;;
+      y <- tmQuoteInductive ind_r.(inductive_mind) ;;
+      match x.(ind_bodies), y.(ind_bodies) with 
+      | [x'], [y'] => 
+        orig_funs <- mapM get_orig_funs funs ;;
+        orig_rels <- mapM get_orig_funs rels ;;
+        tmReturn {|
+          mp_srts := sorted_indices ;
+          mp_funs := List.combine (concat orig_funs) (map_with_index (make_ind_ctor ind_f []) x'.(ind_ctors)) ;
+          mp_rels := List.combine (concat orig_rels) (map_with_index (make_ind_ctor ind_r []) y'.(ind_ctors)) ;
+          mp_consts := consts_builder ind_f ;
+        |}
 
-        | _ , _ => tmFail "unexpected size of funs/rels  inductive"
-        end
-      | _, _ => tmFail "error making funs"
+      | _ , _ => tmFail "unexpected size of funs/rels  inductive"
       end
+    | _, _ => tmFail "error making funs"
     end.
 
 
@@ -892,14 +888,8 @@ Section Config.
     mapM add_test_packed xs.
 
   Definition tmUnquoteTypedId (A: Type) (id: ident) : TemplateMonad A :=
-    typed_tms <- tmLocate id ;;
-    match typed_tms with
-    | nil =>
-      tmFail "Failed to look up signature"
-    | typed_tm :: _ =>
-      tmUnquoteTyped A (monomorph_globref_term typed_tm) >>= tmReturn
-    end
-  .
+    typed_tm <- tmLocate1 id ;;
+    tmUnquoteTyped A (monomorph_globref_term typed_tm).
 
   (* Helper function for generating a signature, given sorts, funs, and rels. *)
   Definition gen_sig'
@@ -968,10 +958,54 @@ Section Config.
     srt <- tmUnquoteTyped s.(sig_sorts) symb ;;
     tmReturn (test, srt).
 
+    
+  (* MetaCoq Run (
+    let r := (make_lit_wf sig fm_model sort_Z z_const_f) in
+    r_term <- tmQuote r ;;
+    tmMkDefinition "z_lit_wf" r_term ;; 
+    tmLocate1 "z_lit_wf" >>= tmExistingInstance
+  ). *)
+
+  Definition add_const_wf_instance (s: FirstOrder.signature) (m: FirstOrder.model s) (const_f_t : term) (const_ty : smt_fun_base) : TemplateMonad unit :=
+    srt <- tmUnquoteTyped s.(sig_sorts) hole ;;
+    ret <- tmUnquoteTyped s.(sig_sorts) hole ;;
+    match const_ty with 
+    | IntLit =>
+      f <- tmUnquoteTyped (BinNums.Z -> s.(sig_funs) [] ret) const_f_t ;;
+      r_term <- tmQuote (Tactics.z_wf s m ret f) ;;
+      tmMkDefinition "z_lit_wf" r_term ;;
+      tmLocate1 "z_lit_wf" >>= tmExistingInstance
+    | _ => 
+      tmPrint const_ty ;;
+      tmFail "unimplemented const_wf_instance"
+    end.
+
+  Definition add_const_wf_instances (s: FirstOrder.signature) (m: FirstOrder.model s) (t: translation_table) : TemplateMonad unit := 
+   mapM (fun '(const_f_t, const_ty) => add_const_wf_instance s m const_f_t const_ty) t.(mp_consts) ;;
+   tmReturn tt.
+
+  Definition build_const_match (s: FirstOrder.signature) (m: FirstOrder.model s) (const_term : term) (const_ty : smt_fun_base) : TemplateMonad ((term -> bool) * Tactics.tac_syn s m) := 
+    match const_ty with
+    | IntLit => 
+      wf_inst <- tmInferInstance None (Tactics.LitWF s m Tactics.z_lit) ;;
+      match wf_inst with 
+      | my_Some x => 
+        tmReturn (Tactics.is_z_term, @Tactics.tacLit s m Tactics.z_lit x)
+      | my_None => 
+        tmPrint const_ty ;;
+        tmFail "couldn't find a wf instance for literal"
+      end
+    | _ => 
+      tmPrint const_ty ;;
+      tmFail "unimplemented tactic type"
+    end.
+
+
   Definition add_symb_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (t: translation_table) : TemplateMonad unit := 
     fun_matches <- mapM (fun '(orig_f, sym_f) => @build_fun_match s m orig_f sym_f) t.(mp_funs) ;;
     rel_matches <- mapM (fun '(orig_r, sym_r) => @build_rel_match s m orig_r sym_r) t.(mp_rels) ;;
-    matches_term <- tmQuote (List.app fun_matches rel_matches) ;;
+    const_matches <- mapM (fun '(const_f, const_ty) => @build_const_match s m const_f const_ty) t.(mp_consts) ;;
+    matches_term <- tmQuote (List.app fun_matches (List.app rel_matches const_matches)) ;;
     tmMkDefinition "match_tacs" matches_term.
 
   Definition add_sort_matches (s: FirstOrder.signature) (m: FirstOrder.model s) (t: translation_table) : TemplateMonad unit := 

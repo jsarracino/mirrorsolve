@@ -178,34 +178,21 @@ Section ListFuncs.
 
   (* We can wrap these definitions together with the previous signature to get a first-order logic *model* for mirrorsolve! *)
 
-  Definition fm_model := 
-    Build_model sig interp_sorts interp_fun interp_rel.
+  Definition fm_model := Build_model sig interp_sorts interp_fun interp_rel.
 
   (* Next we configure the reflection logic for mirrorsolve. 
     So we're going to connect the first-order logic syntax and semantics with Coq's AST in MetaCoq. 
   *)
 
+  Require Import MirrorSolve.Reflection.Tactics.
+  
+  (* Not sure why but these need to be in separate blocks *)
+  MetaCoq Run (
+    add_const_wf_instances sig fm_model trans_tbl
+  ).
   MetaCoq Run (
     add_matches sig fm_model trans_tbl
   ).
-  Require Import MirrorSolve.Reflection.Tactics.
-  (* TODO: 
-    to infer this code, turn the wf condition into a typeclass,
-    register a new typeclass instance when we add the z literal to the sig/interpretation,
-    and tell TemplateCoq to do typeclass resolution where the ltac is called
-  
-  *)
-
-  Instance wf_z : LitWF sig fm_model z_lit (fun x => (sort_Z; x)) (fun x _ => (sort_Z; TFun sig (z_const_f x) hnil)).
-  econstructor.
-  solve_lit_wf.
-  Defined.
-  
-  Definition match_tacs' := (
-    (is_z_term, tacLit z_lit) :: match_tacs)%list.
-
-  Require MirrorSolve.SMTSig.
-
   MetaCoq Run (
     ctx <- build_printing_ctx sig sort_prop trans_tbl [(pack Z.add, "+"%string)];; 
     ctx' <- tmEval all ctx ;;
@@ -245,8 +232,8 @@ Section ListFuncs.
 
   Scheme Equality for sorts.
 
-  Ltac quote_reflect_list := quote_reflect sig fm_model sorts_eq_dec match_tacs' match_sorts.
-  Ltac quote_extract_list := quote_extract sig fm_model sorts_eq_dec match_tacs' match_sorts.
+  Ltac quote_reflect_list := quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts.
+  Ltac quote_extract_list := quote_extract sig fm_model sorts_eq_dec match_tacs match_sorts.
 
   Ltac mirrorsolve :=
     prep_proof;
@@ -279,8 +266,6 @@ Section ListFuncs.
   Qed.
 
   Hint Immediate app_nil_r : list_eqns.
-
-  SetSMTSolver "z3".
 
   Lemma rev_app : 
     forall (l r : List_A), 

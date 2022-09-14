@@ -6,7 +6,9 @@ Require Import Coq.Strings.String.
 
 Require Import Coq.Lists.List.
 Require Import MirrorSolve.HLists.
+Import HListNotations.
 Open Scope bs.
+
 
 Universe sorts_level.
 
@@ -96,10 +98,16 @@ Polymorphic Definition lookup_ind (x: inductive) : TemplateMonad one_inductive_b
   | None => tmFail "error looking up inductive?"
   end.
 
+Polymorphic Definition lookup_ty (t: term) : TemplateMonad term := 
+  foo <- tmUnquote t ;;
+  ty <- tmEval all (my_projT1 foo) ;;
+  tmQuote ty.
+
 (* given a constant or a constructor for a inductive, return the name of the constant/constructor. *)
 Polymorphic Definition get_global_name (t: term) : TemplateMonad ident := 
   match t with 
   | tConst x _ => tmReturn x.2
+  | tVar x => tmReturn x
   | tConstruct ind i _ => 
     parent_ind <- lookup_ind ind ;; 
     match nth_error parent_ind.(ind_ctors) i with 
@@ -609,6 +617,9 @@ Section Config.
     t' <- tmQuotePacked t ;;
     match t' with 
     | tInd _ _ => sorts_mind_body t'
+    | tVar name => 
+      ty <- lookup_ty t' ;;
+      tmReturn [(name, normalize_sort_term ty)]
     | tConst name _ => 
       y <- tmQuoteConstant name true ;;
       x <- tmEval all (sorts_constant_body y) ;;
@@ -819,6 +830,211 @@ Section Config.
       end
     | _, _ => tmFail "error making funs"
     end.
+
+
+  Variable (srts: Type).
+  Variable (interp_srts : srts -> Type).
+  Variable (fol_funs : list srts -> srts -> Type).
+  Variable (fol_rels : list srts -> Type).
+  
+  Fixpoint denote_func_type
+    (args: list srts)
+    (ret: srts)
+  :
+    Type
+  := 
+    match args with 
+    | nil => interp_srts ret
+    | (t :: ts)%list => (interp_srts t -> (denote_func_type ts ret))%type
+    end.
+
+  Fixpoint denote_rel_type
+    (args: list srts)
+  :
+    Type
+  := 
+    match args with 
+    | nil => Prop
+    | (t :: ts)%list => (interp_srts t -> (denote_rel_type ts))%type
+    end.
+
+  (* Version of apply_denote_func that works with hlists because that is how
+      arguments are supplied when interpreting functions. *)
+  Equations apply_denote_func
+    {arg_tys: list srts}
+    (ret_ty: srts)
+    (args: HList.t interp_srts arg_tys)
+    (f: denote_func_type arg_tys ret_ty)
+  :
+    interp_srts ret_ty
+  := {
+    @apply_denote_func nil _ _ v => v;
+    @apply_denote_func (t :: ts) _ (arg ::: args) f =>
+      apply_denote_func ret_ty args (f arg);
+  }.
+
+  Equations apply_denote_rel
+    {arg_tys: list srts}
+    (args: HList.t interp_srts arg_tys)
+    (f: denote_rel_type arg_tys)
+  :
+    Prop
+  := {
+    @apply_denote_rel nil _ v => v;
+    @apply_denote_rel (t :: ts) (arg ::: args) r =>
+      apply_denote_rel args (r arg);
+  }.
+
+  Definition gen_denote_func_cases (tbl: translation_table) : list (branch term) :=
+    List.map (fun '(f, _) => {| bcontext := nil; bbody := f |})
+              tbl.(mp_funs)
+    ++
+    (* This final clause is not part of the translation table, so we add
+        it manually. There's probably a better way! *)
+    (* TODO *)
+    [{| bcontext := [nNamed "z"]; bbody := tRel 0 |}]%list
+  .
+
+  Definition gen_denote_rel_cases (tbl: translation_table) : list (branch term) :=
+    List.map (fun '(f, _) => {| bcontext := nil; bbody := f |})
+              tbl.(mp_rels).
+
+  Definition make_denote_f q_list_srts q_srts q_fol_funs fol_funs_ref q_denote_func_type tbl := 
+    (tLambda
+      (nNamed "arg_tys")
+      q_list_srts
+      (tLambda
+        (nNamed "ret_ty")
+        q_srts
+        (tLambda
+          (nNamed "f")
+          (tApp q_fol_funs [tRel 1; tRel 0])
+          (tCase
+            {|
+              ci_ind := fol_funs_ref;
+              ci_npar := 0;
+              ci_relevance := Relevant
+            |}
+            {|
+              puinst := nil;
+              pparams := nil;
+              pcontext := [nNamed "s"; nNamed "s"; nNamed "l"];
+              preturn :=
+                tApp
+                  q_denote_func_type
+                  [tRel 2; tRel 1]
+            |}
+            (tRel 0)
+            (gen_denote_func_cases tbl)
+          )
+        )
+      )
+    ).
+
+  Definition make_interp_fun q_list_srts q_srts q_hargs q_fol_funs q_apply_denote_func q_denote_func := 
+    (tLambda
+     {|
+       binder_name := BasicAst.nNamed "arg_tys"; binder_relevance := Relevant
+     |}
+     q_list_srts
+     (tLambda
+        {|
+          binder_name := BasicAst.nNamed "ret_ty";
+          binder_relevance := Relevant
+        |} q_srts
+        (tLambda
+           {|
+             binder_name := BasicAst.nNamed "f"; binder_relevance := Relevant
+           |} (tApp q_fol_funs [tRel 1; tRel 0])
+           (tLambda
+              {|
+                binder_name := BasicAst.nNamed "hargs";
+                binder_relevance := Relevant
+              |}
+              (tApp q_hargs [tRel 2])
+              (tApp
+                 q_apply_denote_func
+                 [tRel 3; tRel 2; tRel 0;
+                 tApp q_denote_func [tRel 3; tRel 2; tRel 1]]))))).
+
+  Definition gen_interp_funs (tbl: translation_table) :=
+    q_list_srts <- tmQuote (list srts) ;;
+    q_srts <- tmQuote srts ;;
+    q_fol_funs <- tmQuote fol_funs ;;
+    fol_funs_ref <- match q_fol_funs with
+                    | tInd r _ => tmReturn r
+                    | _ => tmFail "fol_funs_ref"
+                    end ;;
+    q_denote_func_type <- tmQuote denote_func_type ;;
+
+    let denote_funs := make_denote_f q_list_srts q_srts q_fol_funs fol_funs_ref q_denote_func_type tbl in
+    q_hargs <- tmQuote (fun x => HList.t interp_srts x) ;;
+    q_apply_denote_func <- tmQuote (@apply_denote_func) ;;
+    tmMkDefinition "interp_funs" (make_interp_fun q_list_srts q_srts q_hargs q_fol_funs q_apply_denote_func denote_funs).
+    
+
+  Definition make_denote_r q_list_srts q_fol_rels fol_rels_ref q_denote_rel_type tbl := 
+    (tLambda
+      (nNamed "arg_tys")
+      q_list_srts
+      (tLambda
+        (nNamed "f")
+        (tApp q_fol_rels [tRel 0])
+        (tCase
+          {|
+            ci_ind := fol_rels_ref;
+            ci_npar := 0;
+            ci_relevance := Relevant
+          |}
+          {|
+            puinst := nil;
+            pparams := nil;
+            pcontext := [nNamed "s"; nNamed "l"];
+            preturn :=
+              tApp
+                q_denote_rel_type
+                [tRel 1]
+          |}
+          (tRel 0)
+          (gen_denote_rel_cases tbl)
+        )
+      )
+    ).
+
+  Definition make_interp_rel q_list_srts q_hargs q_fol_rels q_apply_denote_rel q_denote_rel := 
+    (tLambda
+      {|
+        binder_name := BasicAst.nNamed "arg_tys"; binder_relevance := Relevant
+      |}
+      q_list_srts
+      (tLambda
+        {|
+          binder_name := BasicAst.nNamed "r"; binder_relevance := Relevant
+        |} (tApp q_fol_rels [tRel 0])
+        (tLambda
+          {|
+            binder_name := BasicAst.nNamed "hargs";
+            binder_relevance := Relevant
+          |}
+          (tApp q_hargs [tRel 1])
+          (tApp
+              q_apply_denote_rel
+              [tRel 2; tRel 0;
+              tApp q_denote_rel [tRel 2; tRel 1]])))).
+
+  Definition gen_interp_rels (tbl: translation_table) :=
+    q_list_srts <- tmQuote (list srts) ;;
+    q_fol_rels <- tmQuote fol_rels ;;
+    fol_rels_ref <- match q_fol_rels with
+                    | tInd r _ => tmReturn r
+                    | _ => tmFail "fol_rels_ref"
+                    end ;;
+    q_denote_rel_type <- tmQuote denote_rel_type ;;
+
+    let denote_rels := make_denote_r q_list_srts q_fol_rels fol_rels_ref q_denote_rel_type tbl in
+    q_hargs <- tmQuote (fun x => HList.t interp_srts x) ;;
+    q_apply_denote_rel <- tmQuote (@apply_denote_rel) ;;
+    tmMkDefinition "interp_rels" (make_interp_rel q_list_srts q_hargs q_fol_rels q_apply_denote_rel denote_rels).
 
 
   (* helper functions for autogenerating boolean term tests *)

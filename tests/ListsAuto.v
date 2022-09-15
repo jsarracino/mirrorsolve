@@ -362,13 +362,24 @@ Section ListFuncs.
 
   Hint Immediate NoDup_cons_iff : list_eqns.
 
+  Lemma NoDup_app : 
+    forall l1 l2, 
+      NoDup (app l1 l2) <-> 
+      NoDup l1 /\ NoDup l2 /\ 
+      (forall x, In x l1 -> ~ In x l2) /\
+      (forall x, In x l2 -> ~ In x l1).
+  Proof.
+    induction l1; mirrorsolve.
+  Qed.
+
+  Hint Immediate NoDup_app : list_eqns.
+
   Lemma NoDup_rev :
     forall l,
-      NoDup l -> NoDup (rev l).
+      NoDup l <-> NoDup (ListFuncs.rev l).
   Proof.
     induction l; mirrorsolve.
   Qed.
-  
 
 End ListFuncs.
   

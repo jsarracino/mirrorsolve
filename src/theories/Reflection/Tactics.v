@@ -865,6 +865,7 @@ Ltac extract_goal s m sed mt mi t :=
       | H := ?F |- _ => 
         time "change_no_check" change_no_check H with F at 1
       end;
+      time "compute" vm_compute;
       time "exact eq_refl" exact eq_refl
     )
   end;

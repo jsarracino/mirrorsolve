@@ -126,6 +126,16 @@ Section Tactics.
           end
     ).
 
+  Definition b_wf ty (f: bool -> s.(sig_funs) [] ty) : LitWF bool_lit := 
+    @MkLitWF bool_lit 
+      (fun x => (ty; mod_fns s m [] ty (f x) hnil))
+      (fun x _ => (_; TFun s (f x) hnil)) (
+        fun _ _ _ _ _ H => 
+          match H with 
+          | eq_refl => eq_refl
+          end
+    ).
+
   Inductive tac_syn :=
     | tacFun : 
       forall (fs: fun_sym), tac_syn

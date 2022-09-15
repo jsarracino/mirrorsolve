@@ -144,3 +144,19 @@ Fixpoint drop_last {A} (xs: list A) : list A :=
 
 Definition flip {A B} (xs: list (A * B)) : list (B * A) := 
   map (fun '(x, y) => (y, x)) xs.
+
+Fixpoint map_option {A B} (f: A -> option B) (xs: list A) : list B := 
+  match xs with 
+  | nil => nil
+  | x :: xs' => 
+    match f x with 
+    | Some y => y :: map_option f xs'
+    | None => map_option f xs'
+    end
+  end.
+
+Definition o2l {A} (x: option A) := 
+  match x with 
+  | Some x' => x' :: nil
+  | None => nil
+  end.

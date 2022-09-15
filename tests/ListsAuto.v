@@ -135,6 +135,8 @@ Section ListFuncs.
   Universe foo.
   MetaCoq Quote Definition typ_term := Type@{foo}.
 
+  (* Not sure why but all of these MetaCoq statements need to be in separate blocks *)
+
   MetaCoq Run (
     xs <- add_funs typ_term [
         pack ListFuncs.rev
@@ -150,7 +152,6 @@ Section ListFuncs.
     xs' <- tmQuote xs ;;
     tmMkDefinition "trans_tbl" xs'
   ).
-    
   MetaCoq Run (
     gen_sig typ_term sorts fol_funs fol_rels 
   ).
@@ -160,23 +161,7 @@ Section ListFuncs.
   MetaCoq Run (
     gen_interp_rels sorts interp_sorts fol_rels trans_tbl
   ).
-
-  Equations interp_rel args (r: fol_rels args) (hargs : HList.t interp_sorts args) : Prop := {
-    interp_rel _ In_r (x ::: l ::: hnil)  := In x l ;
-    interp_rel _ NoDup_r (x ::: hnil) := NoDup x;
-  }.
-
-  (* We can wrap these definitions together with the previous signature to get a first-order logic *model* for mirrorsolve! *)
-
-  Definition fm_model := Build_model sig interp_sorts interp_fun' interp_rel.
-
-  (* Next we configure the reflection logic for mirrorsolve. 
-    So we're going to connect the first-order logic syntax and semantics with Coq's AST in MetaCoq. 
-  *)
-
-  Require Import MirrorSolve.Reflection.Tactics.
-  
-  (* Not sure why but these need to be in separate blocks *)
+  Definition fm_model := Build_model sig interp_sorts interp_funs interp_rels.
   MetaCoq Run (
     add_const_wf_instances sig fm_model trans_tbl
   ).
@@ -184,7 +169,13 @@ Section ListFuncs.
     add_matches sig fm_model trans_tbl
   ).
   MetaCoq Run (
-    ctx <- build_printing_ctx sig sort_prop trans_tbl [(pack Z.add, "+"%string)];; 
+    (* This last argument of build_printing_ctx is a list of "overrides" for replacing a Coq term with an SMT primitive.
+       In this case, we want to use SMT's integer arithmetic for the implementation of Z.add (instead of treating Z.add like an uninterpreted function),
+       so we add an entry in the list of overrides for Z.add and the string "+".
+    *)
+    ctx <- build_printing_ctx sig sort_prop trans_tbl [
+        (pack Z.add, "+"%string)
+      ];; 
     ctx' <- tmEval all ctx ;;
     rhs <- tmQuote ctx' ;; 
     tmMkDefinition "fol_theory" rhs

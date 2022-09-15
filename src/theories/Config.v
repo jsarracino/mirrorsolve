@@ -325,6 +325,41 @@ Section Config.
     cstr_arity := 1;
   |}.
 
+  Definition b_const_ctor (b_const_indices : term) (t_nil : term) : constructor_body := {| 
+    cstr_name := "b_const_f";
+    cstr_args := [{|
+      decl_name :=
+        {|
+          binder_name := nNamed "b"; binder_relevance := Relevant
+        |};
+      decl_body := None;
+      decl_type :=
+        tInd
+          {|
+            inductive_mind :=
+              (MPfile ["Datatypes"; "Init"; "Coq"], "bool");
+            inductive_ind := 0
+          |} []
+    |}];
+    cstr_indices := [tInd
+    {|
+      inductive_mind :=
+        (MPfile ["Datatypes"; "Init"; "Coq"], "bool");
+      inductive_ind := 0
+    |} []];
+    cstr_type := 
+      tProd
+        {| binder_name := nNamed "b"; binder_relevance := Relevant |}
+        (tInd
+          {|
+            inductive_mind :=
+              (MPfile ["Datatypes"; "Init"; "Coq"], "bool");
+            inductive_ind := 0
+          |} [])
+        (tApp (tRel 1) [ t_nil ; b_const_indices]);
+    cstr_arity := 1;
+  |}.
+
 
   Definition mk_rel_ctor (name: ident) (indices: list term) : constructor_body := {| 
     cstr_name := name ++ "_r";
@@ -334,21 +369,25 @@ Section Config.
     cstr_arity := 0;
   |}.
 
+  Definition const_term_builder t_nil (x: term * smt_fun_base)  := 
+    match x.2 with 
+    | IntLit => Some (z_const_ctor x.1 t_nil)
+    | BoolLit => Some (b_const_ctor x.1 t_nil)
+    | _ => None (* should not happen *)
+    end.
+  
+
   Definition funs_one_body 
-    (z_index: option term) (* index for Z, Z constants are special-cased *)
     (t_nil : term) (* quoted nil, needs to be passed due to universe stuff *)
     (fun_args_term: term) (* quoted type of args *)
     (fun_ret_term: term) (* quoted type of ret *)
     (names: list ident)  (* names for each of the function symbols *)
     (indices: list (list term)) (* args + return type indices for individual symbols *)
     (funs_type: term) (* overall type of function symbols *)
+    (incl_consts : list (term * smt_fun_base))
     : one_inductive_body * list (nat * smt_fun_base) (* resulting funs inductive, and indices + const type for consts *)
     := 
-    let consts := 
-      match z_index with 
-      | Some x => [z_const_ctor x t_nil] 
-      | _ => [] 
-      end in ({|
+    let consts := map_option (const_term_builder t_nil) incl_consts in ({|
     ind_name := "fol_funs";
     ind_indices := [ {| 
         decl_name := (mkBindAnn nAnon Relevant);
@@ -370,13 +409,20 @@ Section Config.
         ;
     ind_projs := [];
     ind_relevance := Relevant
-  |} , map_with_index (fun i x => (i + length indices, x)) [IntLit]). 
+  |} , map_with_index (fun i x => (i + length indices, x.2)) incl_consts). 
 
   (* same arguments as above *)
-  Definition funs_body (z_index : option term) (t_nil: term) (funs_arg_term : term) (funs_ret_term: term) (names: list ident) (indices: list (list term)) (funs_type : term) : 
+  Definition funs_body 
+    (t_nil: term) 
+    (funs_arg_term : term) 
+    (funs_ret_term: term) 
+    (names: list ident) 
+    (indices: list (list term)) 
+    (funs_type : term)
+    (incl_consts : list (term * smt_fun_base)) : 
     mutual_inductive_body * (inductive -> list (term * smt_fun_base)) (* convert const constructors into terms *)
   := 
-    let (bodies, consts) := funs_one_body z_index t_nil funs_arg_term funs_ret_term names indices funs_type in ({| 
+    let (bodies, consts) := funs_one_body t_nil funs_arg_term funs_ret_term names indices funs_type incl_consts in ({| 
     ind_finite := Finite;
     ind_npars := 0;
     ind_params := [];
@@ -538,6 +584,33 @@ Section Config.
       tmReturn ([args_term] :: r)
     end.
 
+  (* Go through a key-value list of sorts and check if Z (or bool) is around. 
+     If it is, return the corresponding sort constructor for Z (e.g. sort_Z)
+   *)
+
+  MetaCoq Quote Definition t_z := (BinInt.Z).
+  MetaCoq Quote Definition t_b := (bool).
+  Definition is_z_srt t := Core.eq_term t t_z.
+  Definition is_b_srt t := Core.eq_term t t_b.
+
+  Fixpoint gather_z_const (srts: list (term * term)) : option term := 
+    match srts with 
+    | [] => None
+    | (typ, idx) :: xs => 
+      if is_z_srt typ then Some idx else gather_z_const xs 
+    end.
+  
+  Fixpoint gather_b_const (srts: list (term * term)) : option term := 
+    match srts with 
+    | [] => None
+    | (typ, idx) :: xs => 
+      if is_b_srt typ then Some idx else gather_b_const xs 
+    end.
+
+  Definition gather_consts (srts: list (term * term)) := 
+   (o2l (option_map (fun x => (x, IntLit)) (gather_z_const srts)) ++ 
+    o2l (option_map (fun x => (x, BoolLit)) (gather_b_const srts)))%list.
+
   (* Given a list of function names and corresponding argument + return type indices, 
     make a function symbol inductive declaration.
     Does *not* handle Z constants.
@@ -548,7 +621,7 @@ Section Config.
     funs_ty_term <- tmQuote (list sorts -> sorts -> Type) ;;
     nil_term <- tmQuote (@nil sorts) ;;
     indices' <- quote_fun_indices sorts indices ;;
-    let '(r, _) := funs_body None nil_term arg_term ret_term names indices' funs_ty_term in 
+    let '(r, _) := funs_body nil_term arg_term ret_term names indices' funs_ty_term [] in 
     tmMkInductive' r.
 
   (* Get a name for a simple type (e.g. a section variable or a plain inductive).
@@ -755,19 +828,7 @@ Section Config.
 
   Definition all_symbs (t: translation_table) := List.app t.(mp_funs) t.(mp_rels).
 
-  MetaCoq Quote Definition t_z := (BinInt.Z).
-
-  Definition is_z_srt (t: term) := Core.eq_term t t_z.
-
-  (* Go through a key-value list of sorts and check if Z is around. 
-     If it is, return the corresponding sort constructor for Z (e.g. sort_Z)
-   *)
-  Fixpoint gather_z_const (srts: list (term * term)) : option term := 
-    match srts with 
-    | [] => None
-    | (typ, idx) :: xs => 
-      if is_z_srt typ then Some idx else gather_z_const xs 
-    end.
+  
 
   (* Main automation function. Given a quoted term for Type, a list of packed functions/inductives, and a list of packed relations/inductives, 
     add syntax and semantics for sorts,
@@ -786,7 +847,7 @@ Section Config.
     let '(names_rels, rel_indices) := List.split names_funs_rels.2 in 
 
     sorted_indices <- add_sorts_indices (fun_indices ++ rel_indices ++ [[t_prop]]) ;; 
-    let z_const_opt := gather_z_const sorted_indices in 
+    let consts := gather_consts sorted_indices in 
 
     srts <- tmLocate1 "sorts" ;;
     srt <- tmUnquoteTyped Type (monomorph_globref_term srts) ;;
@@ -800,7 +861,7 @@ Section Config.
 
     idx' <- unquote_fun_indices srt (map (map (subst_terms sorted_indices)) fun_indices) ;;
     idx'' <- quote_fun_indices srt idx' ;;
-    let (r, consts_builder) := funs_body z_const_opt nil_term arg_term ret_term names_funs idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term)  in 
+    let (r, consts_builder) := funs_body nil_term arg_term ret_term names_funs idx'' (rep_sorts_level (extr_univ typ_term) funs_ty_term) consts  in 
     tmMkInductive' r ;;
     tmMsg "added function symbol inductive fol_funs" ;;
 
@@ -1191,6 +1252,11 @@ Section Config.
       r_term <- tmQuote (Tactics.z_wf s m ret f) ;;
       tmMkDefinition "z_lit_wf" r_term ;;
       tmLocate1 "z_lit_wf" >>= tmExistingInstance
+    | BoolLit =>
+      f <- tmUnquoteTyped (bool -> s.(sig_funs) [] ret) const_f_t ;;
+      r_term <- tmQuote (Tactics.b_wf s m ret f) ;;
+      tmMkDefinition "b_lit_wf" r_term ;;
+      tmLocate1 "b_lit_wf" >>= tmExistingInstance
     | _ => 
       tmPrint const_ty ;;
       tmFail "unimplemented const_wf_instance"
@@ -1209,7 +1275,16 @@ Section Config.
         tmReturn (Tactics.is_z_term, @Tactics.tacLit s m Tactics.z_lit x)
       | my_None => 
         tmPrint const_ty ;;
-        tmFail "couldn't find a wf instance for literal"
+        tmFail "couldn't find a wf instance for int literal"
+      end
+    | BoolLit => 
+      wf_inst <- tmInferInstance None (Tactics.LitWF s m Tactics.bool_lit) ;;
+      match wf_inst with 
+      | my_Some x => 
+        tmReturn (Tactics.is_bool_term, @Tactics.tacLit s m Tactics.bool_lit x)
+      | my_None => 
+        tmPrint const_ty ;;
+        tmFail "couldn't find a wf instance for bool literal"
       end
     | _ => 
       tmPrint const_ty ;;

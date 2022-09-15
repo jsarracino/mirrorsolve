@@ -19,27 +19,39 @@ Require Import MirrorSolve.Reflection.FM.
 
 Require Import Coq.ZArith.BinInt.
 
-Require Import Ascii.
 Require Import List.
 
-Inductive regexp : Type :=
-| Zero   : regexp
-| One    : regexp
-| Lit    : ascii -> regexp
-| Plus   : regexp -> regexp -> regexp
-| Times  : regexp -> regexp -> regexp
-| Star   : regexp -> regexp.
+Section Regexp.
+  Variable (Tok : Type).
+  Variable (Tok_eqb : Tok -> Tok -> bool).
+  
+  Inductive Str_tok := 
+  | str_nil
+  | str_cons : Tok -> Str_tok -> Str_tok.
 
-Inductive matches : regexp -> list ascii -> Prop :=
-| m_One : matches One nil
-| m_Lit : forall (c:ascii), matches (Lit c) [c]
-| m_l_Plus : forall R1 R2 s, matches R1 s -> matches (Plus R1 R2) s
-| m_r_Plus : forall R1 R2 s, matches R2 s -> matches (Plus R1 R2) s
-| m_Times : forall R1 R2 s1 s2, matches R1 s1 -> matches R2 s2 -> matches (Times R1 R2) (s1 ++ s2)
-| m_0_Star : forall R, matches (Star R) []
-| m_n_Star : forall R s1 s2, matches R s1 -> matches (Star R) s2 -> matches (Star R) (s1 ++ s2).
+  Equations app (l: Str_tok) (r: Str_tok) : Str_tok := {
+    app str_nil r := r ;
+    app (str_cons c cs) r := str_cons c (app cs r);
+  }.
 
-Equations emp (R:regexp) : regexp := {
+  Inductive Regexp : Type :=
+  | Zero   : Regexp
+  | One    : Regexp
+  | Lit    : Tok -> Regexp
+  | Plus   : Regexp -> Regexp -> Regexp
+  | Times  : Regexp -> Regexp -> Regexp
+  | Star   : Regexp -> Regexp.
+
+  Inductive matches : Regexp -> Str_tok -> Prop :=
+  | m_One : matches One str_nil
+  | m_Lit : forall c, matches (Lit c) (str_cons c str_nil)
+  | m_l_Plus : forall R1 R2 s, matches R1 s -> matches (Plus R1 R2) s
+  | m_r_Plus : forall R1 R2 s, matches R2 s -> matches (Plus R1 R2) s
+  | m_Times : forall R1 R2 s1 s2, matches R1 s1 -> matches R2 s2 -> matches (Times R1 R2) (app s1 s2)
+  | m_0_Star : forall R, matches (Star R) str_nil
+  | m_n_Star : forall R s1 s2, matches R s1 -> matches (Star R) s2 -> matches (Star R) (app s1 s2).
+
+  Equations emp (R:Regexp) : Regexp := {
     emp Zero := Zero ;
     emp One := One ; 
     emp (Lit _) := Zero; 
@@ -48,7 +60,7 @@ Equations emp (R:regexp) : regexp := {
     emp (Star R) := One
   }.
 
-Equations is_emp (R:regexp) : bool := {
+  Equations is_emp (R:Regexp) : bool := {
     is_emp Zero := false ;
     is_emp One := true ;
     is_emp (Lit _) := false ;
@@ -57,39 +69,157 @@ Equations is_emp (R:regexp) : bool := {
     is_emp (Star R) := true
   }.
 
-Equations deriv (c:ascii) (R:regexp) : regexp := {
+  Equations deriv (c: Tok) (R:Regexp) : Regexp := {
     deriv _ Zero := Zero ;
     deriv _ One := Zero ;
-    deriv c (Lit c') := if Ascii.eqb c c' then One else Zero ;
+    deriv c (Lit c') := if Tok_eqb c c' then One else Zero ;
     deriv c (Plus R1 R2) := Plus (deriv c R1) (deriv c R2) ;
     deriv c (Times R1 R2) := Plus (Times (deriv c R1) R2) (Times (emp R1) (deriv c R2)) ;
     deriv c (Star R) := Times (deriv c R) (Star R)
   }.
+  
+  Equations derivs (s:Str_tok) (R:Regexp) : bool := {
+    derivs str_nil R := is_emp R ;
+    derivs (str_cons c s') R := derivs s' (deriv c R)
+  }.
 
-Equations derivs (s:list ascii) (R:regexp) : bool := {
-    derivs nil R := is_emp R ;
-    derivs (c::s') R := derivs s' (deriv c R)
-  }.                           
+  Definition matches_dec (R:Regexp) (s:Str_tok) : bool := derivs s R.
 
-Definition matches_dec (R:regexp) (s:list ascii) : bool :=
-  derivs s R.
+  Declare ML Module "mirrorsolve".
+
+  From MetaCoq.Template Require Import All Loader.
+  Import MCMonadNotation.
+  Require Import MirrorSolve.Config.
+  Open Scope bs.
+
+  Notation pack x := (existT _ _ x).
+
+  Universe foo.
+  MetaCoq Quote Definition typ_term := Type@{foo}.
+
+  MetaCoq Run (
+    xs <- add_funs typ_term [
+        pack Tok_eqb
+      ; pack Str_tok
+      ; pack Regexp.app
+      ; pack Regexp.Regexp
+      ; pack Regexp.emp
+      ; pack Regexp.is_emp
+      ; pack Regexp.deriv
+      ; pack Regexp.derivs
+      ; pack Regexp.matches_dec
+      ; pack andb
+      ; pack orb
+    ] [ 
+        pack Regexp.matches
+    ];;
+    xs' <- tmQuote xs ;;
+    tmMkDefinition "trans_tbl" xs'
+  ).
+  MetaCoq Run (
+    gen_sig typ_term sorts fol_funs fol_rels 
+  ).
+  MetaCoq Run (
+    gen_interp_funs sorts interp_sorts fol_funs trans_tbl
+  ).
+  MetaCoq Run (
+    gen_interp_rels sorts interp_sorts fol_rels trans_tbl
+  ).
+  Definition fm_model := Build_model sig interp_sorts interp_funs interp_rels.
+  MetaCoq Run (
+    add_const_wf_instances sig fm_model trans_tbl
+  ).
+  MetaCoq Run (
+    add_matches sig fm_model trans_tbl
+  ).
 
 
-Lemma emp_is_emp : forall R, is_emp R = true -> matches (emp R) nil.
-Proof.
-  induction R ; simpl ; intros ; autorewrite with is_emp in * ; autorewrite with emp in * ;
-    try discriminate.
-  constructor.
-  destruct (is_emp R1) ; destruct (is_emp R2) ; simpl in *.
-  constructor ; auto.
-  constructor ; auto.
-  apply m_r_Plus ; auto.
-  discriminate.
-  destruct (is_emp R1) ; destruct (is_emp R2) ; simpl in * ; try discriminate.
-  replace [] with (@nil ascii ++ nil).
-  constructor ; auto. auto.
-  constructor.
-Qed.
+  MetaCoq Run (
+    ctx <- build_printing_ctx sig sort_prop trans_tbl [
+          (pack andb, "and"%string)
+        ; (pack orb, "or"%string)
+        ; (pack Tok_eqb, "="%string)
+      ];; 
+    ctx' <- tmEval all ctx ;;
+    rhs <- tmQuote ctx' ;; 
+    tmMkDefinition "fol_theory" rhs
+  ).
+
+  Require Import MirrorSolve.Reflection.Tactics.
+
+  Transparent denote_tm.
+  Require Import MirrorSolve.Axioms.
+
+  Ltac check_goal_unsat := 
+    match goal with 
+    | |- ?G => check_unsat_neg_func fol_theory G; eapply UnsoundAxioms.interp_true
+    end.
+
+  Create HintDb regexp_eqns.
+
+  Hint Resolve emp_equation_1 : regexp_eqns.
+  Hint Resolve emp_equation_2 : regexp_eqns.
+  Hint Resolve emp_equation_3 : regexp_eqns.
+  Hint Resolve emp_equation_4 : regexp_eqns.
+  Hint Resolve emp_equation_5 : regexp_eqns.
+  Hint Resolve emp_equation_6 : regexp_eqns.
+  
+  Hint Resolve is_emp_equation_1 : regexp_eqns.
+  Hint Resolve is_emp_equation_2 : regexp_eqns.
+  Hint Resolve is_emp_equation_3 : regexp_eqns.
+  Hint Resolve is_emp_equation_4 : regexp_eqns.
+  Hint Resolve is_emp_equation_5 : regexp_eqns.
+  Hint Resolve is_emp_equation_6 : regexp_eqns.
+
+  (* Hint Resolve deriv_equation_1 : regexp_eqns.
+  Hint Resolve deriv_equation_2 : regexp_eqns.
+  Hint Resolve deriv_equation_3 : regexp_eqns.
+  Hint Resolve deriv_equation_4 : regexp_eqns.
+  Hint Resolve deriv_equation_5 : regexp_eqns.
+  Hint Resolve deriv_equation_6 : regexp_eqns.
+
+  Hint Resolve app_equation_1 : regexp_eqns.
+  Hint Resolve app_equation_2 : regexp_eqns.
+
+  Hint Resolve derivs_equation_1 : regexp_eqns.
+  Hint Resolve derivs_equation_2 : regexp_eqns. *)
+
+  Ltac prep_proof := 
+    hints_foreach (fun x => pose proof x) "regexp_eqns";
+    Utils.revert_all;
+    unfold "<->" in *.
+
+  Scheme Equality for sorts.
+
+  Ltac quote_reflect := quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts.
+
+  Ltac mirrorsolve :=
+    prep_proof;
+    quote_reflect;
+    check_goal_unsat.
+
+  Print match_tacs.
+
+  Lemma emp_is_emp : forall R, is_emp R = true -> matches (emp R) str_nil.
+  Proof.
+    clear Tok_eqb.
+    prep_proof.
+    quote_reflect.
+    induction R; 
+    try mirrorsolve.
+    (* induction R ; simpl ; intros ; autorewrite with is_emp in * ; autorewrite with emp in * ;
+      try discriminate.
+    constructor.
+    destruct (is_emp R1) ; destruct (is_emp R2) ; simpl in *.
+    constructor ; auto.
+    constructor ; auto.
+    apply m_r_Plus ; auto.
+    discriminate.
+    destruct (is_emp R1) ; destruct (is_emp R2) ; simpl in * ; try discriminate.
+    replace str_nil with (app str_nil str_nil).
+    constructor ; auto. auto.
+    constructor. *)
+  Qed.
 
 
 (*** Starting Encoding stuff ***)

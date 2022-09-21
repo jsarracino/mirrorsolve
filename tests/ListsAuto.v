@@ -198,6 +198,15 @@ Section ListFuncs.
   (* The rest of the automation is copy-paste and should not change between developments. *)
   (* I'm not sure why but all of these MetaCoq statements need to be in separate blocks *)
 
+  (* Variable (B: Type).
+
+  MetaCoq Quote Definition pair' := (A + B)%type.
+  Print pair'.
+  MetaCoq Run (
+    ind <- tmQuoteInductive (MPfile ["Datatypes"; "Init"; "Coq"]%list, "sum") ;;
+    tmPrint ind
+  ). *)
+
   MetaCoq Run (
     xs <- add_funs typ_term fun_syms rel_syms ;;
     xs' <- tmQuote xs ;;

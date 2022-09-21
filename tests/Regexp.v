@@ -23,8 +23,11 @@ Require Import List.
 
 Section Regexp.
   Variable (Tok : Type).
+
   Variable (Tok_eqb : Tok -> Tok -> bool).
-  
+
+  Hypothesis (Tok_eqb_spec: forall t1 t2, Tok_eqb t1 t2 = true <-> t1 = t2).
+
   Inductive Str_tok := 
   | str_nil
   | str_cons : Tok -> Str_tok -> Str_tok.
@@ -99,8 +102,8 @@ Section Regexp.
 
   MetaCoq Run (
     xs <- add_funs typ_term [
-        pack Tok_eqb
-      ; pack Str_tok
+        pack Str_tok
+      (* ; pack Tok_eqb *)
       ; pack Regexp.app
       ; pack Regexp.Regexp
       ; pack Regexp.emp
@@ -138,7 +141,7 @@ Section Regexp.
     ctx <- build_printing_ctx sig sort_prop trans_tbl [
           (pack andb, "and"%string)
         ; (pack orb, "or"%string)
-        ; (pack Tok_eqb, "="%string)
+        (* ; (pack Tok_eqb, "="%string) *)
       ];; 
     ctx' <- tmEval all ctx ;;
     rhs <- tmQuote ctx' ;; 
@@ -171,21 +174,12 @@ Section Regexp.
   Hint Resolve is_emp_equation_5 : regexp_eqns.
   Hint Resolve is_emp_equation_6 : regexp_eqns.
 
-  (* Hint Resolve deriv_equation_1 : regexp_eqns.
-  Hint Resolve deriv_equation_2 : regexp_eqns.
-  Hint Resolve deriv_equation_3 : regexp_eqns.
-  Hint Resolve deriv_equation_4 : regexp_eqns.
-  Hint Resolve deriv_equation_5 : regexp_eqns.
-  Hint Resolve deriv_equation_6 : regexp_eqns.
-
-  Hint Resolve app_equation_1 : regexp_eqns.
-  Hint Resolve app_equation_2 : regexp_eqns.
-
-  Hint Resolve derivs_equation_1 : regexp_eqns.
-  Hint Resolve derivs_equation_2 : regexp_eqns. *)
+  (* Hint Resolve Tok_eqb_spec : regexp_eqns. *)
 
   Ltac prep_proof := 
-    hints_foreach (fun x => pose proof x) "regexp_eqns";
+    (* hints_foreach (fun x => pose proof x) "regexp_eqns"; *)
+    clear Tok_eqb_spec;
+    clear Tok_eqb;
     Utils.revert_all;
     unfold "<->" in *.
 
@@ -198,15 +192,15 @@ Section Regexp.
     quote_reflect;
     check_goal_unsat.
 
-  Print match_tacs.
+  Print fol_theory.
 
   Lemma emp_is_emp : forall R, is_emp R = true -> matches (emp R) str_nil.
   Proof.
-    clear Tok_eqb.
-    prep_proof.
-    quote_reflect.
-    induction R; 
-    try mirrorsolve.
+    induction R.
+    - prep_proof.
+      Utils.revert_all.
+      quote_reflect.
+    mirrorsolve.
     (* induction R ; simpl ; intros ; autorewrite with is_emp in * ; autorewrite with emp in * ;
       try discriminate.
     constructor.

@@ -62,6 +62,17 @@ Polymorphic Fixpoint sequence {A} (acts: list (TemplateMonad A)) : TemplateMonad
 Polymorphic Definition mapM {A B} (f: A -> TemplateMonad B) (xs: list A) : TemplateMonad (list B) :=
   sequence (map f xs).
 
+Polymorphic Fixpoint validate_opts {A} (xs: list (option A)) (msg: ident) : TemplateMonad (list A) := 
+  match xs with 
+  | nil => tmReturn nil
+  | None :: _ => 
+    tmPrint msg ;;
+    tmFail "couldn't validate options"
+  | Some x :: xs' => 
+    r <- validate_opts xs' msg ;;
+    tmReturn (x :: r)
+  end.
+
 Polymorphic Definition fmap {A B} (f: A -> B) (t: TemplateMonad A) : TemplateMonad B := 
   t >>= (fun x => tmReturn (f x)).
 
@@ -475,8 +486,8 @@ Section Config.
     | tProd _ ty bod => normalize_sort_term ty ++ normalize_sort_term bod
     | tInd _ _ => [t] 
     | tVar _ => [t]
-    | tApp l rs => 
-      normalize_sort_term l ++ concat (map normalize_sort_term rs)
+    | tApp _ _ => [t]
+      (* normalize_sort_term l ++ concat (map normalize_sort_term rs) *)
     (* | tRel _ => [t] *)
     | tSort _ => 
       if Core.eq_term t t_prop then [t] else []
@@ -638,16 +649,46 @@ Section Config.
       tmFail "get_ty_name"
     end.
 
+  (* TODO: actually implement this *)
+  Fixpoint get_ind_ty_name (n: nat) (t: term) : TemplateMonad ident := 
+    match n with 
+    | 0 => tmFail "type recursion depth exceeded"
+    | S n => 
+      match t with 
+      | tInd ind _ => get_ty_name t
+      | _ => get_ty_name t
+      end
+    end.
+
   Definition make_names (xs: list term) : TemplateMonad (list ident) := 
-    mapM get_ty_name xs.
+    mapM (get_ind_ty_name 5) xs.
 
   Definition uniq_term := uniq _ Core.eq_term.
 
   Definition sorts_constant_body (x: constant_body) : list term := 
     normalize_sort_term x.(cst_type).
 
-  Definition get_ctor_type (t: term) (x: constructor_body) : list term :=
-    normalize_sort_term (subst_terms [(tRel 0, t)] x.(cstr_type)).
+  Fixpoint skip_ctor_env (env: list (term * term)) (t: term) : option term := 
+    match env with 
+    | nil => Some t
+    | _ :: env' => 
+      match t with 
+      | tProd _ _ t' => 
+        skip_ctor_env env' t'
+      | _ => None
+      end
+    end.
+
+  Definition get_ctor_type (env: list (term * term)) (x: constructor_body) : option (list term) :=
+    match env with 
+    | [] => None
+    | _ :: env' => 
+      match skip_ctor_env env' x.(cstr_type) with 
+      | Some t' => 
+        Some (normalize_sort_term (subst_terms env t'))
+      | None => None
+      end
+    end.
   
   Definition get_ctor_name (x: constructor_body) : ident := x.(cstr_name).
 
@@ -667,7 +708,7 @@ Section Config.
     | _ => tmReturn false
     end.
 
-  Definition sorts_mind_body (t: term) : TemplateMonad (list (ident * list term)) := 
+  Definition sorts_mind_body (t: term) (args: list term) : TemplateMonad (list (ident * list term)) := 
     match t with 
     | tInd ind  _ => 
       x <- tmQuoteInductive ind.(inductive_mind) ;;
@@ -677,7 +718,13 @@ Section Config.
         | Some tys => 
           tmReturn [(i.(ind_name), tys)]
         | None => 
-          tmReturn ( map (fun c => (get_ctor_name c, get_ctor_type t c)) i.(ind_ctors))
+          let env := (tRel (List.length args), t) :: map_with_index (fun i t => (tRel i, t)) args in
+          let opt_ctors := map (fun c => 
+            match get_ctor_type env c with 
+            | Some x => Some (get_ctor_name c, x)
+            | None => None
+            end) i.(ind_ctors) in
+          validate_opts opt_ctors "couldn't convert constructor parameters"
         end
       | _ => tmFail "mutually inductive inds are not currently supported"
       end
@@ -689,7 +736,8 @@ Section Config.
   Definition gather_sorts (t: packed) : TemplateMonad (list (ident * list term)) := 
     t' <- tmQuotePacked t ;;
     match t' with 
-    | tInd _ _ => sorts_mind_body t'
+    | tApp (tInd ind u) args => sorts_mind_body (tInd ind u) args
+    | tInd _ _ => sorts_mind_body t' []
     | tVar name => 
       ty <- lookup_ty t' ;;
       tmReturn [(name, normalize_sort_term ty)]

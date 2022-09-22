@@ -168,20 +168,24 @@ Section ListFuncs.
      Under the hood, MirrorSolve infers what types are used, as well as how to reflect them.
     *)
   Definition fun_syms : list packed := [
+      pack (list A)
+      (* pack List_A *)
+    (*
       pack ListFuncs.rev
     ; pack ListFuncs.app
     ; pack ListFuncs.List_A
     ; pack ListFuncs.tail_rev
     ; pack ListFuncs.len
     ; pack Z.add (* The body of len uses Z arithmetic, so we need to bring in Z.add as well. *)
+    *)
   ].
 
   (* We distinguish between functions (which return values) and relations (which live in Coq's Prop).
      Here, we pass a list of Coq relations; each of these will also be reflected to an uninterpreted function.
   *)
   Definition rel_syms : list packed := [ 
-      pack ListFuncs.In 
-    ; pack ListFuncs.NoDup
+      (* pack ListFuncs.In 
+    ; pack ListFuncs.NoDup *)
   ].
 
   (* The final peice of configuration is to override some Coq functions with an SMT primitive.
@@ -192,20 +196,11 @@ Section ListFuncs.
      We record this in a list of arithmetic functions and their corresponding string symbol in SMT.
   *)
   Definition prim_syms : list (packed * String.string) := [
-    (pack Z.add, "+"%string)
+    (* (pack Z.add, "+"%string) *)
   ].
 
   (* The rest of the automation is copy-paste and should not change between developments. *)
   (* I'm not sure why but all of these MetaCoq statements need to be in separate blocks *)
-
-  (* Variable (B: Type).
-
-  MetaCoq Quote Definition pair' := (A + B)%type.
-  Print pair'.
-  MetaCoq Run (
-    ind <- tmQuoteInductive (MPfile ["Datatypes"; "Init"; "Coq"]%list, "sum") ;;
-    tmPrint ind
-  ). *)
 
   MetaCoq Run (
     xs <- add_funs typ_term fun_syms rel_syms ;;

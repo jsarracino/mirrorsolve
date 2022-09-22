@@ -114,22 +114,70 @@ Polymorphic Definition lookup_ty (t: term) : TemplateMonad term :=
   ty <- tmEval all (my_projT1 foo) ;;
   tmQuote ty.
 
+
+Fixpoint str_join (xs: list ident) (sep: ident) : ident := 
+  match xs with 
+  | [] => ""
+  | [x] => x 
+  | x :: xs' => 
+    x ++ sep ++ str_join xs' sep
+  end.
+
+Polymorphic Fixpoint get_ty_name (t: term) : TemplateMonad ident := 
+  match t with 
+  | tInd ind _ => tmReturn (ind.(inductive_mind).2)
+  | tApp f es => 
+    pref <- get_ty_name f ;;
+    rhses <- mapM get_ty_name es ;;
+    tmReturn (pref ++ "_" ++ str_join rhses "_")
+  | tVar s => tmReturn s
+  | tSort (Universe.lProp) => tmReturn "prop"
+  | _ => 
+    tmMsg "can't get name from:" ;;
+    tmPrint t ;;
+    tmFail "get_ty_name"
+  end.
+
+Polymorphic Fixpoint subst_var (v: nat) (r: term) (t: term) := 
+  match t with 
+  | tRel n => 
+    if Nat.eqb v n then r else t
+  | tApp f es => 
+    tApp (subst_var v r f) (map (subst_var v r) es)
+  | tProd x ty bod => 
+    tProd x (subst_var v r ty) (subst_var (S v) r bod)
+  | _ => t
+  end.
+
+Polymorphic Fixpoint apply_args (t: term) (args: list term) : option term := 
+  match t, args with 
+  | tProd x _ bod, arg :: args' => 
+    apply_args (subst_var 0 arg bod) args'
+  | _, _ :: _ => None
+  | _, [] => Some t
+  end.
+
 (* given a constant or a constructor for a inductive, return the name of the constant/constructor. *)
-Polymorphic Definition get_global_name (t: term) : TemplateMonad ident := 
+Polymorphic Fixpoint get_global_name (t: term) : TemplateMonad ident := 
   match t with 
   | tConst x _ => tmReturn x.2
-  | tVar x => tmReturn x
   | tConstruct ind i _ => 
     parent_ind <- lookup_ind ind ;; 
     match nth_error parent_ind.(ind_ctors) i with 
     | Some x => tmReturn x.(cstr_name)
     | None => tmFail "error looking up constructor in get_global_name"
     end
+  | tVar x => tmReturn x
+  | tApp f es => 
+    pref <- get_global_name f ;;
+    rhses <- mapM get_global_name es ;;
+    tmReturn (pref ++ "_" ++ str_join rhses "_")
   | tInd ind _ => tmReturn ind.(inductive_mind).2
   | _ => 
     tmPrint t ;;
     tmFail "get_global_name called with not a const or constructor"
   end.
+
 
 Require Import MirrorSolve.FirstOrder.
 
@@ -636,32 +684,10 @@ Section Config.
     tmMkInductive' r.
 
   (* Get a name for a simple type (e.g. a section variable or a plain inductive).
-     TODO: generalize to applied types, e.g. list A
   *)
-  Definition get_ty_name (t: term) : TemplateMonad ident := 
-    match t with 
-    | tInd ind _ => tmReturn (snd ind.(inductive_mind))
-    | tVar s => tmReturn s
-    | tSort (Universe.lProp) => tmReturn "prop"
-    | _ => 
-      tmMsg "can't get name from:" ;;
-      tmPrint t ;;
-      tmFail "get_ty_name"
-    end.
-
-  (* TODO: actually implement this *)
-  Fixpoint get_ind_ty_name (n: nat) (t: term) : TemplateMonad ident := 
-    match n with 
-    | 0 => tmFail "type recursion depth exceeded"
-    | S n => 
-      match t with 
-      | tInd ind _ => get_ty_name t
-      | _ => get_ty_name t
-      end
-    end.
 
   Definition make_names (xs: list term) : TemplateMonad (list ident) := 
-    mapM (get_ind_ty_name 5) xs.
+    mapM get_ty_name xs.
 
   Definition uniq_term := uniq _ Core.eq_term.
 
@@ -718,13 +744,20 @@ Section Config.
         | Some tys => 
           tmReturn [(i.(ind_name), tys)]
         | None => 
-          let env := (tRel (List.length args), t) :: map_with_index (fun i t => (tRel i, t)) args in
+          let env := (tRel (List.length args), t) :: map_with_index (fun i t => (tRel i, t)) (List.rev args) in
           let opt_ctors := map (fun c => 
             match get_ctor_type env c with 
-            | Some x => Some (get_ctor_name c, x)
+            | Some x => 
+              Some (get_ctor_name c, x)
             | None => None
             end) i.(ind_ctors) in
-          validate_opts opt_ctors "couldn't convert constructor parameters"
+          r <- validate_opts opt_ctors  "couldn't convert constructor parameters" ;; 
+          suffixes <- mapM get_ty_name args ;;
+          match suffixes with 
+          | [] => tmReturn r
+          | _ => 
+            tmReturn (map (fun '(cn, x) => (cn ++ "_" ++ str_join suffixes "_", x)) r)
+          end
         end
       | _ => tmFail "mutually inductive inds are not currently supported"
       end
@@ -736,15 +769,31 @@ Section Config.
   Definition gather_sorts (t: packed) : TemplateMonad (list (ident * list term)) := 
     t' <- tmQuotePacked t ;;
     match t' with 
-    | tApp (tInd ind u) args => sorts_mind_body (tInd ind u) args
+    | tApp (tInd ind u) args => 
+      sorts_mind_body (tInd ind u) args
     | tInd _ _ => sorts_mind_body t' []
     | tVar name => 
       ty <- lookup_ty t' ;;
       tmReturn [(name, normalize_sort_term ty)]
+    | tApp (tConst name _) args => 
+      f <- tmQuoteConstant name true ;;
+      match apply_args f.(cst_type) args with 
+      | Some r => 
+        suffixes <- mapM get_ty_name args ;;
+        tmReturn [
+          ( name.2 ++ "_" ++ str_join suffixes "_", normalize_sort_term r)
+        ]
+      | None => 
+        v <- tmEval all f.(cst_type) ;;
+        tmPrint "type:" ;;
+        tmPrint v ;;
+        tmPrint "args:" ;;
+        tmPrint args ;;
+        tmFail "couldn't apply args to parametric function in gather_sorts"
+      end 
     | tConst name _ => 
-      y <- tmQuoteConstant name true ;;
-      x <- tmEval all (sorts_constant_body y) ;;
-      tmReturn [(name.2, x)]
+      f <- tmQuoteConstant name true ;;
+      tmReturn [(name.2, (sorts_constant_body f))]
     | _ => 
       tmMsg "unrecognized term" ;;
       tmPrint t' ;;
@@ -792,6 +841,9 @@ Section Config.
    *)
   Definition add_sorts_indices (indices: list (list term)) := 
     let sort_ty_terms := uniq_term (concat indices) in 
+      (* tmPrint "indices" ;; 
+      r <- tmEval all sort_ty_terms ;; 
+      tmPrint r ;; *)
       sort_names <- make_names sort_ty_terms ;;
       sort_terms <- add_sorts sort_names ;;
       tmReturn (combine sort_ty_terms sort_terms).
@@ -846,6 +898,13 @@ Section Config.
   Definition get_orig_funs (x: packed) : TemplateMonad (list (term)) := 
     x <- tmQuotePacked x ;;
     match x with 
+    | tApp (tInd ind u) args => 
+      tst <- is_prop_ind ind ;; 
+      if (tst: bool)
+      then tmReturn [x]
+      else 
+        ctors <- get_ind_ctors ind u ;;
+        tmReturn (map (fun ctor => tApp ctor args) ctors)
     | tInd ind u => 
       tst <- is_prop_ind ind ;; 
       if (tst: bool)
@@ -886,9 +945,9 @@ Section Config.
 
   Definition add_funs (typ_term: term) (funs: list packed) (rels: list packed) : TemplateMonad translation_table := 
     names_indices <- gather_sorts_all (List.app funs rels) ;;
-    (* tmPrint "names_indices:" ;; 
+    tmPrint "names_indices:" ;; 
     to_print <- tmEval all names_indices ;;
-    tmPrint to_print ;;  *)
+    tmPrint to_print ;; 
     names_funs_rels <- fmap split_sum_list (mapM split_fun_rel names_indices) ;; 
 
     let '(names_funs, fun_indices) := List.split names_funs_rels.1 in 
@@ -994,15 +1053,18 @@ Section Config.
       apply_denote_rel args (r arg);
   }.
 
+  Definition gen_const_denote_case (const_entry : (term * smt_fun_base)) : branch term := 
+    match const_entry.2 with 
+    | IntLit => {| bcontext := [nNamed "z"]; bbody := tRel 0 |}
+    | BoolLit => {| bcontext := [nNamed "b"]; bbody := tRel 0 |}
+    | _ => {| bcontext := [nNamed "x"]; bbody := tRel 0 |}
+    end.
+
   Definition gen_denote_func_cases (tbl: translation_table) : list (branch term) :=
-    List.map (fun '(f, _) => {| bcontext := nil; bbody := f |})
+    map (fun '(f, _) => {| bcontext := nil; bbody := f |})
               tbl.(mp_funs)
     ++
-    (* This final clause is not part of the translation table, so we add
-        it manually. There's probably a better way! *)
-    (* TODO *)
-    [{| bcontext := [nNamed "z"]; bbody := tRel 0 |}]%list
-  .
+    map gen_const_denote_case tbl.(mp_consts).
 
   Definition gen_denote_rel_cases (tbl: translation_table) : list (branch term) :=
     List.map (fun '(f, _) => {| bcontext := nil; bbody := f |})
@@ -1079,7 +1141,16 @@ Section Config.
     let denote_funs := make_denote_f q_list_srts q_srts q_fol_funs fol_funs_ref q_denote_func_type tbl in
     q_hargs <- tmQuote (fun x => HList.t interp_srts x) ;;
     q_apply_denote_func <- tmQuote (@apply_denote_func) ;;
-    tmMkDefinition "interp_funs" (make_interp_fun q_list_srts q_srts q_hargs q_fol_funs q_apply_denote_func denote_funs).
+    denote_funs <- tmEval all denote_funs ;;
+    tmPrint "denote_funs:" ;; 
+    tmPrint denote_funs ;;
+    tmPrint "unquoted:" ;; 
+    denote_funs_unquoted <- tmUnquote denote_funs ;;
+    tmPrint denote_funs_unquoted ;;
+    rhs <- tmEval all (make_interp_fun q_list_srts q_srts q_hargs q_fol_funs q_apply_denote_func denote_funs) ;;
+    tmPrint "rhs:" ;; 
+    tmPrint rhs ;;
+    tmMkDefinition "interp_funs" rhs.
     
 
   Definition make_denote_r q_list_srts q_fol_rels fol_rels_ref q_denote_rel_type tbl := 
@@ -1148,7 +1219,24 @@ Section Config.
 
   (* helper functions for autogenerating boolean term tests *)
 
-  Definition mk_test_lambda (t: term) : term := 
+
+  Definition app_extract_ctor t := 
+    tApp 
+    (tConst (MPfile ["Core"; "Reflection"; "MirrorSolve"]%list, "extract_ctor") [])
+      [t].
+
+  Definition mk_test_lambda_strict (x: term) : term := 
+    tLambda {| binder_name := BasicAst.nNamed "t"; binder_relevance := Relevant |}
+  (tInd
+    {|
+        inductive_mind := (MPfile ["Ast"; "Template"; "MetaCoq"]%list, "term");
+        inductive_ind := 0
+      |} nil)
+    (tApp (tConst (MPfile ["Core"; "Reflection"; "MirrorSolve"]%list, "eq_prefix")
+          nil)
+        [tRel 0; x]).
+
+  Definition mk_test_lambda_ctor (x: term) : term := 
     tLambda {| binder_name := BasicAst.nNamed "t"; binder_relevance := Relevant |}
   (tInd
 	 {|
@@ -1160,23 +1248,23 @@ Section Config.
         (tConst
            (MPfile ["Core"; "Reflection"; "MirrorSolve"]%list, "eq_ctor")
            nil)
-        [tRel 0; t];
+        [tRel 0; app_extract_ctor x];
      tApp
        (tConst (MPfile ["Core"; "Reflection"; "MirrorSolve"]%list, "eq_term")
           nil)
-       [tRel 0; t]]).
+       [tRel 0; x]]).
 
   Definition mk_test_plain (name: ident) (t: term) := 
     t' <- tmQuote t ;;
     let name' := ("is_" ++ name ++ "_t") in 
-    tmMkDefinition name' (mk_test_lambda t').
+    tmMkDefinition name' (mk_test_lambda_ctor t').
 
   Definition mk_test (name: ident) (t: packed) := 
     match t with 
     | pack x =>
       t' <- tmQuote2 x ;;
       let name' := ("is_" ++ name ++ "_t") in 
-      tmMkDefinition name' (mk_test_lambda t') ;;
+      tmMkDefinition name' (mk_test_lambda_ctor t') ;;
       tmMsg ("added definition for " ++ name')
     end.
     
@@ -1268,18 +1356,18 @@ Section Config.
 
   Definition build_fun_match {s: FirstOrder.signature} {m: FirstOrder.model s} (orig: term) (symb: term) : TemplateMonad ((term -> bool) * Tactics.tac_syn s m) :=
     x <- tmQuote orig ;;
-    test <- tmUnquoteTyped (term -> bool) (mk_test_lambda x) ;;
+    test <- tmUnquoteTyped (term -> bool) (mk_test_lambda_strict x) ;;
     tac <- coerce_tac_syn_f symb ;;
     tmReturn (test, tac).
   Definition build_rel_match {s: FirstOrder.signature} {m: FirstOrder.model s} (orig: term) (symb: term) : TemplateMonad ((term -> bool) * Tactics.tac_syn s m) :=
     x <- tmQuote orig ;;
-    test <- tmUnquoteTyped (term -> bool) (mk_test_lambda x) ;;
+    test <- tmUnquoteTyped (term -> bool) (mk_test_lambda_strict x) ;;
     tac <- coerce_tac_syn_r symb ;;
     tmReturn (test, tac).
 
   Definition build_sort_match {s: FirstOrder.signature} {m: FirstOrder.model s} (orig: term) (symb: term) : TemplateMonad ((term -> bool) * s.(sig_sorts)) := 
     x <- tmQuote orig ;;
-    test <- tmUnquoteTyped (term -> bool) (mk_test_lambda x) ;;
+    test <- tmUnquoteTyped (term -> bool) (mk_test_lambda_strict x) ;;
     srt <- tmUnquoteTyped s.(sig_sorts) symb ;;
     tmReturn (test, srt).
 
@@ -1359,14 +1447,43 @@ Section Config.
     add_symb_matches s m t ;;
     add_sort_matches s m t.
 
-  
+  Definition print_sort_base (sb: smt_sort_base) : ident := 
+    match sb with 
+    | SInt => "Int"
+    | SBool => "Bool"
+    | SBitVector => "unimplemented--BV"
+    | SCustom s => String.of_string s
+    end.
 
+
+  Fixpoint subst_tys (env: list smt_ind_base) (rec_name: ident) (x: term) {struct x} : option ident := 
+    match x with 
+    | tApp f es => 
+      match subst_tys env rec_name f with 
+      | Some f' => 
+        let opt_args := map (subst_tys env rec_name) es in 
+        match map_option_all (fun x => x) opt_args with
+        | Some es' => 
+          Some (f' ++ "_" ++ str_join es' "_")
+        | None => None
+        end
+      | None => None
+      end
+    | tRel x => 
+      match nth_error env x with 
+      | Some SIRec => Some rec_name 
+      | Some (SISort x) => Some (print_sort_base x)
+      | _ => None
+      end
+    | _ => None
+    end.
+  
   (* helper functions for building an smt_sig theory from a translation table *)
 
   (* Convert a basic (not inductive or product) type to a smt type.
      Generally types can be products so the translation uses a typing environment env.
   *)
-  Definition translate_cstr_type_base (env: list smt_ind_base) (x: term) :  TemplateMonad smt_ind_base := 
+  Definition translate_cstr_type_base (env: list smt_ind_base) (rec_name : ident) (x: term) :  TemplateMonad smt_ind_base := 
     if is_z_srt x then 
       tmReturn (SISort SInt)
     else if orb (Core.eq_term x t_prop) (Core.eq_term x t_bool) then 
@@ -1382,6 +1499,14 @@ Section Config.
           tmPrint x ;;
           tmFail "db index out of bounds in translate_cstr_type_base"
         end
+      | tApp _ _ => 
+        match subst_tys env rec_name x with 
+        | Some nme => 
+          tmReturn (SISort (SCustom (String.to_string nme)))
+        | None => 
+          tmPrint x ;; 
+          tmFail "failed to print type name for custom sort in translate_cstr_type_base" 
+        end
       | _ => 
         tmPrint x ;;
         tmFail "unhandled term in translate_cstr_type_base"
@@ -1391,35 +1516,62 @@ Section Config.
      adding bound types to the environment as it goes.
       e.g. Int -> Int -> Bool |-> [SInt; SInt; SBool]
   *)
-  Fixpoint translate_cstr_type (env: list smt_ind_base) (x: term) : TemplateMonad (list smt_ind_base) := 
+  Fixpoint translate_cstr_type (env: list smt_ind_base) (rec_name: ident) (x: term) : TemplateMonad (list smt_ind_base) := 
     match x with 
     | tProd _ ty bod => 
-      ty' <- translate_cstr_type_base env ty ;; 
-      r <- translate_cstr_type (ty' :: env) bod ;;
+      ty' <- translate_cstr_type_base env rec_name ty ;; 
+      r <- translate_cstr_type (ty' :: env) rec_name bod ;;
       tmReturn (ty' :: r)
     | _ =>
-      inner <- translate_cstr_type_base env x ;; 
+      inner <- translate_cstr_type_base env rec_name x ;; 
       tmReturn [inner]
     end.
 
   (* Translate the type of an inductive constructor to a list of correpsonding smt_types.
-     The typing environment starts with SIRec because Coq represents references to the 
-     parent inductive type with a tRel 0 term. 
      Drop the final element of the resulting type (which will always be SIRec, i.e. the parent inductive)
      because it is implicit in the definition of smt_ind.
-   *)
-  Definition translate_constructor_body (ctor: constructor_body) : TemplateMonad (string * list smt_ind_base) := 
-    inner <- translate_cstr_type [SIRec] ctor.(cstr_type) ;; 
-    tmReturn (String.to_string ctor.(cstr_name), drop_last inner ).
 
-  Definition translate_smt_ind (x: inductive) : TemplateMonad smt_ind := 
+     Drop the prefix of constructors that corresponds to the parameters of the parent inductive type (which are passed through env).
+   *)
+
+   Fixpoint drop_param_prefix (n: nat) (t: term) := 
+    match n, t with 
+    | 0, _ => Some t
+    | S n', tProd _ _ t' => (* TODO: validate that the binder is actually over a type here *)
+      drop_param_prefix n' t'
+    | _, _ => None
+    end.
+
+  Definition translate_constructor_body (env: list smt_ind_base) (rec_name: ident) (suffix: ident) (ctor: constructor_body) : TemplateMonad (string * list smt_ind_base) := 
+    match drop_param_prefix (length env) ctor.(cstr_type) with 
+    | Some t =>   
+      inner <- translate_cstr_type (List.rev (SIRec :: env)) rec_name t ;; 
+      tmReturn (String.to_string (ctor.(cstr_name) ++ suffix), drop_last inner )
+    | None => 
+      tmPrint "environment:" ;;
+      tmPrint env ;;
+      tmPrint "constructor type:" ;;
+      tmPrint ctor.(cstr_type) ;;
+      tmFail "couldn't monomorphize constructor type + environment"
+    end.
+
+  Definition translate_smt_ind (x: inductive) (env: list smt_ind_base) (suffix: ident) : TemplateMonad smt_ind := 
     ind <- tmQuoteInductive x.(inductive_mind) ;; 
     match ind.(ind_bodies) with 
     | [v] => 
-      cases <- mapM translate_constructor_body v.(ind_ctors) ;;
+      cases <- mapM (translate_constructor_body env x.(inductive_mind).2 suffix) v.(ind_ctors) ;;
       tmReturn (SICases cases)
     | _ => tmFail "unhandled mutual inductive in translate_smt_ind"
     end.
+
+  Definition make_ind_custom (x: term) : TemplateMonad smt_sort_base := 
+    if is_z_srt x then 
+      tmReturn (SInt)
+    else if orb (Core.eq_term x t_prop) (Core.eq_term x t_bool) then 
+      tmReturn (SBool)
+    else
+      get_ty_name x >>= liftM (fun s => SCustom (String.to_string s)).
+
 
   (* package the functions above into a clean Type |-> smt_sort conversion function *)
   Definition translate_smt_sort (x: term) : TemplateMonad smt_sort := 
@@ -1431,9 +1583,16 @@ Section Config.
       match x with 
       | tVar nme => tmReturn (SortBase (SCustom (String.to_string nme)))
       | tInd ind _ => 
-        r <- translate_smt_ind ind ;;
+        r <- translate_smt_ind ind [] "" ;;
         let name := String.to_string ind.(inductive_mind).2 in 
           tmReturn (SortInd name r)
+      | tApp (tInd ind _) args => 
+        inner <- mapM make_ind_custom args ;;
+        inner_cnames <- mapM get_global_name args ;;
+        r <- translate_smt_ind ind (map SISort inner) ("_" ++ str_join inner_cnames "_" ) ;;
+        name <- get_ty_name x ;;
+        let name := String.to_string name in 
+          tmReturn (SortInd name r) 
       | _ => 
         tmPrint x ;;
         tmFail "unrecognized sort in translate_smt_sort"
@@ -1452,13 +1611,18 @@ Section Config.
     f <- tmUnquoteTyped (s.(sig_funs) args ret) x.2 ;; 
     name <- (get_global_name x.1) >>= liftM String.to_string ;;
     match x.1 with 
+    | tApp (tConst _ _) _ 
     | tConst _ _ => 
       tmReturn (SMTSig.PSF s _ _ f, FUninterp name)
-    | tConstruct _ _ _ => 
+
+    | tConstruct _ _ _
+    | tApp (tConstruct _ _ _) _ => 
       tmReturn (SMTSig.PSF s _ _ f, FPrim (F_sym name))
+      
     | _ => 
       tmPrint "don't know how to handle term:" ;;
-      tmPrint x.1 ;; 
+      r <- tmEval all x.1 ;;
+      tmPrint r ;; 
       tmFail "unexpected term in translate_one_fun"
     end.
 

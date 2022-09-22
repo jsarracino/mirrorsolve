@@ -25,6 +25,12 @@ let check_sort_name s =
   ] in 
   list_all tests s
 
+let repair_sort s = 
+  begin match s with 
+  | Custom_sort x -> Custom_sort (String.capitalize_ascii x)
+  | _ -> s
+  end
+
 let valid_sort (s: srt_smt) : bool * string = 
   begin match s with 
   | Smt_bv (Some n) -> n > 0, "negative bitvector width"
@@ -35,7 +41,7 @@ let valid_sort (s: srt_smt) : bool * string =
   | Smt_bool -> true, "inconceivable"
   end
 let pretty_sort (s: srt_smt) : string = 
-  begin match s with 
+  begin match repair_sort s with 
   | Smt_bv (Some n) -> Format.sprintf "(_ BitVec %n)" n
   | Smt_bv None -> assert false
   | Smt_int -> "Int"

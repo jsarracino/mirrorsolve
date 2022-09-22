@@ -40,7 +40,12 @@ Ltac revert_hyps :=
 
 Ltac revert_all := 
   repeat match goal with
-  | H: _ |- _ => revert_hyp H || clear H || revert H
+  | H: ?X |- _ => 
+    match X with
+    | Type => fail 1
+    | _ => idtac
+    end;
+    (revert_hyp H || clear H || revert H)
   end.
 
 Ltac pose_all Pfs := 
@@ -152,6 +157,16 @@ Fixpoint map_option {A B} (f: A -> option B) (xs: list A) : list B :=
     match f x with 
     | Some y => y :: map_option f xs'
     | None => map_option f xs'
+    end
+  end.
+
+Fixpoint map_option_all {A B} (f: A -> option B) (xs: list A) : option (list B) := 
+  match xs with 
+  | nil => Some nil
+  | x :: xs' => 
+    match f x, map_option_all f xs' with 
+    | Some y, Some ys' => Some (y :: ys')
+    | _, _ => None
     end
   end.
 

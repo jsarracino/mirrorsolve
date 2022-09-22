@@ -401,7 +401,7 @@ let pretty_ind_decl (name: string) (decl: ind_decl) =
       (String.concat "" @@ List.mapi (worker ctor) args)
     ) 
     decls in 
-  Format.sprintf "( declare-datatype %s ( \n\t\t%s \n\t) \n)" name (String.concat "\n\t\t" arms)
+  Format.sprintf "( declare-datatype %s ( \n\t\t%s \n\t) \n)" (String.capitalize_ascii name) (String.concat "\n\t\t" arms)
 
 let debug_tbl (tbl : ('a, 'b) Hashtbl.t) (printer: 'a -> 'b -> Pp.t) : Pp.t = 
   Pp.pr_vertical_list (fun (x, y) -> printer x y) @@ List.of_seq @@ Hashtbl.to_seq tbl
@@ -1130,7 +1130,7 @@ let rec pretty_fm (ctx: printing_ctx) (e: C.t) : string =
         "false" 
       else if equal_ctor f c_forall then
         let _ = debug_pp @@ Pp.str "extracting forall" in
-        let v_sort = extract_sort ctx es.(2) in
+        let v_sort = repair_sort @@ extract_sort ctx es.(2) in
         let sort_ok, sort_warning = valid_sort v_sort in 
         if not sort_ok then 
           let _ = Feedback.msg_debug @@ Pp.(++) (Pp.str "WARNING: invalid sort, ") (Pp.str sort_warning) in 

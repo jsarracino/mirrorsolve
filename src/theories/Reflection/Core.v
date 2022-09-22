@@ -15,6 +15,13 @@ Definition eqb_univ (u1 u2 : Universe.t) : bool :=
   | _, _ => false
   end.
 
+Fixpoint extract_ctor (t: term) : term :=
+  match t with 
+  | tApp f _ => 
+    extract_ctor f
+  | _ => t
+  end.
+  
 Fixpoint eq_term (l r: term) : bool := 
   match l with
   | tRel n =>
@@ -118,4 +125,16 @@ Definition eq_ctor (l r: term) : bool :=
   | tApp l' _, _ => eq_term l' r
   | _, tApp r' _ => eq_term l r'
   | _, _ => false
+  end.
+
+Check List.fold_left.
+
+Definition eq_prefix (l r: term) : bool := 
+  match l, r with 
+  | tApp l' args_l, tApp r' args_r => 
+    eq_term l' r' && 
+    let common_pref := List.combine args_l args_r in 
+    let common_res := List.map (fun '(x, y) => eq_term x y) common_pref in 
+    List.fold_left andb common_res true
+  | _, _ => eq_term l r
   end.

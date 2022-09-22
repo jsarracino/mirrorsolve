@@ -381,6 +381,16 @@ let custom_sorts sorts : string list =
 
 type ind_decl = Ind_decl of (string * srt_smt list) list
 
+(* Tests whether a ind_decl uses the sort named by name *)
+let references (name: string) (id: ind_decl) : bool = 
+  let Ind_decl(ctors) = id in 
+  let worker (x: srt_smt) = 
+    begin match x with 
+    | Custom_sort s' -> s' = name
+    | _ -> false
+    end in 
+  List.exists (fun (_, args) -> List.exists worker args) ctors
+
 module StringMap = Map.Make ( String ) ;;
 let ind_tbl : (string, ind_decl) Hashtbl.t = Hashtbl.create 5
 
@@ -1174,10 +1184,22 @@ let in_map k mp =
   | None -> false
   end
 
+(* graph for strings *)
+let add_dependent_edges (g: Ms_graph.str_graph) (lhs: string) (inds: ind_decl StringMap.t) = 
+  let dep_decls = StringMap.filter (fun s ind -> s <> lhs && references lhs ind) inds in 
+    Seq.fold_left (fun g' (s, _) -> Ms_graph.add_edge g' lhs s) g (StringMap.to_seq dep_decls)
+
+(* topologically sort inds to make sure that no inductives have undefined references *)
+let order_inds (inds: ind_decl StringMap.t) (names: string list) : string list = 
+  let init_graph = Ms_graph.empty in 
+  let with_nodes = List.fold_left Ms_graph.add_node init_graph names in 
+  let with_edges = List.fold_left (fun g x -> add_dependent_edges g x inds) with_nodes names in
+    Ms_graph.topo_sort with_edges
+
 let build_query (ctx: printing_ctx) (opts: query_opts) (e: C.t)  : string = 
   let ind_sorts, us_sorts = List.partition (in_map ctx.ctx_inds) @@ custom_sorts ctx.ctx_sorts in 
   let us_decls = List.map (fun s -> Format.sprintf "(declare-sort %s 0)" s) us_sorts in 
-  let ind_decls = List.map (fun s -> pretty_ind_decl s (StringMap.find s ctx.ctx_inds)) ind_sorts in 
+  let ind_decls = List.map (fun s -> pretty_ind_decl s (StringMap.find s ctx.ctx_inds)) (order_inds ctx.ctx_inds ind_sorts) in 
   let fun_decls = List.map pretty_func_decl @@ List.map snd @@ List.of_seq @@ StringMap.to_seq @@ ctx.ctx_fun_decls in 
   let prefix = String.concat "\n" @@ us_decls @ ind_decls @ fun_decls in 
   let q_str = if opts.refute_query then 

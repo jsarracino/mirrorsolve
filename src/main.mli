@@ -30,6 +30,8 @@ val reg_custom_sort : EConstr.constr -> string -> unit
 (* sum of constructor names and sort products *)
 type ind_decl = Ind_decl of (string * Ms_sorts.srt_smt list) list
 
+val references : string -> ind_decl -> bool 
+
 type func_decl = {
   arg_tys : Ms_sorts.srt_smt list;
   ret_ty : Ms_sorts.srt_smt;

@@ -75,9 +75,6 @@ Section ListSplitCombine.
     intuition eauto.
   Qed.
 
-
-  (* Next we set up a first-order logic! *)
-
   Declare ML Module "mirrorsolve".
 
   From MetaCoq.Template Require Import All Loader.
@@ -218,20 +215,8 @@ Section ListSplitCombine.
   Lemma split_eqn_1 : 
     (@nil A, @nil B) = (@nil A, @nil B).
   Proof.
-    Print match_tacs.
-    quote_reflect_list.
-    mirrorsolve.
     intuition eauto.
   Qed.
-
-  Definition tester t := eq_prefix t
-  (tApp (tConst (MPfile ["List"; "Lists"; "Coq"], "split") [])
-     [tVar "A"; tVar "B"]).
-
-  MetaCoq Quote Definition foo := (@split A B nil).
-
-  Eval compute in tester foo.
-
   (* | (x,y) :: tl => let (left,right) := split tl in (x::left, y::right) *)
   (* This one is a bit tricky because our SMT reflection doesn't have pattern matching, 
      so instead we use fst and snd (for which we have uninterpreted functions). *)

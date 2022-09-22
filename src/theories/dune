@@ -4,5 +4,7 @@
 (coq.theory
  (name MirrorSolve)
  (package mirrorsolve)
- (libraries mirrorsolve.plugin)
+ (libraries 
+   mirrorsolve.plugin
+ )
 )

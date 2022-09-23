@@ -123,6 +123,7 @@ Section AssocList.
   Definition update_all (orig: list (K * V)) (new: list (K * V)) := 
     List.fold_left (fun xs '(k, v) => update k v xs) new orig.
 
+
 End AssocList.
 
 Fixpoint join {K V V' eqb} (ls: list (K * V)) (rs: list (K * V')) : list (K * (V * V')) := 

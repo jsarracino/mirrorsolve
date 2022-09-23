@@ -179,21 +179,18 @@ Section ListSplitCombine.
   ).
   Definition fm_model := Build_model sig interp_sorts interp_funs interp_rels.
 
-  (* Eval compute in trans_tbl.(mp_consts). *)
-
+  Eval vm_compute in Utils.flip (trans_tbl.(mp_consts)).
   MetaCoq Run (
-    add_const_wf_instance sig fm_model (tConstruct
-    {|
-      inductive_mind := (MPfile ["ListSplitCombine"], "fol_funs");
-      inductive_ind := 0
-    |} 35 []) IntLit 
+    match Utils.find _ _ smt_fun_base_beq IntLit (Utils.flip trans_tbl.(mp_consts)) with 
+    | Some v => add_const_wf_instance sig fm_model v IntLit 
+    | None => tmReturn tt
+    end
   ).
   MetaCoq Run (
-    add_const_wf_instance sig fm_model (tConstruct
-    {|
-      inductive_mind := (MPfile ["ListSplitCombine"], "fol_funs");
-      inductive_ind := 0
-    |} 36 []) BoolLit 
+    match Utils.find _ _ smt_fun_base_beq BoolLit (Utils.flip trans_tbl.(mp_consts)) with 
+    | Some v => add_const_wf_instance sig fm_model v BoolLit 
+    | None => tmReturn tt
+    end
   ).
   MetaCoq Run (
     add_matches sig fm_model trans_tbl
@@ -231,17 +228,6 @@ Section ListSplitCombine.
     prep_proof; 
     quote_reflect_list; 
     check_goal_unsat. 
-
-  (* We need to reflect equations for:
-    @In A,
-    @In B,
-    @In (A * B)
-
-    @split A B,
-    @combine A B,
-    nth_z
-    length_z 
-  *)
 
   Lemma fst_A_eqn: 
     forall (x: A) (y: B), 
@@ -516,6 +502,8 @@ Section ListSplitCombine.
 
   Hint Immediate nth_z_AB_eqn_1 : list_eqns.
   Hint Immediate nth_z_AB_eqn_2 : list_eqns.
+
+
 
   (* actual proofs *)
 

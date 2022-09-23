@@ -168,16 +168,13 @@ Section ListFuncs.
      Under the hood, MirrorSolve infers what types are used, as well as how to reflect them.
     *)
   Definition fun_syms : list packed := [
-      pack (list A)
-      (* pack List_A *)
-    (*
+      
       pack ListFuncs.rev
     ; pack ListFuncs.app
     ; pack ListFuncs.List_A
     ; pack ListFuncs.tail_rev
     ; pack ListFuncs.len
-    ; pack Z.add (* The body of len uses Z arithmetic, so we need to bring in Z.add as well. *)
-    *)
+    ; pack Z.add 
   ].
 
   (* We distinguish between functions (which return values) and relations (which live in Coq's Prop).
@@ -289,6 +286,7 @@ Section ListFuncs.
     check_goal_unsat. (* 3) checks the goal with an SMT solver and applies an axiom to close the proof. *)
 
   (* And that's it! We're on to proofs. *)
+  Print match_tacs.
   
   Lemma app_app_one : 
     forall (a: A) (l r : List_A), 

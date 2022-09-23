@@ -32,6 +32,8 @@ Inductive smt_fun_base :=
   | IntLit : smt_fun_base 
   | BVLit : smt_fun_base.
 
+Scheme Equality for smt_fun_base.
+
 Register F_sym as ms.core.fun_sym.
 Register BoolLit as ms.core.bool_lit.
 Register IntLit as ms.core.int_lit.

@@ -748,57 +748,34 @@ Section Tactics.
     eapply denote_extract_general; eauto.
     - intros.
       simpl in *.
-      induction t0 using term_ind';
-      simpl in *;
-      admit.
-      (* repeat match goal with 
+      unfold extract_t2tm in H1.
+      unfold denote_tm.
+      repeat match goal with 
       | H : match ?X with | Some _ => _ | None => _ end = _ |- _ => 
         destruct X eqn:?; try congruence
       | H : match ?X with | inl _ => _ | inr _ => _ end = _ |- _ => 
         destruct X eqn:?; try congruence
       end.
-      try now (
-        erewrite extract_denote_mtacs_some_inl; eauto; trivial;
-        match goal with 
-        | H: Some _ = Some _ |- _ => 
-          inversion H; subst
-        end;
-        eauto
-      ).
-      erewrite extract_denote_mtacs_none; eauto.
-      destruct s0.
+      erewrite extract_denote_mtacs_some_inl; eauto.
       inversion H1.
-      erewrite extract_denote_mtacs_some_inl; eauto; trivial. *)
-
+      subst.
+      eauto.
+      
     - intros.
-      induction t0 using term_ind'; 
-      simpl in *;
-      admit.
-      (* repeat match goal with 
+      simpl in *.
+      unfold extract_t2tm, denote_tm in *.
+      repeat match goal with 
       | H : match ?X with | Some _ => _ | None => _ end = _ |- _ => 
         destruct X eqn:?; try congruence
       | H : match ?X with | inl _ => _ | inr _ => _ end = _ |- _ => 
         destruct X eqn:?; try congruence
-      end;
-      match goal with 
-      | H: _ = inr _ |- _ => 
-        try now (erewrite extract_denote_mtacs_some_inr; eauto)
-      | H: _ = None |- _ => 
-        try now (erewrite extract_denote_mtacs_none; eauto)
-      | _ => idtac
-      end. *)
-      (* + erewrite extract_denote_mtacs_none;
-        eauto.
-        erewrite extract_denote_mtacs_some_inr;
-        eauto.
-      + erewrite extract_denote_mtacs_none;
-        eauto.
-        erewrite extract_denote_mtacs_none;
-        eauto. *)
+      end.
+      + erewrite extract_denote_mtacs_some_inr; eauto.
+      + erewrite extract_denote_mtacs_none; eauto.
     - intros.
       eapply extract_denote_mtacs_rel;
       eauto.
-  Admitted.
+  Qed.
 
   Lemma denote_extract_specialized_forward: 
     forall t fm,
@@ -820,6 +797,8 @@ Section Tactics.
     eapply denote_extract_specialized;
     eauto.
   Qed.
+
+  (* Print Assumptions denote_extract_specialized. *)
 
 End Tactics.
 

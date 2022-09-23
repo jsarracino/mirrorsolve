@@ -501,9 +501,10 @@ Section Meta.
       eauto.
     + erewrite H3; eauto.
       eapply iff_refl.
-    + erewrite denote_extract_tr_spec with (v := v) (t := tApp t args);
-      eauto.
-      admit.
+    + 
+      erewrite denote_extract_tr_spec with (v := v) (t := tApp t args);
+      eauto;
+      eapply iff_refl.
 
       eapply equiv_envs_map_args;
       eauto.
@@ -531,7 +532,7 @@ Section Meta.
     eapply iff_refl.
     erewrite denote_extract_tr_spec; intuition eauto.
     econstructor.
-  Admitted. 
+  Qed. 
 
 
   Theorem denote_extract : 

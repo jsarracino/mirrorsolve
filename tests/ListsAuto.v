@@ -32,7 +32,7 @@ Section ListFuncs.
   Unset Universe Polymorphism.
 
   (* We use a simpler, custom version of lists to make it easier to autogenerate
-     plugin configuration. For verification of the same proofs but on normal lists, see tests/Lists.v.
+     plugin configuration. For an example of verification of existing parameterized inductives (i.e. the standard library's list inductive), see tests/ListSplitCombine.v.
   *)
 
   Inductive List_A := 
@@ -163,7 +163,6 @@ Section ListFuncs.
   *)
   Notation pack x := (existT _ _ x).
 
-
   (* Here we define the inductive types and uninterpreted functions that MirrorSolve should reflect. 
      Under the hood, MirrorSolve infers what types are used, as well as how to reflect them.
     *)
@@ -174,15 +173,15 @@ Section ListFuncs.
     ; pack ListFuncs.List_A
     ; pack ListFuncs.tail_rev
     ; pack ListFuncs.len
-    ; pack Z.add 
+    ; pack Z.add (* The body of len uses Z arithmetic, so we need to bring in Z.add as well. *)
   ].
 
   (* We distinguish between functions (which return values) and relations (which live in Coq's Prop).
      Here, we pass a list of Coq relations; each of these will also be reflected to an uninterpreted function.
   *)
   Definition rel_syms : list packed := [ 
-      (* pack ListFuncs.In 
-    ; pack ListFuncs.NoDup *)
+      pack ListFuncs.In 
+    ; pack ListFuncs.NoDup
   ].
 
   (* The final peice of configuration is to override some Coq functions with an SMT primitive.
@@ -193,7 +192,7 @@ Section ListFuncs.
      We record this in a list of arithmetic functions and their corresponding string symbol in SMT.
   *)
   Definition prim_syms : list (packed * String.string) := [
-    (* (pack Z.add, "+"%string) *)
+    (pack Z.add, "+"%string)
   ].
 
   (* The rest of the automation is copy-paste and should not change between developments. *)
@@ -215,7 +214,16 @@ Section ListFuncs.
   ).
   Definition fm_model := Build_model sig interp_sorts interp_funs interp_rels.
   MetaCoq Run (
-    add_const_wf_instances sig fm_model trans_tbl
+    match Utils.find _ _ smt_fun_base_beq IntLit (Utils.flip trans_tbl.(mp_consts)) with 
+    | Some v => add_const_wf_instance sig fm_model v IntLit 
+    | None => tmReturn tt
+    end
+  ).
+  MetaCoq Run (
+    match Utils.find _ _ smt_fun_base_beq BoolLit (Utils.flip trans_tbl.(mp_consts)) with 
+    | Some v => add_const_wf_instance sig fm_model v BoolLit 
+    | None => tmReturn tt
+    end
   ).
   MetaCoq Run (
     add_matches sig fm_model trans_tbl
@@ -286,8 +294,7 @@ Section ListFuncs.
     check_goal_unsat. (* 3) checks the goal with an SMT solver and applies an axiom to close the proof. *)
 
   (* And that's it! We're on to proofs. *)
-  Print match_tacs.
-  
+
   Lemma app_app_one : 
     forall (a: A) (l r : List_A), 
       app (ListFuncs.app l (a::[])) r = app l (a :: r).

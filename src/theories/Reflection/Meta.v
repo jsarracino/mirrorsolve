@@ -384,9 +384,11 @@ Section Meta.
   Proof.
 
   induction t using term_ind'; intros; try now (
-    simpl in H;
-    inversion H
+    simpl in *;
+    erewrite denote_extract_tr_spec; intuition eauto;
+    econstructor
   ).
+  
   -
     simpl in *.
     destruct (binder_name na) eqn:?.
@@ -499,9 +501,9 @@ Section Meta.
       eauto.
     + erewrite H3; eauto.
       eapply iff_refl.
-    + erewrite denote_extract_tr_spec with (v := v);
-      eauto; 
-      try eapply iff_refl.
+    + erewrite denote_extract_tr_spec with (v := v) (t := tApp t args);
+      eauto.
+      admit.
 
       eapply equiv_envs_map_args;
       eauto.
@@ -527,7 +529,9 @@ Section Meta.
     end;
     autorewrite with interp_fm;
     eapply iff_refl.
-  Qed. 
+    erewrite denote_extract_tr_spec; intuition eauto.
+    econstructor.
+  Admitted. 
 
 
   Theorem denote_extract : 

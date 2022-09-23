@@ -1637,9 +1637,12 @@ Section Config.
       f <- tmUnquoteTyped (s.(sig_rels) args) x.2 ;; 
       name <- (get_global_name x.1) >>= liftM String.to_string ;;
       match x.1 with 
+      | tApp (tConst _ _) _
       | tConst _ _ => 
         tmReturn (SMTSig.PSR s _ sort_prop f, FUninterp name)
-      | tInd ind _ => 
+
+      | tApp (tInd _ _) _
+      | tInd _ _ => 
         tmReturn (SMTSig.PSR s _ sort_prop f, FUninterp name)
       | _ => 
         tmPrint "don't know how to handle term:" ;;

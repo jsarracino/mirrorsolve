@@ -152,7 +152,7 @@ Section ExtractFM.
           | _ => None
           end
         else
-          extract_t2rel c f (map (extract_t2tm' c) es)
+          extract_t2rel c t (map (extract_t2tm' c) es)
       | tProd ba_name pre pst => 
         match ba_name.(binder_name) with 
         | nAnon => 
@@ -174,7 +174,8 @@ Section ExtractFM.
           | None => None
           end
         end
-      | _ => None
+      | _ => 
+        extract_t2rel c t []
       end.
 
   Definition extract_fm t := extract_t2fm (SLNil _) (reindex_vars t).
@@ -271,7 +272,7 @@ Section DenoteFM.
           | _ => False
           end
         else 
-          denote_rel f (map (denote_tm' env) es)
+          denote_rel t (map (denote_tm' env) es)
       | tProd ba_name pre pst => 
         match ba_name.(binder_name) with 
         | nAnon => denote_t2fm env pre -> denote_t2fm env pst
@@ -283,7 +284,7 @@ Section DenoteFM.
           | None => False
           end
         end
-      | _ => False
+      | _ => denote_rel t []
       end.
 
   Definition denote_fm t := denote_t2fm (VEmp _ _) (reindex_vars t).

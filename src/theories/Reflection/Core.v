@@ -136,5 +136,7 @@ Definition eq_prefix (l r: term) : bool :=
     let common_pref := List.combine args_l args_r in 
     let common_res := List.map (fun '(x, y) => eq_term x y) common_pref in 
     List.fold_left andb common_res true
+  | tApp l' _, _ => eq_term l' r
+  | _, tApp r' _ => eq_term l r'
   | _, _ => eq_term l r
   end.

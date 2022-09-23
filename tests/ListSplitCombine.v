@@ -21,6 +21,42 @@ Require Import Coq.Lists.List.
 (* 
   This file demonstrates how to use mirrorsolve with nested, predefined inductive types.
   Here we'll prove some facts about the standard library's list split and combine.
+
+  We prove the following lemmas:
+
+    Lemma in_split_l : forall (l:list (A*B))(p:A*B),
+      In p l -> In (fst p) (fst (split l)).
+
+    Lemma in_split_r : forall (l:list (A*B))(p:A*B),
+      In p l -> In (snd p) (snd (split l)).
+
+    Lemma split_nth : forall (l:list (A*B))(n:nat)(d:A*B),
+      nth n l d = (nth n (fst (split l)) (fst d), nth n (snd (split l)) (snd d)).
+
+    Lemma split_length_l : forall (l:list (A*B)),
+      length (fst (split l)) = length l.
+
+    Lemma split_length_r : forall (l:list (A*B)),
+      length (snd (split l)) = length l.
+
+    Lemma split_combine : forall (l: list (A*B)),
+      forall l1 l2, split l = (l1, l2) -> combine l1 l2 = l.
+
+    Lemma combine_split : forall (l:list A)(l':list B), length l = length l' ->
+      split (combine l l') = (l,l').
+
+    Lemma in_combine_l : forall (l:list A)(l':list B)(x:A)(y:B),
+      In (x,y) (combine l l') -> In x l.
+
+    Lemma in_combine_r : forall (l:list A)(l':list B)(x:A)(y:B),
+      In (x,y) (combine l l') -> In y l'.
+
+    Lemma combine_length : forall (l:list A)(l':list B),
+      length (combine l l') = min (length l) (length l').
+
+    Lemma combine_nth : forall (l:list A)(l':list B)(n:nat)(x:A)(y:B),
+      length l = length l' ->
+      nth n (combine l l') (x,y) = (nth n l x, nth n l' y).
 *)
 
 (* We need to work in Z, so we reimplement nth and length using Z instead of nat *)
@@ -53,12 +89,13 @@ Section ListSplitCombine.
     @In A,
     @In B,
     @In (A * B)
-    @split A,
-    @option (A * B)
-    nth (we will reimplement with Z)
-    length (also reimplement with Z)
+    @split A B,
+    @combine A B,
+    @option (A * B)/A/B
+    nth (we will reimplement with Z, for A/B/A*B)
+    length (also reimplement with Z, for A/B/A*B)
     in Z:
-      plus, minus, and eqb
+      +, -, leb, ge, eqb, min
   *)
 
   Declare ML Module "mirrorsolve".
@@ -72,21 +109,6 @@ Section ListSplitCombine.
   MetaCoq Quote Definition typ_term := Type@{foo}.
   Notation pack x := (existT _ _ x).
 
-  (* We need to reflect:
-    A * B, fst, snd
-    list A,
-    list B,
-    list (A * B),
-    @In A,
-    @In B,
-    @In (A * B)
-    @split A,
-    @option (A * B)
-    nth (we will reimplement with Z)
-    length (also reimplement with Z)
-    in Z:
-      plus, minus, and eqb
-  *)
   Definition fun_syms : list packed := [
       pack (A * B)%type
     ; pack (list A * list B)%type

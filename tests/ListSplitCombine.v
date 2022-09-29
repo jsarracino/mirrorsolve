@@ -22,6 +22,32 @@ Require Import Coq.Lists.List.
   This file demonstrates how to use mirrorsolve with nested, predefined inductive types.
   Here we'll prove some facts about the standard library's list split and combine.
 
+  The definitions of split and combine are:
+
+  split = 
+fun A B : Type =>
+fix split (l : list (A × B)) : list A × list B :=
+  match l with
+  | [] => ([], [])
+  | p :: tl =>
+	  let (x, y) := p in
+      let (left, right) := split tl in (x :: left, y :: right)
+  end
+     : forall A B : Type, list (A × B) -> list A × list B
+
+  combine = 
+fun A B : Type =>
+fix combine (l : list A) (l' : list B) {struct l} : list (A × B) :=
+  match l with
+  | [] => []
+  | x :: tl =>
+	  match l' with
+      | [] => []
+      | y :: tl' => (x, y) :: combine tl tl'
+      end
+  end
+     : forall A B : Type, list A -> list B -> list (A × B)
+
   We prove the following lemmas:
 
     Lemma in_split_l : forall (l:list (A*B))(p:A*B),

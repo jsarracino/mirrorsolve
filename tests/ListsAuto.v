@@ -31,8 +31,7 @@ Section ListFuncs.
   Variable (A: Type).
   Unset Universe Polymorphism.
 
-  (* We use a simpler, custom version of lists to make it easier to autogenerate
-     plugin configuration. For an example of verification of existing parameterized inductives (i.e. the standard library's list inductive), see tests/ListSplitCombine.v.
+  (* We use a simpler, custom version of lists to simplify the demo. For an example of verification of existing parameterized inductives (i.e. the standard library's list inductive), see tests/ListSplitCombine.v.
   *)
 
   Inductive List_A := 

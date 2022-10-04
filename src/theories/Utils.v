@@ -176,3 +176,32 @@ Definition o2l {A} (x: option A) :=
   | Some x' => x' :: nil
   | None => nil
   end.
+
+From MetaCoq.Template Require Import All.
+
+(* Given a substitution key-value, if the LHS is a Coq variable, increment the DB indexing.
+   This is useful when substituting under a product.
+*)
+Definition inc_subst_var {A} : term * A -> term * A := fun '(k, v) => 
+  match k with 
+  | tRel n => (tRel (S n), v)
+  | _ => (k, v)
+  end.
+
+Require Import MirrorSolve.Reflection.Core.
+
+(* Given an environment of key-value substitutions, replace all LHS with the corresponding RHS.
+   Adjusts variable DB indices in the keys as it goes (i.e. to correctly substitute under binders)
+*)
+Fixpoint subst_terms (env: list (term * term)) (t: term) := 
+  match find _ _ Core.eq_term t env with 
+  | Some t' => t'
+  | None => 
+    match t with 
+    | tApp f args => 
+      tApp (subst_terms env f) (map (subst_terms env) args)
+    | tProd x ty bod => 
+      tProd x (subst_terms env ty) (subst_terms (map inc_subst_var env) bod)
+    | _ => t 
+    end
+  end.

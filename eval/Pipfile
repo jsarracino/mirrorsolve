@@ -1,0 +1,19 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+pampy = "*"
+tqdm = "*"
+sexpdata = "*"
+numpy = "*"
+sh = "*"
+alive-progress = "*"
+coq-serapy = {path = "./coq_serapy"}
+mypy = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.10"

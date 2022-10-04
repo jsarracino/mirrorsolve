@@ -1,0 +1,6 @@
+[submodule "vscoq"]
+	path = vscoq
+	url = https://github.com/jsarracino/vscoq
+[submodule "eval/coq_serapy"]
+	path = eval/coq_serapy
+	url = git@github.com:HazardousPeach/coq_serapy.git

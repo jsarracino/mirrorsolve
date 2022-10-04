@@ -127,8 +127,6 @@ Definition eq_ctor (l r: term) : bool :=
   | _, _ => false
   end.
 
-Check List.fold_left.
-
 Definition eq_prefix (l r: term) : bool := 
   match l, r with 
   | tApp l' args_l, tApp r' args_r => 

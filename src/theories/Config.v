@@ -12,49 +12,9 @@ Open Scope bs.
 
 Universe sorts_level.
 
-Definition map_with_index {A B} (f: nat -> A -> B) (xs: list A) : list B := 
-  (fix rec xs acc :=
-    match xs with 
-    | nil => nil
-    | x :: xs' => f acc x :: rec xs' (S acc)
-    end
-  ) xs 0.
-
 Require MirrorSolve.Reflection.Core.
 Require Import MirrorSolve.Utils.
-
-
-(* Some monadic operations but for the TemplateMonad
- *)
-Polymorphic Fixpoint sequence {A} (acts: list (TemplateMonad A)) : TemplateMonad (list A) := 
-  match acts with 
-  | [] => tmReturn []
-  | a :: acts' => 
-    x <- a ;;
-    r <- sequence acts' ;;
-    tmReturn (x :: r)
-  end.
-
-Polymorphic Definition mapM {A B} (f: A -> TemplateMonad B) (xs: list A) : TemplateMonad (list B) :=
-  sequence (map f xs).
-
-Polymorphic Fixpoint validate_opts {A} (xs: list (option A)) (msg: ident) : TemplateMonad (list A) := 
-  match xs with 
-  | nil => tmReturn nil
-  | None :: _ => 
-    tmPrint msg ;;
-    tmFail "couldn't validate options"
-  | Some x :: xs' => 
-    r <- validate_opts xs' msg ;;
-    tmReturn (x :: r)
-  end.
-
-Polymorphic Definition fmap {A B} (f: A -> B) (t: TemplateMonad A) : TemplateMonad B := 
-  t >>= (fun x => tmReturn (f x)).
-
-Polymorphic Definition liftM {A B} (f: A -> B) : A -> TemplateMonad B := 
-  fun a => tmReturn (f a).
-
+  
 (* Quote a term twice, i.e. get a term that corresponds to the quoted term of x.
    This is useful for writing metafunctions (e.g. generating the branches of a term match statement)
 *)
@@ -99,20 +59,31 @@ Fixpoint str_join (xs: list ident) (sep: ident) : ident :=
     x ++ sep ++ str_join xs' sep
   end.
 
+MetaCoq Quote Definition t_z := (BinInt.Z).
+MetaCoq Quote Definition t_bool := (bool).
+MetaCoq Quote Definition t_prop := (Prop).
+Definition is_z_srt t := Core.eq_term t t_z.
+Definition is_b_srt t := Core.eq_term t t_bool.
+
 Polymorphic Fixpoint get_ty_name (t: term) : TemplateMonad ident := 
-  match t with 
-  | tInd ind _ => tmReturn (ind.(inductive_mind).2)
-  | tApp f es => 
-    pref <- get_ty_name f ;;
-    rhses <- mapM get_ty_name es ;;
-    tmReturn (pref ++ "_" ++ str_join rhses "_")
-  | tVar s => tmReturn s
-  | tSort (Universe.lProp) => tmReturn "prop"
-  | _ => 
-    tmMsg "can't get name from:" ;;
-    tmPrint t ;;
-    tmFail "get_ty_name"
-  end.
+  if is_z_srt t then 
+    tmReturn "Int"
+  else if is_b_srt t then 
+    tmReturn "Bool"
+  else
+    match t with 
+    | tInd ind _ => tmReturn (ind.(inductive_mind).2)
+    | tApp f es => 
+      pref <- get_ty_name f ;;
+      rhses <- mapM get_ty_name es ;;
+      tmReturn (pref ++ "_" ++ str_join rhses "_")
+    | tVar s => tmReturn s
+    | tSort (Universe.lProp) => tmReturn "Prop"
+    | _ => 
+      tmMsg "can't get name from:" ;;
+      tmPrint t ;;
+      tmFail "get_ty_name"
+    end.
 
 Polymorphic Fixpoint subst_var (v: nat) (r: term) (t: term) := 
   match t with 
@@ -215,8 +186,7 @@ Section Config.
   (* helper functions for building the semantics of sorts 
   *)
 
-  MetaCoq Quote Definition t_bool := (bool).
-  MetaCoq Quote Definition t_prop := (Prop).
+  
 
   Definition make_interp_branch (r: term) : branch term :=  {|
     bcontext := [];
@@ -623,10 +593,7 @@ Section Config.
      If it is, return the corresponding sort constructor for Z (e.g. sort_Z)
    *)
 
-  MetaCoq Quote Definition t_z := (BinInt.Z).
-  MetaCoq Quote Definition t_b := (bool).
-  Definition is_z_srt t := Core.eq_term t t_z.
-  Definition is_b_srt t := Core.eq_term t t_b.
+  
 
   Fixpoint gather_z_const (srts: list (term * term)) : option term := 
     match srts with 
@@ -1460,33 +1427,33 @@ Section Config.
      Generally types can be products so the translation uses a typing environment env.
   *)
   Definition translate_cstr_type_base (env: list smt_ind_base) (rec_name : ident) (x: term) :  TemplateMonad smt_ind_base := 
-    if is_z_srt x then 
-      tmReturn (SISort SInt)
-    else if orb (Core.eq_term x t_prop) (Core.eq_term x t_bool) then 
-      tmReturn (SISort SBool)
-    else
+    let ret := 
       match x with 
-      | tVar nme => tmReturn (SISort (SCustom (String.to_string nme)))
-      | tRel v => 
-        match nth_error env v with 
-        | Some x => tmReturn x
-        | None => 
-          tmPrint env ;;
-          tmPrint x ;;
-          tmFail "db index out of bounds in translate_cstr_type_base"
-        end
+      | tVar nme => Some (SISort (SCustom (String.to_string nme)))
+      | tRel v => nth_error env v
       | tApp _ _ => 
         match subst_tys env rec_name x with 
         | Some nme => 
-          tmReturn (SISort (SCustom (String.to_string nme)))
-        | None => 
-          tmPrint x ;; 
-          tmFail "failed to print type name for custom sort in translate_cstr_type_base" 
+          Some (SISort (SCustom (String.to_string nme)))
+        | None => None
+          (* tmPrint x ;; 
+          tmFail "failed to print type name for custom sort in translate_cstr_type_base"  *)
         end
-      | _ => 
-        tmPrint x ;;
-        tmFail "unhandled term in translate_cstr_type_base"
-      end.
+      | _ => None
+        (* tmPrint x ;;
+        tmFail "unhandled term in translate_cstr_type_base" *)
+      end in 
+    match ret with 
+    | Some r => tmReturn r
+    | None => 
+      if is_z_srt x then 
+        tmReturn (SISort SInt)
+      else if orb (Core.eq_term x t_prop) (Core.eq_term x t_bool) then 
+        tmReturn (SISort SBool)
+      else
+        tmFail "weird error in translate_cstr_type_base"
+    end.
+      
 
   (* Translate a nested type (including products) into a list of types,
      adding bound types to the environment as it goes.

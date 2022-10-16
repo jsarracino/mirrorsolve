@@ -524,7 +524,8 @@ let extract_ind_base (base: srt_smt) (e: C.t) =
   if C.isApp e then 
     (* SISort <sort> *)
     let f, es = C.destApp e in 
-    let ctor, args = C.destApp @@ a_last es in 
+    let ctor, args = 
+      if C.isApp @@ a_last es then C.destApp @@ a_last es else a_last es, [||] in 
     begin match conv_sort ctor args with 
     | Some s -> s
     | None -> 

@@ -205,3 +205,55 @@ Fixpoint subst_terms (env: list (term * term)) (t: term) :=
     | _ => t 
     end
   end.
+
+
+Definition map_with_index {A B} (f: nat -> A -> B) (xs: list A) : list B := 
+  (fix rec xs acc :=
+    match xs with 
+    | nil => nil
+    | x :: xs' => f acc x :: rec xs' (S acc)
+    end
+  ) xs 0.
+
+From MetaCoq.Template Require Import All Loader.
+Import MCMonadNotation.
+Open Scope bs.
+
+(* Some monadic operations but for the TemplateMonad
+  *)
+Polymorphic Fixpoint sequence {A} (acts: list (TemplateMonad A)) : TemplateMonad (list A) := 
+  match acts with 
+  | [] => tmReturn []
+  | a :: acts' => 
+    x <- a ;;
+    r <- sequence acts' ;;
+    tmReturn (x :: r)
+  end.
+
+Polymorphic Definition mapM {A B} (f: A -> TemplateMonad B) (xs: list A) : TemplateMonad (list B) :=
+  sequence (map f xs).
+
+Polymorphic Fixpoint validate_opts {A} (xs: list (option A)) (msg: ident) : TemplateMonad (list A) := 
+  match xs with 
+  | nil => tmReturn nil
+  | None :: _ => 
+    tmPrint msg ;;
+    tmFail "couldn't validate options"
+  | Some x :: xs' => 
+    r <- validate_opts xs' msg ;;
+    tmReturn (x :: r)
+  end.
+
+Polymorphic Definition fmap {A B} (f: A -> B) (t: TemplateMonad A) : TemplateMonad B := 
+  t >>= (fun x => tmReturn (f x)).
+
+Polymorphic Definition liftM {A B} (f: A -> B) : A -> TemplateMonad B := 
+  fun a => tmReturn (f a).
+
+Polymorphic Fixpoint foldlM {A B} (f: A -> B -> TemplateMonad A) (d: A) (xs: list B) : TemplateMonad A := 
+  match xs with 
+  | [] => tmReturn d
+  | (x :: xs') => 
+    r <- f d x ;;
+    foldlM f r xs' 
+  end.

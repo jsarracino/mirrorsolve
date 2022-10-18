@@ -30,10 +30,13 @@ Require Import MirrorSolve.Reflection.FM.
 Require Import MirrorSolve.Reflection.Tactics.
 From Hammer Require Import Hammer.
 
+Set Hammer ATPLimit 5.
+Set Hammer ReconstrLimit 10.
+
 Require Import MirrorSolve.Crush.
 
-Ltac hammer' := timeout 1 hammer.
-Ltac crush' := timeout 1 crush.
+Ltac hammer' := timeout 60 hammer.
+Ltac crush' := timeout 60 crush.
 
 Inductive sorted : list Z -> Prop :=
   | sorted_nil : sorted []
@@ -429,10 +432,8 @@ Section SearchTree.
   Theorem empty_tree_BST : 
       BST E.
   Proof.
-    try crush'.
-    Restart.
-    try hammer'.
-    Restart.
+    (* try crush'. *)
+    (* try hammer'. *)
     mirrorsolve.
   Qed.
 
@@ -444,6 +445,17 @@ Section SearchTree.
 
     Start by proving this helper lemma, which says that [insert]
     preserves any node predicate. Proceed by induction on [t]. *)
+
+  (* We can't prove the helper predicate because it's about the higher-order thing of ForallT *)
+
+Lemma ForallT_insert : forall (P : key -> V -> Prop) (t : tree),
+    ForallT P t -> forall (k : key) (v : V),
+      P k v -> ForallT P (insert_t k v t).
+Proof.
+  (* FILL IN HERE *) Admitted.
+
+(* But we can prove the corresponding properties for lt_t and gt_t.
+*)
 
   (* first, reflect lt_t and gt_t: *)
 
@@ -503,34 +515,24 @@ Section SearchTree.
   (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma gt_t_trans : 
     forall (x y : Z), 
       x > y -> 
       forall t, gt_t x t -> gt_t y t.
   Proof.
     induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
+    try hammer.
+    Restart. 
+    (* hammer and crush both worked! *)
     induction t;
     mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma lt_t_trans : 
     forall (x y : Z), 
       x < y -> 
       forall t, lt_t x t -> lt_t y t.
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -547,7 +549,6 @@ Section SearchTree.
   Qed.
   Hint Immediate gtb_gt : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 0} *)
   Lemma lt_t_insert : 
     forall t x k, 
       lt_t x t->
@@ -556,18 +557,11 @@ Section SearchTree.
         lt_t x (insert_t k v t).
   Proof.
     induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
-    induction t;
     mirrorsolve.
   Qed.
 
   Hint Immediate lt_t_insert : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 0} *)
   Lemma gt_t_insert : 
     forall t x k, 
       gt_t x t->
@@ -576,27 +570,21 @@ Section SearchTree.
         gt_t x (insert_t k v t).
   Proof.
     induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
-    induction t;
     mirrorsolve.
   Qed.
   Hint Immediate gt_t_insert : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 0} *)
   Lemma ordered_insert : 
     forall t x k, 
       ordered t -> ordered (insert_t k x t).
   Proof.
-    induction t;
-    try hammer'.
+    (* induction t;
+    try hammer.
     Restart.
     induction t;
-    try crush'.
-    Restart.
+    try crush.
+    Restart. *)
+    (* hammer and crush did not work here *)
     induction t;
     mirrorsolve.
   Qed.
@@ -606,16 +594,9 @@ Section SearchTree.
 (** Now prove the main theorem. Proceed by induction on the evidence
     that [t] is a BST. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 2, "crush": 0} *)
   Theorem insert_BST : forall (k : key) (v : V) (t : tree),
       BST t -> BST (insert_t k v t).
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -682,27 +663,15 @@ Section SearchTree.
   Hint Immediate lookup_t_equation_1 : tree_eqns.
   Hint Immediate lookup_t_equation_2 : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
   Theorem lookup_empty : forall (d : V) (k : key),
       lookup_t d k empty_tree = d.
   Proof.
-    try hammer'.
-    Restart.
-    try crush'.
-    Restart.
     mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Theorem lookup_insert_eq : forall (t : tree) (d : V) (k : key) (v : V),
       lookup_t d k (insert_t k v t)  = v.
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t; 
     mirrorsolve.
   Qed.
@@ -719,17 +688,10 @@ Section SearchTree.
 (** The tactic immediately pays off in proving the third
     equation. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Theorem lookup_insert_neq :
     forall (t : tree) (d : V) (k k' : key) (v : V),
     k <> k' -> lookup_t d k' (insert_t k v t) = lookup_t d k' t.
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -763,18 +725,11 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Hint Immediate bound_t_equation_1 : tree_eqns.
   Hint Immediate bound_t_equation_2 : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Theorem bound_default :
     forall (t: tree) (k : key) (d : V),
       bound_t k t = false ->
       lookup_t d k t = d.
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -798,17 +753,10 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
 
 (** **** Exercise: 2 stars, standard, optional (lookup_insert_shadow) *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Lemma lookup_insert_shadow :
     forall (t : tree) (v v' d: V) (k k' : key),
       lookup_t d k' (insert_t k v (insert_t k v' t)) = lookup_t d k' (insert_t k v t).
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -817,17 +765,10 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
 
 (** **** Exercise: 2 stars, standard, optional (lookup_insert_same) *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Lemma lookup_insert_same :
     forall (t : tree) (k k' : key) (d : V),
       lookup_t d k' (insert_t k (lookup_t d k t) t) = lookup_t d k' t.
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t; 
     mirrorsolve.
   Qed.
@@ -837,19 +778,12 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
 
 (** **** Exercise: 2 stars, standard, optional (lookup_insert_permute) *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Lemma lookup_insert_permute :
     forall (t: tree) (v1 v2 d : V) (k1 k2 k': key),
       k1 <> k2 ->
       lookup_t d k' (insert_t k1 v1 (insert_t k2 v2 t))
       = lookup_t d k' (insert_t k2 v2 (insert_t k1 v1 t)).
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t; 
     mirrorsolve.
   Qed.
@@ -869,21 +803,38 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
     Could we state the tree lemmas with direct equalities?  For
     [insert_shadow], the answer is yes: *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Lemma insert_shadow_equality : forall (t : tree) (k : key) (v v' : V),
       insert_t k v (insert_t k v' t) = insert_t k v t.
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
-    induction t; 
-    mirrorsolve.
+    induction t; mirrorsolve.
   Qed.
 
   Hint Immediate insert_shadow_equality : tree_eqns.
+
+(** But the other two direct equalities on BSTs do not necessarily
+    hold. *)
+
+(** **** Exercise: 3 stars, standard, optional (direct_equalities_break) *)
+
+(** Prove that the other equalities do not hold.  Hint: find a counterexample
+    first on paper, then use the [exists] tactic to instantiate the theorem
+    on your counterexample.  The simpler your counterexample, the simpler
+    the rest of the proof will be. *)
+
+    (* MIRRORSOLVE: We can't prove these because they use exists *)
+Lemma insert_same_equality_breaks :
+  exists (d : V) (t : tree) (k : key),
+      insert_t k (lookup_t d k t) t <> t.
+Proof.
+  (* FILL IN HERE *) Admitted.
+
+Lemma insert_permute_equality_breaks :
+  exists (v1 v2 : V) (k1 k2 : key) (t : tree),
+    k1 <> k2 /\ insert_t k1 v1 (insert_t k2 v2 t) <> insert_t k2 v2 (insert_t k1 v1 t).
+Proof.
+  (* FILL IN HERE *) Admitted.
+
+(** [] *)
 
 (* ################################################################# *)
 (** * Converting a BST to a List *)
@@ -957,19 +908,12 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
 
   Hint Immediate in_app_iff' : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_complete : 
     forall (t: tree) (k : key) (v d : V),
       bound_t k t = true ->
       lookup_t d k t = v ->
       In (k, v) (elements t).
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -988,6 +932,8 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
 
     The standard library contains a helpful lemma about [Forall]: *)
 
+Check Forall_app. 
+
 (** **** Exercise: 2 stars, standard (elements_preserves_forall) *)
 
 (** Prove that if a property [P] holds of every node in a tree [t],
@@ -1005,6 +951,15 @@ Definition uncurry {X Y Z : Type} (f : X -> Y -> Z) '(a, b) :=
 
 Hint Transparent uncurry.
 
+(* MIRRORSOLVE: We can't do this because of ForallT *)
+Lemma elements_preserves_forall : forall (P : key -> V -> Prop) (t : tree),
+    ForallT P t ->
+    Forall (uncurry P) (elements t).
+Proof.
+  (* FILL IN HERE *) Admitted.
+
+(** [] *)
+
 (** **** Exercise: 2 stars, standard (elements_preserves_relation) *)
 
 (** Prove that if all the keys in [t] are in a relation [R] with a
@@ -1019,6 +974,15 @@ Hint Transparent uncurry.
     [Forall_forall]. *)
 
 (* MIRRORSOLVE: We can't do this because it's higher-order *)
+Lemma elements_preserves_relation :
+  forall (k k' : key) (v : V) (t : tree) (R : key -> key -> Prop),
+    ForallT (fun y _ => R y k') t
+    -> In (k, v) (elements t)
+    -> R k k'.
+Proof.
+  (* FILL IN HERE *) Admitted.
+
+
   Lemma lt_list_nil : 
     forall x, lt_list x [] <-> True.
   Proof.
@@ -1058,7 +1022,6 @@ Hint Transparent uncurry.
 
   (* However, we can prove that it preserves lt_t and gt_t, as well as that lt_list and gt_list are transitive *)
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma lt_list_trans : 
     forall l x y,
       x < y -> 
@@ -1066,28 +1029,15 @@ Hint Transparent uncurry.
       lt_list y l.
   Proof.
     induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
-    induction l;
     mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma gt_list_trans : 
     forall l x y,
       x > y -> 
       gt_list x l -> 
       gt_list y l.
   Proof.
-    induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
     induction l;
     mirrorsolve.
   Qed.
@@ -1097,32 +1047,20 @@ Hint Transparent uncurry.
 
   SetSMTSolver "z3".
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma lt_list_In : 
     forall x l, 
       lt_list x l <-> (forall y v, In (y, v) l -> y < x).
   Proof.
     induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
-    induction l;
     mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
+  
+
   Lemma gt_list_In : 
     forall x l, 
       gt_list x l <-> (forall y v, In (y, v) l -> y > x).
   Proof.
-    induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
     induction l;
     mirrorsolve.
   Qed.
@@ -1131,32 +1069,18 @@ Hint Transparent uncurry.
   Hint Immediate gt_list_In : tree_eqns.
 
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 0} *)
   Lemma lt_t_elements : 
     forall t x,
       lt_t x t <-> lt_list x (elements t).
   Proof.
     induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
-    induction t;
     try mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 0} *)
   Lemma gt_t_elements : 
     forall t x,
       gt_t x t <-> gt_list x (elements t).
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     try mirrorsolve.
   Qed.
@@ -1172,19 +1096,12 @@ Hint Transparent uncurry.
 (** Prove that [elements] is correct. Proceed by induction on the
     evidence that [t] is a BST. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_correct : 
     forall (t : tree) (k : key) (v d : V),
       BST t ->
       In (k, v) (elements t) ->
       bound_t k t = true /\ lookup_t d k t = v.
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -1208,19 +1125,12 @@ Hint Transparent uncurry.
 (** This inverse doesn't require induction.  Look for a way to use
     [elements_correct] to quickly prove the result. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_complete_inverse :
     forall (t : tree) (k : key) (v : V) ,
       BST t -> 
       bound_t k t = false ->
       ~ In (k, v) (elements t).
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -1229,20 +1139,24 @@ Hint Transparent uncurry.
 
 (** [] *)
 
+(** **** Exercise: 4 stars, advanced (elements_correct_inverse) *)
+
+(** Prove the inverse.  First, prove this helper lemma by induction on
+    [t]. *)
+
+(* We can't prove this because there's an exists *)
+Lemma bound_value : forall (k : key) (t : tree),
+    bound_t k t = true -> exists v, forall d, lookup_t d k t = v.
+Proof.
+  (* FILL IN HERE *) Admitted.
+
 (** Prove the main result.  You don't need induction. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_correct_inverse :
     forall (t : tree) (k : key) ,
       (forall v, ~ In (k, v) (elements t)) ->
       bound_t k t = false.
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -1266,6 +1180,7 @@ Hint Transparent uncurry.
     intros;
     simpl;
     intuition eauto.
+    econstructor.
   Qed.
 
   Lemma sorted_one' :
@@ -1275,6 +1190,7 @@ Hint Transparent uncurry.
     intros;
     simpl;
     intuition eauto.
+    econstructor.
   Qed.
 
   Lemma sorted_cons' : 
@@ -1288,12 +1204,13 @@ Hint Transparent uncurry.
     | H: sorted (_ :: _ :: _) |- _ => inversion H; subst
     end;
     eauto.
+    econstructor;
+    eauto.
   Qed.
 
   Hint Immediate sorted_nil' : tree_eqns.
   Hint Immediate sorted_one' : tree_eqns.
   Hint Immediate sorted_cons' : tree_eqns.
-
 
   Lemma lt_list_s_nil : 
     forall x, lt_list_s x [] <-> True.
@@ -1330,19 +1247,13 @@ Hint Transparent uncurry.
   Hint Immediate app_nil_l_Z : tree_eqns.
   Hint Immediate app_cons_l_Z : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Lemma sorted_lt_end : 
     forall l x, 
       lt_list_s x l -> 
       sorted l -> 
       sorted (l ++ [x]).
   Proof.
-    induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
+    
     induction l;
     try mirrorsolve.
   Qed.
@@ -1368,7 +1279,6 @@ Hint Transparent uncurry.
   Hint Immediate gt_list_s_nil : tree_eqns.
   Hint Immediate gt_list_s_cons : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 2} *)
   Lemma sorted_gt_beginning : 
     forall r x, 
       gt_list_s x r -> 
@@ -1376,42 +1286,29 @@ Hint Transparent uncurry.
       sorted (x :: r).
   Proof.
     induction r;
-    try hammer'.
-    Restart.
-    induction r;
-    try crush'.
-    Restart.
-    induction r;
     mirrorsolve.
   Qed.
 
   Hint Immediate sorted_gt_beginning : tree_eqns.
 
+
 (** Prove that inserting an intermediate value between two lists
     maintains sortedness. Proceed by induction on the evidence
     that [l1] is sorted. *)
 
-  (*** MS LEMMA {"original": True, "goals": 4, "ms": 4, "hammer": 2, "crush": 2} *)
+(* We can't prove this because of Forall, but we can replace Forall and prove something about that *)
+  Lemma sorted_app: forall l1 l2 x,
+    sorted l1 -> sorted l2 ->
+    Forall (fun n => n < x) l1 -> Forall (fun n => n > x) l2 ->
+    sorted (l1 ++ x :: l2).
+  Proof.
+    (* FILL IN HERE *) Admitted.
+
   Lemma sorted_app': forall l1 l2 x,
    sorted l1 ->sorted l2 ->
     lt_list_s x l1 -> gt_list_s x l2 ->
    sorted (l1 ++ x :: l2).
   Proof.
-    induction l1;
-    induction l2;
-    try hammer'.
-    Restart.
-    induction l1;
-    induction l2.
-    - try crush';
-      admit.
-    - try crush';
-      admit.
-    - try crush';
-      admit.
-    - try crush';
-      admit.
-    Restart.
     induction l1;
     induction l2;
     mirrorsolve.
@@ -1432,36 +1329,27 @@ Hint Transparent uncurry.
 (** Prove that [elements t] is sorted by keys. Proceed by induction
     on the evidence that [t] is a BST. *)
 
+  (* We can't directly prove this because of map, but we can replace it with map_fst *)
+  Theorem sorted_elements : forall (t : tree),
+      BST t -> sorted (list_keys (elements t)).
+  Proof.
+  (* FILL IN HERE *) Admitted.
 
   Hint Immediate map_fst_equation_1 : tree_eqns.
   Hint Immediate map_fst_equation_2 : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Lemma map_fst_lts : 
     forall l x, 
       lt_list x l <-> lt_list_s x (map_fst l).
   Proof.
     induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
-    induction l;
     mirrorsolve. 
   Qed.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Lemma map_fst_gts : 
     forall l x, 
       gt_list x l <-> gt_list_s x (map_fst l).
   Proof.
-    induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
     induction l;
     mirrorsolve. 
   Qed.
@@ -1487,33 +1375,19 @@ Hint Transparent uncurry.
 
   SetSMTSolver "cvc5".
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Lemma map_fst_app :
     forall x y, 
       (map_fst (x ++ y) = map_fst x ++ map_fst y)%list.
   Proof.
-    induction x;
-    try hammer'.
-    Restart.
-    induction x;
-    try crush'.
-    Restart.
     induction x; 
     mirrorsolve.
   Qed. 
 
   Hint Immediate map_fst_app : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem sorted_elements' : forall (t : tree),
       BST t -> sorted (map_fst (elements t)).
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -1566,79 +1440,48 @@ Hint Transparent uncurry.
     [NoDup].  Hint: You might already have proved this theorem in an
     advanced exercise in [IndProp]. *)
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 0} *)
   Lemma disjoint_cons: 
     forall x l r, 
       disjoint (x :: l) r -> disjoint l r.
   Proof.
-    induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
     induction l;
     mirrorsolve.
   Qed.
   
   Hint Immediate disjoint_cons : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Lemma neg_In_app : 
     forall (x: Z) l r, 
       ~ In x l -> ~ In x r -> ~ In x (l ++ r).
   Proof.
-    induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
     induction l;
     mirrorsolve.
   Qed.
 
   Hint Immediate neg_In_app : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+
+
   Lemma NoDup_append : forall (l1 l2: list Z),
     NoDup_Z l1 -> NoDup_Z l2 -> disjoint l1 l2 ->
     NoDup_Z (l1 ++ l2).
   Proof.
-    induction l1;
-    try hammer'.
-    Restart.
-    induction l1;
-    try crush'.
-    Restart.
     induction l1;
     mirrorsolve.
   Qed.
 
   Hint Immediate NoDup_append : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
   Lemma Not_In_nil : 
     forall (x: key), ~ In x [].
   Proof.
-    try hammer'.
-    Restart.
-    try crush'.
-    Restart.
     mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma Not_In_cons:
     forall l (x: key) x', 
       ~ In x (x' :: l) <-> (x <> x' /\ ~ In x l).
   Proof.
-    induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
     induction l;
     mirrorsolve.
   Qed.
@@ -1646,32 +1489,18 @@ Hint Transparent uncurry.
   Hint Immediate Not_In_nil : tree_eqns.
   Hint Immediate Not_In_cons : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 2} *)
   Lemma gt_t_notin : 
     forall l x, 
       gt_list_s x l -> ~ In x l.
   Proof.
     induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
-    induction l;
     mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 2} *)
   Lemma lt_t_notin : 
     forall l x, 
       lt_list_s x l -> ~ In x l.
   Proof.
-    induction l;
-    try hammer'.
-    Restart.
-    induction l;
-    try crush'.
-    Restart.
     induction l;
     mirrorsolve.
   Qed.
@@ -1679,31 +1508,22 @@ Hint Transparent uncurry.
   Hint Immediate gt_t_notin : tree_eqns.
   Hint Immediate lt_t_notin : tree_eqns.
 
-  (*** MS LEMMA {"original": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
+
   Lemma gt_t_disjoint : 
     forall l2 l1, 
       (forall x, In x l1 -> 
       gt_list_s x l2) -> 
       disjoint l1 l2.
   Proof.
-    try hammer'.
-    Restart.
-    try crush'.
-    Restart.
     mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
   Lemma lt_t_disjoint : 
     forall l2 l1, 
       (forall x, In x l1 -> 
       lt_list_s x l2) -> 
       disjoint l1 l2.
   Proof.
-    try hammer'.
-    Restart.
-    try crush'.
-    Restart.
     mirrorsolve.
   Qed.
   
@@ -1718,18 +1538,17 @@ Hint Transparent uncurry.
     by [elements]. Proceed by induction on the evidence that [t] is a
     BST. Make use of library theorems about [map] as needed. *)
 
+    (* We can't prove this because it uses map and nodup, but we can prove one with map_fst and nodup_z! *)
+  Theorem elements_nodup_keys : forall (t : tree),
+    BST t ->
+    NoDup (list_keys (elements t)).
+  Proof.
+  (* FILL IN HERE *) Admitted.
 
-(*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_nodup_keys' : forall (t : tree),
     ordered t ->
     NoDup_Z (map_fst (elements t)).
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
@@ -1759,50 +1578,29 @@ Hint Transparent uncurry.
 (** Prove that [fast_elements] and [elements] compute the same
     function. *)
 
-  (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma app_comm_K_Z : 
     forall (x: list (key * V)) y z, 
       (x ++ y ++ z = (x ++ y) ++ z)%list.
   Proof.
-    induction x;
-    try hammer'.
-    Restart.
-    induction x;
-    try crush'.
-    Restart.
     induction x;
     mirrorsolve.
   Qed.
 
   Hint Immediate app_comm_K_Z : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Lemma fast_elements_tr_helper :
     forall (t : tree) (lst : list (key * V)),
       (fast_elements_tr t lst = elements t ++ lst)%list.
   Proof.
-    induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
     induction t;
     mirrorsolve.
   Qed.
 
   Hint Immediate fast_elements_tr_helper : tree_eqns.
 
-   (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma app_nil_r_K_V:
     forall (x: list (key * V)), (x ++ [] = x)%list.
   Proof.
-    induction x;
-    try hammer'.
-    Restart.
-    induction x;
-    try crush'.
-    Restart.
     induction x;
     mirrorsolve.
   Qed.
@@ -1810,14 +1608,9 @@ Hint Transparent uncurry.
   Hint Immediate app_nil_r_K_V : tree_eqns.
 
   Hint Immediate fast_elements_equation_1 : tree_eqns.
-  (*** MS LEMMA {"original": True, "goals": 1, "ms": 1, "hammer": 0, "crush": 0} *)
   Lemma fast_elements_eq_elements : forall (t : tree),
       fast_elements t = elements t.
   Proof.
-    try hammer'.
-    Restart.
-    try crush'.
-    Restart.
     mirrorsolve.
   Qed.
 
@@ -1830,17 +1623,12 @@ Hint Transparent uncurry.
     the results we proved about the correctness of [elements]
     also hold for [fast_elements].  For example: *)
 
-  (*** MS LEMMA {"original": True, "goals": 1, "ms": 1, "hammer": 0, "crush": 0} *)
   Corollary fast_elements_correct :
     forall (t: tree) (k : key) (v d : V),
       BST t ->
       In (k, v) (fast_elements t) ->
       bound_t k t = true /\ lookup_t d k t = v.
   Proof.
-    try hammer'.
-    Restart.
-    try crush'.
-    Restart.
     mirrorsolve.
   Qed.
 
@@ -1862,14 +1650,9 @@ Hint Transparent uncurry.
     The first of these is easy; we can trivially prove the following:
     *)
 
-  (*** MS LEMMA {"original": True, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
   Lemma elements_empty :
       elements empty_tree = [].
   Proof.
-    try hammer'.
-    Restart.
-    try crush'.
-    Restart.
     mirrorsolve.
   Qed.
 
@@ -1888,11 +1671,23 @@ Hint Transparent uncurry.
 (* MIRRORSOLVE: We can't do this one because it uses Forall, but we can prove an equivalent version with lt/gt_list. *)
 
   (** **** Exercise: 3 stars, standard, optional (kvs_insert_split) *)
+  Lemma kvs_insert_split :
+    forall (v v0 : V) (e1 e2 : list (key * V)) (k k0 : key),
+      (Forall (fun '(k',_) => k' < k0) e1 ->
+      Forall (fun '(k',_) => k' > k0) e2 ->
+      kvs_insert k v (e1 ++ (k0,v0):: e2) =
+      if k <? k0 then
+        (kvs_insert k v e1) ++ (k0,v0)::e2
+      else if k >? k0 then
+            e1 ++ (k0,v0)::(kvs_insert k v e2)
+          else
+            e1 ++ (k,v)::e2)%list.
+  Proof.
+  (* FILL IN HERE *) Admitted.
+  (** [] *)
 
   Hint Immediate kvs_insert_equation_1 : tree_eqns.
   Hint Immediate kvs_insert_equation_2 : tree_eqns.
-
-  (*** MS LEMMA {"original": True, "goals": 4, "ms": 4, "hammer": 2, "crush": 2} *)
 
   Lemma kvs_insert_split' :
     forall (e1 e2 : list (key * V)) (v v0 : V) (k k0 : key),
@@ -1907,38 +1702,426 @@ Hint Transparent uncurry.
   Proof.
     induction e1;
     induction e2;
-    try hammer'.
-    Restart.
-    induction e1;
-    induction e2.
-    - try crush';
-      admit.
-    - try crush';
-      admit.
-    - try crush';
-      admit.
-    - try crush';
-      admit.
-    Restart.
-    induction e1;
-    induction e2;
     mirrorsolve.
   Qed.
 
   Hint Immediate kvs_insert_split' : tree_eqns.
   (** **** Exercise: 3 stars, standard, optional (kvs_insert_elements) *)
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Lemma kvs_insert_elements : forall (t : tree),
       BST t ->
       forall (k : key) (v : V),
         elements (insert_t k v t) = kvs_insert k v (elements t).
   Proof.
     induction t;
-    try hammer'.
-    Restart.
-    induction t;
-    try crush'.
-    Restart.
-    induction t;
     mirrorsolve.
   Qed.
+
+
+(* MIRRORSOLVE: We can't do any of these specs because they use functional maps.
+   Although maybe there is a clever way to represent functional maps in SMT.
+  *)
+
+(* ################################################################# *)
+(** * Model-based Specifications *)
+
+(** At the outset, we mentioned studying two techniques for
+    specifying the correctness of BST operations in this chapter.  The
+    first was algebraic specification.
+
+    Another approach to proving correctness of search trees is to
+    relate them to our existing implementation of functional partial
+    maps, as developed in [Maps]. To prove the correctness of a
+    search-tree algorithm, we can prove:
+
+    - Any search tree corresponds to some functional partial map,
+      using a function or relation that we write down.
+
+    - The [lookup] operation on trees gives the same result as the
+      [find] operation on the corresponding map.
+
+    - Given a tree and corresponding map, if we [insert] on the tree
+      and [update] the map with the same key and value, the resulting
+      tree and map are in correspondence.
+
+    This approach is sometimes called _model-based specification_: we
+    show that our implementation of a data type corresponds to a more
+    more abstract _model_ type that we already understand. To reason
+    about programs that use the implementation, it suffices to reason
+    about the behavior of the abstract type, which may be
+    significantly easier.  For example, we can take advantage of laws
+    that we proved for the abstract type, like [update_eq] for
+    functional maps, without having to prove them again for the
+    concrete tree type.
+
+    We also need to be careful here, because the type of functional
+    maps as defined in [Maps] do not actually behave quite like
+    our tree-based maps. For one thing, functional maps can be defined
+    on an infinite number of keys, and there is no mechanism for
+    enumerating over the key set. To maintain correspondence with our
+    finite trees, we need to make sure that we consider only
+    functional maps built by finitely many applications of constructor
+    functions ([empty] and [update]). Also, thanks to functional
+    extensionality, functional maps obey stronger equality laws than
+    our trees do (as we investigated in the [direct_equalities]
+    exercise above), so we should not be misled into thinking that
+    every fact we can prove about abstract maps necessarily holds for
+    concrete ones.
+
+    Compared to the algebraic-specification approach described earlier
+    in this chapter, the model-based approach can save some proof
+    effort, especially if we already have a well-developed theory for
+    the abstract model type.  On the other hand, we have to give an
+    explicit _abstraction_ relation between trees and maps, and show
+    that it is maintained by all operations. In the end, about the
+    same amount of work is needed to show correctness, though the work
+    shows up in different places depending on how the abstraction
+    relation is defined. *)
+
+(** We now give a model-based specification for trees in terms
+    of functional partial maps. It is based on a simple abstraction
+    relation that builds a functional map element by element. *)
+
+  (* Fixpoint map_of_list {V : Type} (el : list (key * V)) : partial_map V :=
+    match el with
+    | [] => empty
+    | (k, v) :: el' => update (map_of_list el') k v
+    end.
+
+  Definition Abs {V : Type} (t : tree V) : partial_map V :=
+    map_of_list (elements t). *)
+
+(** In general, model-based specifications may use an abstraction
+    relation, allowing each concrete value to be related to multiple
+    abstract values.  But in this case a simple abstraction _function_
+    will do, assigning a unique abstract value to each concrete
+    one. *)
+
+(** One small difference between trees and functional maps is that
+    applying the latter returns an [option V] which might be [None],
+    whereas [lookup] returns a default value if key is not bound
+    lookup fails.  We can easily provide a function on functional
+    partial maps having the latter behavior. *)
+
+(* Definition find {V : Type} (d : V) (k : key) (m : partial_map V) : V :=
+  match m k with
+  | Some v => v
+  | None => d
+  end. *)
+
+(** We also need a [bound] operation on maps. *)
+
+(* Definition map_bound {V : Type} (k : key) (m : partial_map V) : bool :=
+  match m k with
+  | Some _ => true
+  | None => false
+  end. *)
+
+(** We now proceed to prove that each operation preserves (or establishes)
+    the abstraction relationship in an appropriate way:
+
+    concrete        abstract
+    --------        --------
+    empty_tree      empty
+    bound           map_bound
+    lookup          find
+    insert          update
+*)
+
+(** The following lemmas will be useful, though you are not required
+    to prove them. They can all be proved by induction on the list. *)
+
+(** **** Exercise: 2 stars, standard, optional (in_fst) *)
+(* Lemma in_fst : forall (X Y : Type) (lst : list (X * Y)) (x : X) (y : Y),
+    In (x, y) lst -> In x (map fst lst).
+Proof. *)
+  (* FILL IN HERE *)
+(** [] *)
+
+(** **** Exercise: 2 stars, standard, optional (in_map_of_list) *)
+(* Lemma in_map_of_list : forall (V : Type) (el : list (key * V)) (k : key) (v : V),
+    NoDup (map fst el) ->
+    In (k,v) el -> (map_of_list el) k = Some v.
+Proof. *)
+(* FILL IN HERE *)
+(** [] *)
+
+(** **** Exercise: 2 stars, standard, optional (not_in_map_of_list) *)
+(* Lemma not_in_map_of_list : forall (V : Type) (el : list (key * V)) (k : key),
+    ~ In k (map fst el) -> (map_of_list el) k = None.
+Proof. *)
+  (* FILL IN HERE *)
+(** [] *)
+
+(* Lemma empty_relate : forall (V : Type),
+    @Abs V empty_tree = empty.
+Proof.
+  reflexivity.
+Qed. *)
+
+(** **** Exercise: 3 stars, standard, optional (bound_relate) *)
+
+(* Theorem bound_relate : forall (V : Type) (t : tree V) (k : key),
+    BST t ->
+    map_bound k (Abs t) = bound k t.
+Proof. *)
+  (* FILL IN HERE *)
+
+(** [] *)
+
+(** **** Exercise: 3 stars, standard, optional (lookup_relate) *)
+
+(* Lemma lookup_relate : forall (V : Type) (t : tree V) (d : V) (k : key),
+    BST t -> find d k (Abs t) = lookup d k t.
+Proof. *)
+  (* FILL IN HERE *)
+(** [] *)
+
+(** **** Exercise: 3 stars, standard, optional (insert_relate) *)
+(*
+Lemma insert_relate : forall (V : Type) (t : tree V) (k : key) (v : V),
+  BST t -> Abs (insert k v t) = update (Abs t) k v.
+Proof.
+  (* TODO: find a direct proof that doesn't rely on [kvs_insert_elements] *)
+    unfold Abs.
+  intros.
+  rewrite kvs_insert_elements; auto.
+  remember (elements t) as l.
+  clear -l. 
+  (* clear everything not about [l] *)
+  (* Hint: proceed by induction on [l]. *)
+    (* FILL IN HERE *)
+    *)
+(** [] *)
+
+(** The previous three lemmas are in essence saying that the following
+    diagrams commute.
+
+             bound k
+      t -------------------+
+      |                    |
+  Abs |                    |
+      V                    V
+      m -----------------> b
+           map_bound k
+
+            lookup d k
+      t -----------------> v
+      |                    |
+  Abs |                    | Some
+      V                    V
+      m -----------------> Some v
+             find d k
+
+            insert k v
+      t -----------------> t'
+      |                    |
+  Abs |                    | Abs
+      V                    V
+      m -----------------> m'
+            update' k v
+
+    Where we define:
+
+      update' k v m = update m k v
+
+*)
+
+(** Functional partial maps lack a way to extract or iterate
+    over their elements, so we cannot give an analogous abstract
+    operation for [elements]. Instead, we can prove this trivial
+    little lemma. *)
+
+(* Lemma elements_relate : forall (V : Type) (t : tree V),
+  BST t ->
+  map_of_list (elements t) = Abs t.
+Proof.
+  unfold Abs. intros. reflexivity.
+Qed. *)
+
+(* ################################################################# *)
+(** * An Alternative Abstraction Relation (Optional, Advanced) *)
+
+(** There is often more than one way to specify a suitable abstraction
+    relation between given concrete and abstract datatypes. The
+    following exercises explore another way to relate search trees to
+    functional partial maps without using [elements] as an
+    intermediate step.
+
+    We extend our definition of functional partial maps by adding a
+    new primitive for combining two partial maps, which we call
+    [union].  Our intention is that it only be used to combine maps
+    with disjoint key sets; to keep the operation symmetric, we make
+    the result be undefined on any key they have in common.  *)
+
+(* Definition union {X} (m1 m2: partial_map X) : partial_map X :=
+  fun k =>
+    match (m1 k, m2 k) with
+    | (None, None) => None
+    | (None, Some v) => Some v
+    | (Some v, None) => Some v
+    | (Some _, Some _) => None
+    end. *)
+
+(** We can prove some simple properties of lookup and update on unions,
+    which will prove useful later. *)
+
+(** **** Exercise: 2 stars, standard, optional (union_collapse) *)
+(* Lemma union_left : forall {X} (m1 m2: partial_map X) k,
+    m2 k = None -> union m1 m2 k = m1 k.
+Proof. 
+(* FILL IN HERE *) *)
+
+(* Lemma union_right : forall {X} (m1 m2: partial_map X) k,
+    m1 k = None ->
+    union m1 m2 k = m2 k.
+Proof.
+(* FILL IN HERE *) *)
+
+(* Lemma union_both : forall {X} (m1 m2 : partial_map X) k v1 v2,
+    m1 k = Some v1 ->
+    m2 k = Some v2 ->
+    union m1 m2 k = None.
+Proof.
+(* FILL IN HERE *) *)
+(** [] *)
+
+(** **** Exercise: 3 stars, standard, optional (union_update) *)
+(* Lemma union_update_right : forall {X} (m1 m2: partial_map X) k v,
+    m1 k = None ->
+    update (union m1 m2) k v = union m1 (update m2 k v).
+Proof.
+(* FILL IN HERE *) *)
+
+(* Lemma union_update_left : forall {X} (m1 m2: partial_map X) k v,
+    m2 k = None ->
+    update (union m1 m2) k v = union (update m1 k v) m2.
+Proof.
+(* FILL IN HERE *) *)
+(** [] *)
+
+(** We can now write a direct conversion function from trees to maps
+    based on the structure of the tree, and prove a basic property
+    preservation result. *)
+
+(* Fixpoint map_of_tree {V : Type} (t: tree V) : partial_map V :=
+  match t with
+  | E => empty
+  | T l k v r => update (union (map_of_tree l) (map_of_tree r)) k v
+  end. *)
+
+(** **** Exercise: 3 stars, advanced, optional (map_of_tree_prop) *)
+(* Lemma map_of_tree_prop : forall (V : Type) (P : key -> V -> Prop) (t : tree V),
+    ForallT P t ->
+    forall k v, (map_of_tree t) k = Some v ->
+           P k v.
+Proof.
+  (* FILL IN HERE *) *)
+(** [] *)
+
+(** Finally, we define our new abstraction function, and prove the
+    same lemmas as before. *)
+
+(* Definition Abs' {V : Type} (t: tree V) : partial_map V :=
+  map_of_tree t.
+
+Lemma empty_relate' : forall (V : Type),
+    @Abs' V empty_tree = empty.
+Proof.
+  reflexivity.
+Qed. *)
+
+(** **** Exercise: 3 stars, advanced, optional (bound_relate') *)
+(* Theorem bound_relate' : forall (V : Type) (t : tree V) (k : key),
+    BST t ->
+    map_bound k (Abs' t) = bound k t.
+Proof.
+  (* FILL IN HERE *) *)
+(** [] *)
+
+(** **** Exercise: 3 stars, advanced, optional (lookup_relate') *)
+(* Lemma lookup_relate' : forall (V : Type) (d : V) (t : tree V) (k : key),
+    BST t -> find d k (Abs' t) = lookup d k t.
+Proof.
+  (* FILL IN HERE *) *)
+(** [] *)
+
+(** **** Exercise: 4 stars, advanced, optional (insert_relate') *)
+(* Lemma insert_relate' : forall (V : Type) (k : key) (v : V) (t : tree V),
+   BST t -> Abs' (insert k v t) = update (Abs' t) k v.
+Proof.
+  (* FILL IN HERE *) *)
+(** [] *)
+
+(** The [elements_relate] lemma, which was trivial for our previous [Abs]
+    function, is considerably harder this time.  We suggest starting with
+    an auxiliary lemma. *)
+
+(** **** Exercise: 3 stars, advanced, optional (map_of_list_app) *)
+(* Lemma map_of_list_app : forall (V : Type) (el1 el2: list (key * V)),
+   disjoint (map fst el1) (map fst el2) ->
+   map_of_list (el1 ++ el2) = union (map_of_list el1) (map_of_list el2).
+Proof.
+  (* FILL IN HERE *) *)
+(** [] *)
+
+(** **** Exercise: 4 stars, advanced, optional (elements_relate') *)
+(* Lemma elements_relate' : forall (V : Type) (t : tree V),
+  BST t ->
+  map_of_list (elements t) = Abs' t.
+Proof.
+  (* FILL IN HERE *) *)
+(** [] *)
+
+(* ################################################################# *)
+(** * Efficiency of Search Trees *)
+
+(** All the theory we've developed so far has been about correctness.
+    But the reason we use binary search trees is that they are
+    efficient.  That is, if there are [N] elements in a (reasonably
+    well balanced) BST, each insertion or lookup takes about [log N]
+    time.
+
+    What could go wrong?
+
+     1. The search tree might not be balanced.  In that case, each
+        insertion or lookup will take as much as linear time.
+
+        - SOLUTION: use an algorithm that ensures the trees stay
+          balanced.  We'll do that in [Redblack].
+
+     2. Our keys are natural numbers, and Coq's [nat] type takes linear
+        time per comparison.  That is, computing (j <? k) takes time
+        proportional to the value of [k-j].
+
+        - SOLUTION: represent keys by a data type that has a more
+          efficient comparison operator.  We used [nat] in this chapter
+          because it's something easy to work with.
+
+     3. There's no notion of running time in Coq.  That is, we can't
+        say what it means that a Coq function "takes N steps to
+        evaluate."  Therefore, we can't prove that binary search trees
+        are efficient.
+
+        - SOLUTION 1: Don't prove (in Coq) that they're efficient;
+          just prove that they are correct.  Prove things about their
+          efficiency the old-fashioned way, on pencil and paper.
+
+        - SOLUTION 2: Prove in Coq some facts about the height of the
+          trees, which have direct bearing on their efficiency.  We'll
+          explore that in [Redblack].
+
+        - SOLUTION 3: Apply bleeding-edge frameworks for reasoning
+          about run-time of programs represented in Coq.
+
+      4. Our functions in Coq are models of implementations in "real"
+         programming languages.  What if the real implementations
+         differ from the Coq models?
+
+         - SOLUTION: Use Coq's [extraction] feature to derive the real
+	   implementation (in Ocaml or Haskell) automatically from the
+	   Coq function.  Or, use Coq's [Compute] or [Eval
+	   native_compute] feature to compile and run the programs
+	   efficiently inside Coq.  We'll explore [extraction] in a
+	   [Extract]. *)
+
+(* 2021-08-11 15:15 *)

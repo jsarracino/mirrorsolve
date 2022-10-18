@@ -153,8 +153,26 @@ type smt_result = SAT | UNSAT | Other of string
 
 let close_all = 
   List.iter Unix.close 
+
+let validate_solver (s: solver_t) = 
+  let open Unix in 
+  try begin match system (show_solver s ^" --version") with 
+    | WEXITED _ -> ()
+    | _ -> 
+      let _ = Feedback.msg_debug @@ Pp.(++) (Pp.str "error returning from ") (Pp.str @@ show_solver s) in 
+      let _ = Feedback.msg_debug @@ Pp.(++) (Pp.str "PATH: ") (Pp.str @@ getenv "PATH") in 
+      raise @@ Failure ("Bad/missing solver: " ^ show_solver s)
+    end
+  with Unix_error(err, _, _) -> 
+    let _ = Feedback.msg_debug @@ Pp.(++) (Pp.str "error running ") (Pp.str @@ show_solver s) in 
+    let _ = Feedback.msg_debug @@ Pp.(++) (Pp.str "PATH: ") (Pp.str @@ getenv "PATH") in 
+    raise @@ Failure ("Bad/missing solver: " ^ show_solver s)
+
 let run_smt query = 
   let open Unix in
+
+
+  let _ = validate_solver (get_solver ()) in 
 
   let query_file = Filename.temp_file "vc" ".smt2" in
   let smt_ch = open_out query_file in

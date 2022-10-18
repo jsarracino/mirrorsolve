@@ -888,9 +888,9 @@ Section Config.
 
   Definition add_funs (typ_term: term) (funs: list packed) (rels: list packed) : TemplateMonad translation_table := 
     names_indices <- gather_sorts_all (List.app funs rels) ;;
-    tmPrint "names_indices:" ;; 
-    to_print <- tmEval all names_indices ;;
-    tmPrint to_print ;; 
+    (* tmPrint "names_indices:" ;;  *)
+    (* to_print <- tmEval all names_indices ;;
+    tmPrint to_print ;;  *)
     names_funs_rels <- fmap split_sum_list (mapM split_fun_rel names_indices) ;; 
 
     let '(names_funs, fun_indices) := List.split names_funs_rels.1 in 
@@ -1085,14 +1085,14 @@ Section Config.
     q_hargs <- tmQuote (fun x => HList.t interp_srts x) ;;
     q_apply_denote_func <- tmQuote (@apply_denote_func) ;;
     denote_funs <- tmEval all denote_funs ;;
-    tmPrint "denote_funs:" ;; 
+    (* tmPrint "denote_funs:" ;; 
     tmPrint denote_funs ;;
     tmPrint "unquoted:" ;; 
     denote_funs_unquoted <- tmUnquote denote_funs ;;
-    tmPrint denote_funs_unquoted ;;
+    tmPrint denote_funs_unquoted ;; *)
     rhs <- tmEval all (make_interp_fun q_list_srts q_srts q_hargs q_fol_funs q_apply_denote_func denote_funs) ;;
-    tmPrint "rhs:" ;; 
-    tmPrint rhs ;;
+    (* tmPrint "rhs:" ;; 
+    tmPrint rhs ;; *)
     tmMkDefinition "interp_funs" rhs.
     
 
@@ -1257,8 +1257,8 @@ Section Config.
   :=
     builder <- tmQuote Build_signature ;;
     builder' <- tmEval all builder ;;
-    tmMsg "builder:" ;;
-    tmPrint builder' ;;
+    (* tmMsg "builder:" ;;
+    tmPrint builder' ;; *)
     id <- tmFreshName "sig" ;;
     tmMkDefinition id (tApp builder [sort_type; fun_type; rel_type]) ;;
     tmReturn id

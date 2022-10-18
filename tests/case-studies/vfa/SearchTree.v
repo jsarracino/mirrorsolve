@@ -35,6 +35,9 @@ Set Hammer ReconstrLimit 10.
 
 Require Import MirrorSolve.Crush.
 
+Ltac hammer' := timeout 60 hammer.
+Ltac crush' := timeout 60 crush.
+
 Inductive sorted : list Z -> Prop :=
   | sorted_nil : sorted []
   | sorted_1 : forall x, sorted [x]

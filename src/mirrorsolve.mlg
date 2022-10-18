@@ -263,24 +263,6 @@ VERNAC COMMAND EXTEND PrintSorts CLASSIFIED AS QUERY
   }
 END
 
-VERNAC COMMAND EXTEND DeclareRegisteredSorts CLASSIFIED AS QUERY
-| [ "Mirror" "Reflect" "Add" "Sorts" ] -> { 
-    Ms_sorts.add_sorts_decl ()
-  }
-END
-
-VERNAC COMMAND EXTEND InterpRegisteredSorts CLASSIFIED AS QUERY
-| [ "Mirror" "Reflect" "Add" "Interp" ] -> { 
-    Ms_sorts.add_interp_decl ()
-  }
-END
-
-VERNAC COMMAND EXTEND InterpCmd CLASSIFIED AS QUERY
-| [ "Mirror" "Interp" "Command" string(cmd) ] -> { 
-    Ms_sorts.exec_cmd cmd
-  }
-END
-
 VERNAC COMMAND EXTEND InterpCmd CLASSIFIED AS QUERY
 | [ "Mirror" "Load" "Ctx" constr(e) ] -> { 
     let env = Global.env () in

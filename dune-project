@@ -12,6 +12,8 @@
   (coq-metacoq-translations (= 1.0+8.15))
   (coq-metacoq (= 1.0+8.15))
   (coq (and (>= 8.15) (< 8.16)))
+  ; ocaml-lsp-server
+  coq-hammer
  )
  (synopsis "SMT integration for Coq using reflection")
  (description  "SMT integration for Coq using reflection")

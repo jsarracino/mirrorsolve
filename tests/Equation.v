@@ -23,15 +23,14 @@ Definition print_body {A: Type} (f: A) :=
   end
 .
 
+MetaCoq Run (print_body decr).
+
 Definition binder_anon :=
   {| binder_name := nAnon; binder_relevance := Relevant |}
 .
 
 Definition subst_recursive_args (rec: term) (args: context) :=
-  map (fun arg => match arg.(decl_type) with
-                  | tRel 0 => rec
-                  | _ => arg.(decl_type)
-                  end) args.
+  map (fun arg => subst1 arg.(decl_type) 0 rec) args.
 
 Definition lookup_constructor_arguments
   (ind_term: term)

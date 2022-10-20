@@ -82,8 +82,8 @@ Definition infer_equation
   (return_type_quoted: term)
   (arg_type_quoted: term)
   (func_quoted: term)
-  (mtype: case_info)
-  (body: branch term)
+  (info: case_info)
+  (body: term)
   (index: nat)
 :=
   return_type <- tmUnquoteTyped Type return_type_quoted ;;
@@ -98,12 +98,12 @@ Definition infer_equation
         (tApp eq_quoted
               [return_type_quoted;
                tApp func_quoted
-                    [tApp (tConstruct mtype.(ci_ind) index [])
+                    [tApp (tConstruct info.(ci_ind) index [])
                           (dummy_args (List.length args) 0)];
-               body.(bbody)]) in
+               body]) in
     claim <- tmUnquoteTyped Type claim_quoted ;;
     let proof_quoted :=
-      wrap_body args (tApp eq_refl_quoted [body.(bbody)]) in
+      wrap_body args (tApp eq_refl_quoted [body]) in
     proof <- tmUnquoteTyped claim proof_quoted ;;
     let eqn_base := func_name ++ "_equation_" ++ string_of_nat (index+1) in
     eqn_name <- tmFreshName eqn_base ;;
@@ -130,7 +130,7 @@ Fixpoint infer_equations_inner
                    arg_type_quoted
                    func_quoted
                    info
-                   body
+                   body.(bbody)
                    index ;;
     infer_equations_inner
                    return_type_quoted

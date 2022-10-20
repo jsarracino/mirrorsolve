@@ -115,6 +115,33 @@ Definition infer_equation
   end
 .
 
+Fixpoint infer_equations_inner
+  (return_type_quoted: term)
+  (arg_type_quoted: term)
+  (func_quoted: term)
+  (info: case_info)
+  (bodies: list (branch term))
+  (index: nat)
+:=
+  match bodies with
+  | nil => tmReturn 0
+  | body :: bodies =>
+    infer_equation return_type_quoted
+                   arg_type_quoted
+                   func_quoted
+                   info
+                   body
+                   index ;;
+    infer_equations_inner
+                   return_type_quoted
+                   arg_type_quoted
+                   func_quoted
+                   info
+                   bodies
+                   (S index)
+  end
+.
+
 Definition infer_equations {A: Type} (func: A) :=
   func_quoted <- tmQuote func ;;
   match func_quoted with
@@ -128,19 +155,12 @@ Definition infer_equations {A: Type} (func: A) :=
       end ;;
     match cst_body def with
     | Some (tLambda _ arg_type_quoted (tCase info _ (tRel 0) bodies)) =>
-      let fix infer_equations_inner bodies index :=
-        match bodies with
-        | nil => tmReturn tt
-        | body :: bodies =>
-          infer_equation return_type_quoted
-                         arg_type_quoted
-                         func_quoted
-                         info
-                         body
-                         index ;;
-          infer_equations_inner bodies (S index)
-        end in
-      infer_equations_inner bodies 0
+      infer_equations_inner return_type_quoted
+                            arg_type_quoted
+                            func_quoted
+                            info
+                            bodies
+                            0
     | _ => tmFail "Symbol body is not a function with a match inside."
     end
   | _ => tmFail "Symbol is not a constant."

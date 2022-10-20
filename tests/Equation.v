@@ -23,43 +23,132 @@ Definition print_body {A: Type} (f: A) :=
   end
 .
 
-Definition infer_equation {A: Type} (func: A) :=
+Definition binder_anon :=
+  {| binder_name := nAnon; binder_relevance := Relevant |}
+.
+
+Definition subst_recursive_args (rec: term) (args: context) :=
+  map (fun arg => match arg.(decl_type) with
+                  | tRel 0 => rec
+                  | _ => arg.(decl_type)
+                  end) args.
+
+Definition lookup_constructor_arguments
+  (ind_term: term)
+  (index: nat)
+:=
+  match ind_term with
+  | tInd ind _ =>
+    inductive_definition <- tmQuoteInductive ind.(inductive_mind) ;;
+    match inductive_definition.(ind_bodies) with
+    | first_body :: nil =>
+      match nth_error first_body.(ind_ctors) index with
+      | Some inductive_ctor =>
+        tmReturn (subst_recursive_args ind_term inductive_ctor.(cstr_args))
+      | None =>
+        tmFail "Inductive constructor out of range"
+      end
+    | _ =>
+      tmFail "Inductive has more than one body."
+    end
+  | _ =>
+    tmFail "Term is not an inductive."
+  end
+.
+
+Fixpoint wrap_type (args: list term) (body: term) :=
+  match args with
+  | nil => body
+  | arg :: args =>
+    tProd binder_anon arg (wrap_type args body)
+  end
+.
+
+Fixpoint wrap_body (args: list term) (body: term) :=
+  match args with
+  | nil => body
+  | arg :: args =>
+    tLambda binder_anon arg (wrap_type args body)
+  end
+.
+
+Fixpoint dummy_args (count: nat) (offset: nat) :=
+  match count with
+  | 0 => nil
+  | S count => tRel offset :: dummy_args count (S offset)
+  end
+.
+
+Definition infer_equation
+  (return_type_quoted: term)
+  (arg_type_quoted: term)
+  (func_quoted: term)
+  (mtype: case_info)
+  (body: branch term)
+  (index: nat)
+:=
+  return_type <- tmUnquoteTyped Type return_type_quoted ;;
+  eq_refl_quoted <- tmQuote (@eq_refl return_type) ;;
+  eq_quoted <- tmQuote (@eq) ;;
+  args <- lookup_constructor_arguments arg_type_quoted index ;;
+  match func_quoted with
+  | tConst (_, func_name) _ =>
+    let claim_quoted :=
+      wrap_type
+        args
+        (tApp eq_quoted
+              [return_type_quoted;
+               tApp func_quoted
+                    [tApp (tConstruct mtype.(ci_ind) index [])
+                          (dummy_args (List.length args) 0)];
+               body.(bbody)]) in
+    claim <- tmUnquoteTyped Type claim_quoted ;;
+    let proof_quoted :=
+      wrap_body args (tApp eq_refl_quoted [body.(bbody)]) in
+    proof <- tmUnquoteTyped claim proof_quoted ;;
+    let eqn_base := func_name ++ "_equation_" ++ string_of_nat (index+1) in
+    eqn_name <- tmFreshName eqn_base ;;
+    tmDefinitionRed eqn_name
+                    (Some (unfold (Common_kn "my_projT1")))
+                    proof ;;
+    tmReturn tt
+  | _ => tmFail "Symbol is not a constant."
+  end
+.
+
+Definition infer_equations {A: Type} (func: A) :=
   func_quoted <- tmQuote func ;;
   match func_quoted with
-  | tConst (modpath, func_name) _ =>
-    def <- tmQuoteConstant (modpath, func_name) true ;;
-    return_type <- match def.(cst_type) with
-                   | tProd _ _ t =>
-                     tmUnquoteTyped Type t
-                   | _ => tmFail "Symbol type is not a function type."
-                   end ;;
-    return_type_quoted <- tmQuote return_type ;;
-    proof_body <- tmQuote (@eq_refl return_type) ;;
-    eq_quoted <- tmQuote (@eq) ;;
+  | tConst func_path _ =>
+    def <- tmQuoteConstant func_path true ;;
+    return_type_quoted <-
+      match def.(cst_type) with
+      | tProd _ _ t =>
+        tmReturn t
+      | _ => tmFail "Symbol type is not a function type."
+      end ;;
     match cst_body def with
-    | Some (tLambda _ _ (tCase mtype _ (tRel 0) body)) =>
-      match body with
-      | first_body :: _ =>
-        let claimed_equivalence :=
-          tApp
-            eq_quoted
-            [return_type_quoted;
-             tApp func_quoted [tConstruct mtype.(ci_ind) 0 []];
-             first_body.(bbody)]
-          in
-        claim <- tmUnquoteTyped Type claimed_equivalence ;;
-        proof <- tmUnquoteTyped claim (tApp proof_body [first_body.(bbody)]) ;;
-        tmDefinitionRed (func_name ++ "_equation_1")
-                        (Some (unfold (Common_kn "my_projT1")))
-                        proof ;;
-        tmReturn tt
-      | _ => tmFail "Match does not contain at least one case."
-      end
+    | Some (tLambda _ arg_type_quoted (tCase info _ (tRel 0) bodies)) =>
+      let fix infer_equations_inner bodies index :=
+        match bodies with
+        | nil => tmReturn tt
+        | body :: bodies =>
+          infer_equation return_type_quoted
+                         arg_type_quoted
+                         func_quoted
+                         info
+                         body
+                         index ;;
+          infer_equations_inner bodies (S index)
+        end in
+      infer_equations_inner bodies 0
     | _ => tmFail "Symbol body is not a function with a match inside."
     end
   | _ => tmFail "Symbol is not a constant."
   end
 .
 
-MetaCoq Run (infer_equation decr).
+MetaCoq Run (infer_equations decr).
+
 Check decr_equation_1.
+Check decr_equation_2.

@@ -13,6 +13,13 @@ Definition decr (n: nat) : nat :=
   end
 .
 
+Fixpoint decr_rec (n: nat) : nat :=
+  match n with
+  | 0 => 0
+  | S n => decr_rec n
+  end
+.
+
 Definition print_body {A: Type} (f: A) :=
   func_quoted <- tmQuote f ;;
   match func_quoted with
@@ -22,8 +29,6 @@ Definition print_body {A: Type} (f: A) :=
     tmFail "Failed to look up body"
   end
 .
-
-MetaCoq Run (print_body decr).
 
 Definition binder_anon :=
   {| binder_name := nAnon; binder_relevance := Relevant |}
@@ -161,6 +166,17 @@ Definition infer_equations {A: Type} (func: A) :=
                             info
                             bodies
                             0
+    | Some (tFix (first_fixpoint :: nil) 0) =>
+      match subst1 func_quoted 0 first_fixpoint.(dbody) with
+      | tLambda _ arg_type_quoted (tCase info _ (tRel 0) bodies) =>
+        infer_equations_inner return_type_quoted
+                              arg_type_quoted
+                              func_quoted
+                              info
+                              bodies
+                              0
+      | _ => tmFail "foo"
+      end
     | _ => tmFail "Symbol body is not a function with a match inside."
     end
   | _ => tmFail "Symbol is not a constant."
@@ -168,6 +184,9 @@ Definition infer_equations {A: Type} (func: A) :=
 .
 
 MetaCoq Run (infer_equations decr).
-
 Check decr_equation_1.
 Check decr_equation_2.
+
+MetaCoq Run (infer_equations decr_rec).
+Check decr_rec_equation_1.
+Check decr_rec_equation_2.

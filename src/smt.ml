@@ -175,8 +175,9 @@ let run_smt query =
   let _ = validate_solver (get_solver ()) in 
 
   let query_file = Filename.temp_file "vc" ".smt2" in
+  let rep_query = Str.global_replace (Str.regexp "'") "_pr" query in 
   let smt_ch = open_out query_file in
-  Stdlib.output_string smt_ch query ;
+  Stdlib.output_string smt_ch rep_query ;
   Stdlib.close_out smt_ch;
 
   Feedback.msg_debug @@ Pp.str (Format.sprintf "put smt query in %s" query_file) ;

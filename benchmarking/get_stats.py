@@ -6,7 +6,7 @@ import re
 import sys
 import os
 
-from typing import Any, Optional
+from typing import Any, Optional, Callable, Tuple
 
 @dataclass
 class GoalTally:
@@ -43,17 +43,66 @@ class ProverTally:
       hammer=self.hammer + rhs.hammer,
       mirror=self.mirror + rhs.mirror
     )
+  
+  @staticmethod
+  def make_header():
+    return "Crush completed/total, Hammer completed/total, MirrorSolve completed/total"
 
 
+@dataclass
+class ExpressivenessTally:
+  total: int
+  sfo: int
+  tsfo: int
+  ho: int
 
-def make_header():
-  return "File, Crush completed/total, Hammer completed/total, MirrorSolve completed/total"
+  def pretty(self):
+    return f"{self.total}, {self.sfo}, {self.tsfo}, {self.ho}"
 
-def pretty_row(x: ProverTally):
-  return x.pretty()
+  @staticmethod
+  def empty():
+    return ExpressivenessTally(total=0, sfo=0, tsfo=0, ho=0)
+
+  def __add__(self, rhs:Any):
+    return ExpressivenessTally(
+      total=self.total + rhs.total, 
+      sfo=self.sfo + rhs.sfo, 
+      tsfo=self.tsfo + rhs.tsfo, 
+      ho=self.ho + rhs.ho, 
+    )
+
+  @staticmethod
+  def make_header():
+    return "Total Goals, Locally FO, Transitively FO, HO"
+
+@dataclass
+class EffortTally:
+  lemmas: int
+  definitions: int
+  edits: int
+
+  def pretty(self):
+    return f"{self.lemmas}, {self.definitions}, {self.edits}"
+
+  @staticmethod
+  def empty():
+    return EffortTally(lemmas=0, definitions=0, edits=0)
+
+  def __add__(self, rhs:Any):
+    return EffortTally(
+      lemmas=self.lemmas + rhs.lemmas, 
+      definitions=self.definitions + rhs.definitions, 
+      edits=self.edits + rhs.edits, 
+    )
+
+  @staticmethod
+  def make_header():
+    return "Reflection Lemmas, Extra Definitions, Modified Lemmas"
+
+
 
 # gather up stats for crush/hammer/mirrorsolve and count solved/total at the goal level, i.e. 15/16 is 15 of 16 goals solved
-def read_file_goals(f_name: str, keep_field: Optional[str] = None) -> ProverTally:
+def read_file_goals(f_name: str, keep_field: Optional[Tuple[str, Callable[[Any], bool]]] = None) -> ProverTally:
   stats = ProverTally.empty()
   with open(f_name) as f:
     for lineno, line in enumerate(f, start=1):
@@ -71,7 +120,7 @@ def read_file_goals(f_name: str, keep_field: Optional[str] = None) -> ProverTall
           try:
             payload = eval(val)
 
-            if keep_field and not payload[keep_field]:
+            if keep_field and not keep_field[1](payload[keep_field[0]]):
               continue
 
             total = payload["goals"]
@@ -84,10 +133,13 @@ def read_file_goals(f_name: str, keep_field: Optional[str] = None) -> ProverTall
           except Exception as e:
             print(f"malformed payload at {lineno}: {val}")
             print(e)
+
+        case _:
+          continue
   return stats
 
 # gather up stats for crush/hammer/mirrorsolve and count solved/total at the lemma level, i.e. 15/16 is 15 of 16 lemmas completely solved
-def read_file_lemmas(f_name: str, keep_field: Optional[str] = None) -> ProverTally:
+def read_file_lemmas(f_name: str, keep_field: Optional[Tuple[str, Callable[[Any], bool]]] = None) -> ProverTally:
   stats = ProverTally.empty()
   with open(f_name) as f:
     for lineno, line in enumerate(f, start=1):
@@ -105,7 +157,7 @@ def read_file_lemmas(f_name: str, keep_field: Optional[str] = None) -> ProverTal
           try:
             payload = eval(val)
 
-            if keep_field and not payload[keep_field]:
+            if keep_field and not keep_field[1](payload[keep_field[0]]):
               continue
 
             total = payload["goals"]
@@ -124,40 +176,174 @@ def read_file_lemmas(f_name: str, keep_field: Optional[str] = None) -> ProverTal
           except Exception as e:
             print(f"malformed payload at {lineno}: {val}")
             print(e)
+
+        case _:
+          continue
+  return stats
+
+def read_file_expressiveness(f_name: str) -> ExpressivenessTally:
+  stats = ExpressivenessTally.empty()
+  with open(f_name) as f:
+    for lineno, line in enumerate(f, start=1):
+      line = line.strip()
+      ms_prefix_re = r"\(\*\*\* MS"
+      ms_prefix_match = re.match(ms_prefix_re, line)
+
+      if not ms_prefix_match:
+        continue
+
+      rest = line[ms_prefix_match.end():].split()
+      match rest[0]:
+        case "LEMMA":
+          val = ' '.join(rest[1:-1])
+          try:
+            payload = eval(val)
+
+            if not payload["original"]:
+              continue
+            
+            stats += ExpressivenessTally(
+              total=1,
+              sfo=1 if payload["sfo"] else 0,
+              tsfo=1 if payload["tsfo"] else 0,
+              ho=1 if payload["ho"] else 0,
+            )
+
+          except Exception as e:
+            print(f"malformed payload at {lineno}: {val}")
+            print(e)
+        case "EXTRA":
+          val = ' '.join(rest[1:-1])
+          try:
+            payload = eval(val)
+
+            stats += ExpressivenessTally(
+              total=payload["count"],
+              sfo=0,
+              tsfo=0,
+              ho=payload["count"],
+            )
+
+          except Exception as e:
+            print(f"malformed payload at {lineno}: {val}")
+            print(e)
+          continue
+        case _:
+          continue
+  return stats
+
+def read_file_effort(f_name: str) -> EffortTally:
+  stats = EffortTally.empty()
+  with open(f_name) as f:
+    for lineno, line in enumerate(f, start=1):
+      line = line.strip()
+      ms_prefix_re = r"\(\*\*\* MS"
+      ms_prefix_match = re.match(ms_prefix_re, line)
+
+      if not ms_prefix_match:
+        continue
+
+      rest = line[ms_prefix_match.end():].split()
+      match rest[0]:
+        case "EFFORT":
+          val = ' '.join(rest[1:-1])
+          try:
+            payload = eval(val)
+
+            match payload["type"]:
+              case "definition":
+                rhs = EffortTally(lemmas=0,definitions=1,edits=0)
+              case "lemma":
+                rhs = EffortTally(lemmas=1,definitions=0,edits=0)
+              case "edit":
+                rhs = EffortTally(lemmas=0,definitions=0,edits=1)
+              case _:
+                raise Exception(f"Unrecognized effort payload {payload}")
+            
+            stats += rhs
+
+          except Exception as e:
+            print(f"malformed payload at {lineno}: {val}")
+            print(e)
+  
+        case _:
+          continue
   return stats
 
 if __name__ == "__main__":
 
-  files = sys.argv
+  files = sys.argv[1:]
 
-  print("Goals, original:")
+  print("Expressiveness table:")
+  print(('Bench, ' + ExpressivenessTally.make_header()).replace(',',' &') + " \\\\")
 
-  print(make_header())
+  aggregate = ExpressivenessTally.empty()
+  
+  for fl in files:
+    stats = read_file_expressiveness(fl)
+    aggregate += stats
+    print(f"{os.path.basename(fl).split('.')[0]}, {stats.pretty()} \\\\".replace(',',' &'))
 
-  for fl in sys.argv[1:]:
-    stats = read_file_goals(fl, "original")
-    print(f"{os.path.basename(fl)}, {pretty_row(stats)}")
+  print(f"Total, {aggregate.pretty()} \\\\".replace(',',' &'))
+  
 
-print("Goals, total:")
+  print("goal table:")
+  print(('Bench, ' + ProverTally.make_header()).replace(',',' &') + " \\\\")
 
-print(make_header())
+  helper_aggregate = ProverTally.empty()
+  original_aggregate = ProverTally.empty()
 
-for fl in sys.argv[1:]:
-  stats = read_file_goals(fl)
-  print(f"{os.path.basename(fl)}, {pretty_row(stats)}")
+  
+  for fl in files:
+    helper_stats = read_file_goals(fl, ("original", lambda x: not x))
+    original_stats = read_file_goals(fl, ("original", lambda x: x))
+    total_stats = helper_stats + original_stats
+    print(f"{os.path.basename(fl).split('.')[0]} (helper), {helper_stats.pretty()} \\\\".replace(',',' &'))
+    print(f"{os.path.basename(fl).split('.')[0]} (original), {original_stats.pretty()} \\\\".replace(',',' &'))
+    print(f"{os.path.basename(fl).split('.')[0]} (total), {total_stats.pretty()} \\\\".replace(',',' &'))
 
-print("Lemmas, original:")
+    helper_aggregate += helper_stats
+    original_aggregate += original_stats
 
-print(make_header())
+  print(f"Aggregate (helper), {helper_aggregate.pretty()} \\\\".replace(',',' &'))
+  print(f"Aggregate (original), {original_aggregate.pretty()} \\\\".replace(',',' &'))
+  print(f"Aggregate (total), {(helper_aggregate + original_aggregate).pretty()} \\\\".replace(',',' &'))
 
-for fl in sys.argv[1:]:
-  stats = read_file_lemmas(fl, "original")
-  print(f"{os.path.basename(fl)}, {pretty_row(stats)}")
 
-print("Lemmas, total:")
+  print("lemma table:")
+  print(('Bench, ' + ProverTally.make_header()).replace(',',' &') + " \\\\")
 
-print(make_header())
+  helper_aggregate = ProverTally.empty()
+  original_aggregate = ProverTally.empty()
 
-for fl in sys.argv[1:]:
-  stats = read_file_lemmas(fl)
-  print(f"{os.path.basename(fl)}, {pretty_row(stats)}")
+  
+  for fl in files:
+    helper_stats = read_file_lemmas(fl, ("original", lambda x: not x))
+    original_stats = read_file_lemmas(fl, ("original", lambda x: x))
+    total_stats = helper_stats + original_stats
+    print(f"{os.path.basename(fl).split('.')[0]} (helper), {helper_stats.pretty()} \\\\".replace(',',' &'))
+    print(f"{os.path.basename(fl).split('.')[0]} (original), {original_stats.pretty()} \\\\".replace(',',' &'))
+    print(f"{os.path.basename(fl).split('.')[0]} (total), {total_stats.pretty()} \\\\".replace(',',' &'))
+
+    helper_aggregate += helper_stats
+    original_aggregate += original_stats
+
+  print(f"Aggregate (helper), {helper_aggregate.pretty()} \\\\".replace(',',' &'))
+  print(f"Aggregate (original), {original_aggregate.pretty()} \\\\".replace(',',' &'))
+  print(f"Aggregate (total), {(helper_aggregate + original_aggregate).pretty()} \\\\".replace(',',' &'))
+
+
+  print("Effort table:")
+  print(('Bench, ' + EffortTally.make_header()).replace(',',' &') + " \\\\")
+
+  aggregate = EffortTally.empty()
+  
+  for fl in files:
+    stats = read_file_effort(fl)
+    aggregate += stats
+    print(f"{os.path.basename(fl).split('.')[0]}, {stats.pretty()} \\\\".replace(',',' &'))
+
+  print(f"Total, {aggregate.pretty()} \\\\".replace(',',' &'))
+  
+
+  

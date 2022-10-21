@@ -32,8 +32,8 @@ From Hammer Require Import Hammer.
 
 Require Import MirrorSolve.Crush.
 
-Ltac hammer' := timeout 1 hammer.
-Ltac crush' := timeout 1 crush.
+Ltac hammer' := timeout 60 hammer.
+Ltac crush' := timeout 60 crush.
 
 Inductive sorted : list Z -> Prop :=
   | sorted_nil : sorted []
@@ -43,6 +43,7 @@ Inductive sorted : list Z -> Prop :=
 
 Hint Constructors sorted.
 
+(*** MS EFFORT {"type": "definition"} *)
 Inductive NoDup_Z : list Z -> Prop :=
   NoDup_nil_z : NoDup_Z []
 | NoDup_cons_z : forall (x : Z) (l : list Z),
@@ -50,12 +51,14 @@ Inductive NoDup_Z : list Z -> Prop :=
 
 Hint Constructors NoDup_Z.
 
+(*** MS EFFORT {"type": "lemma"} *)
 Lemma nd_z_nil : 
   NoDup_Z [] <-> True.
 Proof.
   intuition eauto.
 Qed.
 
+(*** MS EFFORT {"type": "lemma"} *)
 Lemma nd_z_cons : 
   forall (x: Z) (l: list Z), 
     NoDup_Z (x :: l) <-> (~ In x l /\ NoDup_Z l).
@@ -71,6 +74,7 @@ Qed.
 Definition disjoint (l1 l2: list Z) := forall (x : Z),
   In x l1 -> ~ In x l2.
 
+(*** MS EFFORT {"type": "lemma"} *)
 Lemma disjoint_spec:
   forall l1 l2, disjoint l1 l2 <-> (forall x, In x l1 -> ~ In x l2).
 Proof.
@@ -137,45 +141,52 @@ Section SearchTree.
     | T l k v r => P k v /\ ForallT P l /\ ForallT P r
     end.
 
+  (*** MS EFFORT {"type": "definition"} *)
   Fixpoint lt_t (k: Z) (t: tree) : Prop := 
     match t with 
     | E => True
     | T l k' _ r => k' < k /\ lt_t k l /\ lt_t k r
     end. 
-  
+
   Lemma lt_t_spec : forall x t, ForallT (fun y _ => y < x) t <-> lt_t x t.
   Proof.
     induction t; simpl in *; intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "definition"} *)
   Fixpoint lt_list (k: Z) (t: list (key * V)) : Prop := 
     match t with 
     | [] => True
     | (k', _) :: t' => k' < k /\ lt_list k t'
     end. 
 
+  (*** MS EFFORT {"type": "definition"} *)
   Fixpoint lt_list_s (k: key) (t: list key) : Prop := 
     match t with 
     | [] => True
     | k' :: t' => k' < k /\ lt_list_s k t'
     end. 
 
+  (*** MS EFFORT {"type": "definition"} *)
   Fixpoint gt_t (k: Z) (t: tree) : Prop := 
     match t with 
     | E => True
     | T l k' _ r => k' > k /\ gt_t k l /\ gt_t k r
     end. 
   
+  
   Lemma gt_t_spec : forall x t, ForallT (fun y _ => y > x) t <-> gt_t x t.
   Proof.
     induction t; simpl in *; intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "definition"} *)
   Fixpoint gt_list (k: Z) (t: list (key * V)) : Prop := 
     match t with 
     | [] => True
     | (k', _) :: t' => k' > k /\ gt_list k t'
     end. 
+  (*** MS EFFORT {"type": "definition"} *)
   Fixpoint gt_list_s (k: Z) (t: list key) : Prop := 
     match t with 
     | [] => True
@@ -200,6 +211,8 @@ Section SearchTree.
       BST (T l x v r).
 
   Hint Constructors BST.
+
+  (*** MS EFFORT {"type": "definition"} *)
   Fixpoint ordered (t: tree) : Prop :=
     match t with 
     | E => True
@@ -209,9 +222,18 @@ Section SearchTree.
       ordered l /\ ordered r
     end.
 
+  (*** MS LEMMA {"original": False, "goals": 2, "ms": 0, "hammer": 1, "crush": 1} *)
   Lemma ordered_spec : 
     forall t, BST t <-> ordered t.
   Proof.
+    induction t;
+    try hammer'.
+    Restart.
+    induction t.
+    - crush'.
+    - crush'.
+      admit.
+    Restart.
     induction t; simpl in *; intuition eauto;
     try (now econstructor);
     try match goal with 
@@ -231,6 +253,7 @@ Section SearchTree.
     elements (T l k v r) := elements l ++ [(k, v)] ++ elements r;
   }.
 
+  (*** MS EFFORT {"type": "definition"} *)
   Equations map_fst (xs : list (key * V)) : list key := {
     map_fst [] := [] ;
     map_fst ((x, _) :: xs) := x :: map_fst xs;
@@ -292,6 +315,8 @@ Section SearchTree.
     ; pack kvs_insert
   ])%type.
 
+  Unset Universe Polymorphism.
+
   Definition rel_syms : list packed := ([ 
         pack BST
       ; pack ordered
@@ -310,6 +335,9 @@ Section SearchTree.
       ; pack NoDup_Z
       ; pack disjoint
   ])%type.
+
+  Print rel_syms.
+
 
   Definition prim_syms : list (packed * String.string) := [
       (pack Z.add, "+"%string)
@@ -395,6 +423,7 @@ Section SearchTree.
 
   Hint Immediate ordered_spec : tree_eqns. 
 
+  (*** MS EFFORT {"type": "lemma"} *)
   (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
   Lemma ordered_emp: 
     ordered E.
@@ -404,6 +433,7 @@ Section SearchTree.
     intuition. 
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma ordered_node: 
     forall l k v r, 
       (lt_t k l /\ 
@@ -425,7 +455,7 @@ Section SearchTree.
 
 (** Prove that the empty tree is a BST. *)
 
-  (*** MS LEMMA {"original": True, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
   Theorem empty_tree_BST : 
       BST E.
   Proof.
@@ -447,6 +477,7 @@ Section SearchTree.
 
   (* first, reflect lt_t and gt_t: *)
 
+  (*** MS EFFORT {"type": "lemma"} *)
   (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
   Lemma lt_emp: 
     forall x, lt_t x E <-> True.
@@ -456,6 +487,7 @@ Section SearchTree.
     intuition. 
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma lt_node: 
     forall x l k v r, 
       (lt_t x l /\ 
@@ -471,6 +503,7 @@ Section SearchTree.
   Hint Immediate lt_emp : tree_eqns. 
   Hint Immediate lt_node : tree_eqns. 
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma gt_emp: 
     forall x, gt_t x E <-> True.
   Proof. 
@@ -479,6 +512,7 @@ Section SearchTree.
     intuition. 
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma gt_node: 
     forall x l k v r, 
       (gt_t x l /\ 
@@ -539,13 +573,6 @@ Section SearchTree.
   Hint Immediate gt_t_trans : tree_eqns.
 
   Hint Immediate Z.ltb_lt : tree_eqns.
-  
-  Lemma gtb_gt : 
-    forall (x y: Z), (x >? y = true) <-> x > y.
-  Proof.
-    Lia.lia.
-  Qed.
-  Hint Immediate gtb_gt : tree_eqns.
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 0} *)
   Lemma lt_t_insert : 
@@ -606,7 +633,7 @@ Section SearchTree.
 (** Now prove the main theorem. Proceed by induction on the evidence
     that [t] is a BST. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 2, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 0} *)
   Theorem insert_BST : forall (k : key) (v : V) (t : tree),
       BST t -> BST (insert_t k v t).
   Proof.
@@ -682,7 +709,8 @@ Section SearchTree.
   Hint Immediate lookup_t_equation_1 : tree_eqns.
   Hint Immediate lookup_t_equation_2 : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
   Theorem lookup_empty : forall (d : V) (k : key),
       lookup_t d k empty_tree = d.
   Proof.
@@ -693,7 +721,7 @@ Section SearchTree.
     mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Theorem lookup_insert_eq : forall (t : tree) (d : V) (k : key) (v : V),
       lookup_t d k (insert_t k v t)  = v.
   Proof.
@@ -719,7 +747,7 @@ Section SearchTree.
 (** The tactic immediately pays off in proving the third
     equation. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Theorem lookup_insert_neq :
     forall (t : tree) (d : V) (k k' : key) (v : V),
     k <> k' -> lookup_t d k' (insert_t k v t) = lookup_t d k' t.
@@ -763,7 +791,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Hint Immediate bound_t_equation_1 : tree_eqns.
   Hint Immediate bound_t_equation_2 : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Theorem bound_default :
     forall (t: tree) (k : key) (d : V),
       bound_t k t = false ->
@@ -798,7 +826,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
 
 (** **** Exercise: 2 stars, standard, optional (lookup_insert_shadow) *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Lemma lookup_insert_shadow :
     forall (t : tree) (v v' d: V) (k k' : key),
       lookup_t d k' (insert_t k v (insert_t k v' t)) = lookup_t d k' (insert_t k v t).
@@ -817,7 +845,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
 
 (** **** Exercise: 2 stars, standard, optional (lookup_insert_same) *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Lemma lookup_insert_same :
     forall (t : tree) (k k' : key) (d : V),
       lookup_t d k' (insert_t k (lookup_t d k t) t) = lookup_t d k' t.
@@ -837,7 +865,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
 
 (** **** Exercise: 2 stars, standard, optional (lookup_insert_permute) *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Lemma lookup_insert_permute :
     forall (t: tree) (v1 v2 d : V) (k1 k2 k': key),
       k1 <> k2 ->
@@ -869,7 +897,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
     Could we state the tree lemmas with direct equalities?  For
     [insert_shadow], the answer is yes: *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
   Lemma insert_shadow_equality : forall (t : tree) (k : key) (v v' : V),
       insert_t k v (insert_t k v' t) = insert_t k v t.
   Proof.
@@ -930,6 +958,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Hint Immediate elements_equation_1 : tree_eqns.
   Hint Immediate elements_equation_2 : tree_eqns.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma In_nil : 
     forall (x : key * V), 
       In x [] <-> False.
@@ -937,6 +966,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
     intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma In_cons : 
     forall (x : key * V) x' xs, 
       In x (x' :: xs) <-> (x = x' \/ In x xs).
@@ -949,6 +979,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Hint Immediate In_cons : tree_eqns.
   Hint Immediate In_nil : tree_eqns.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma in_app_iff' :  
     forall l l' (a:(key * V)), In a (l++l') <-> In a l \/ In a l'.
   Proof.
@@ -957,7 +988,8 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
 
   Hint Immediate in_app_iff' : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_complete : 
     forall (t: tree) (k : key) (v d : V),
       bound_t k t = true ->
@@ -1018,7 +1050,7 @@ Hint Transparent uncurry.
     to use [elements_preserves_forall] and library theorem
     [Forall_forall]. *)
 
-(* MIRRORSOLVE: We can't do this because it's higher-order *)
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma lt_list_nil : 
     forall x, lt_list x [] <-> True.
   Proof.
@@ -1027,6 +1059,7 @@ Hint Transparent uncurry.
     intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma lt_list_cons : 
     forall x y v l, lt_list x ((y, v) :: l)  <-> (y < x /\ lt_list x l).
   Proof.
@@ -1035,6 +1068,7 @@ Hint Transparent uncurry.
     intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma gt_list_nil : 
     forall x, gt_list x [] <-> True.
   Proof.
@@ -1043,6 +1077,7 @@ Hint Transparent uncurry.
     intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma gt_list_cons : 
     forall x y v l, gt_list x ((y, v) :: l)  <-> (y > x /\ gt_list x l).
   Proof.
@@ -1172,7 +1207,7 @@ Hint Transparent uncurry.
 (** Prove that [elements] is correct. Proceed by induction on the
     evidence that [t] is a BST. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_correct : 
     forall (t : tree) (k : key) (v d : V),
       BST t ->
@@ -1208,7 +1243,7 @@ Hint Transparent uncurry.
 (** This inverse doesn't require induction.  Look for a way to use
     [elements_correct] to quickly prove the result. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_complete_inverse :
     forall (t : tree) (k : key) (v : V) ,
       BST t -> 
@@ -1231,7 +1266,7 @@ Hint Transparent uncurry.
 
 (** Prove the main result.  You don't need induction. *)
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_correct_inverse :
     forall (t : tree) (k : key) ,
       (forall v, ~ In (k, v) (elements t)) ->
@@ -1260,6 +1295,7 @@ Hint Transparent uncurry.
 
   (* First we reflect the definition of sorted to UF: *)
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma sorted_nil' : 
     sorted [] <-> True.
   Proof.
@@ -1268,6 +1304,7 @@ Hint Transparent uncurry.
     intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma sorted_one' :
     forall x, 
     sorted [x] <-> True.
@@ -1277,6 +1314,7 @@ Hint Transparent uncurry.
     intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma sorted_cons' : 
     forall (x y : key) (l : list key),
       sorted (x :: y :: l) <-> (x <= y /\ sorted (y :: l)).
@@ -1295,6 +1333,7 @@ Hint Transparent uncurry.
   Hint Immediate sorted_cons' : tree_eqns.
 
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma lt_list_s_nil : 
     forall x, lt_list_s x [] <-> True.
   Proof.
@@ -1303,6 +1342,7 @@ Hint Transparent uncurry.
     intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma lt_list_s_cons : 
     forall l x y, lt_list_s x (y :: l)  <-> (y < x /\ lt_list_s x l).
   Proof.
@@ -1314,12 +1354,14 @@ Hint Transparent uncurry.
   Hint Immediate lt_list_s_nil : tree_eqns.
   Hint Immediate lt_list_s_cons : tree_eqns.
   
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma app_nil_l_Z : 
     forall (x: list key), ([] ++ x = x)%list.
   Proof.
     eapply app_nil_l.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma app_cons_l_Z : 
     forall (x: key) y z, ((x :: y) ++ z = x :: (y ++ z))%list.
   Proof.
@@ -1349,6 +1391,7 @@ Hint Transparent uncurry.
 
   Hint Immediate sorted_lt_end : tree_eqns.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma gt_list_s_nil : 
     forall x, gt_list_s x [] <-> True.
   Proof.
@@ -1357,6 +1400,7 @@ Hint Transparent uncurry.
     intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma gt_list_s_cons : 
     forall l x y, gt_list_s x (y :: l)  <-> (y > x /\ gt_list_s x l).
   Proof.
@@ -1391,7 +1435,8 @@ Hint Transparent uncurry.
     maintains sortedness. Proceed by induction on the evidence
     that [l1] is sorted. *)
 
-  (*** MS LEMMA {"original": True, "goals": 4, "ms": 4, "hammer": 2, "crush": 2} *)
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals": 4, "ms": 4, "hammer": 2, "crush": 2} *)
   Lemma sorted_app': forall l1 l2 x,
    sorted l1 ->sorted l2 ->
     lt_list_s x l1 -> gt_list_s x l2 ->
@@ -1469,12 +1514,14 @@ Hint Transparent uncurry.
   Hint Immediate map_fst_lts : tree_eqns.
   Hint Immediate map_fst_gts : tree_eqns.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma app_nil_l_Z_V : 
     forall (x: list (key * V)), ([] ++ x = x)%list.
   Proof.
     eapply app_nil_l.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma app_cons_l_Z_V : 
     forall (x: (key * V)) y z, ((x :: y) ++ z = x :: (y ++ z))%list.
   Proof.
@@ -1504,7 +1551,8 @@ Hint Transparent uncurry.
 
   Hint Immediate map_fst_app : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem sorted_elements' : forall (t : tree),
       BST t -> sorted (map_fst (elements t)).
   Proof.
@@ -1539,6 +1587,7 @@ Hint Transparent uncurry.
   Hint Immediate nd_z_nil : tree_eqns.
   Hint Immediate nd_z_cons : tree_eqns.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma In_nil_Z : 
     forall (x : key), 
       In x [] <-> False.
@@ -1548,6 +1597,7 @@ Hint Transparent uncurry.
     intuition eauto.
   Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma In_cons_Z : 
     forall (x : key) x' xs, 
       In x (x' :: xs) <-> (x = x' \/ In x xs).
@@ -1600,7 +1650,8 @@ Hint Transparent uncurry.
 
   Hint Immediate neg_In_app : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Lemma NoDup_append : forall (l1 l2: list Z),
     NoDup_Z l1 -> NoDup_Z l2 -> disjoint l1 l2 ->
     NoDup_Z (l1 ++ l2).
@@ -1718,8 +1769,8 @@ Hint Transparent uncurry.
     by [elements]. Proceed by induction on the evidence that [t] is a
     BST. Make use of library theorems about [map] as needed. *)
 
-
-(*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+(*** MS EFFORT {"type": "edit"} *)
+(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Theorem elements_nodup_keys' : forall (t : tree),
     ordered t ->
     NoDup_Z (map_fst (elements t)).
@@ -1776,7 +1827,7 @@ Hint Transparent uncurry.
 
   Hint Immediate app_comm_K_Z : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Lemma fast_elements_tr_helper :
     forall (t : tree) (lst : list (key * V)),
       (fast_elements_tr t lst = elements t ++ lst)%list.
@@ -1793,7 +1844,7 @@ Hint Transparent uncurry.
 
   Hint Immediate fast_elements_tr_helper : tree_eqns.
 
-   (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
+   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma app_nil_r_K_V:
     forall (x: list (key * V)), (x ++ [] = x)%list.
   Proof.
@@ -1810,7 +1861,7 @@ Hint Transparent uncurry.
   Hint Immediate app_nil_r_K_V : tree_eqns.
 
   Hint Immediate fast_elements_equation_1 : tree_eqns.
-  (*** MS LEMMA {"original": True, "goals": 1, "ms": 1, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 0, "crush": 0} *)
   Lemma fast_elements_eq_elements : forall (t : tree),
       fast_elements t = elements t.
   Proof.
@@ -1830,7 +1881,7 @@ Hint Transparent uncurry.
     the results we proved about the correctness of [elements]
     also hold for [fast_elements].  For example: *)
 
-  (*** MS LEMMA {"original": True, "goals": 1, "ms": 1, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 1, "ms": 1, "hammer": 0, "crush": 0} *)
   Corollary fast_elements_correct :
     forall (t: tree) (k : key) (v d : V),
       BST t ->
@@ -1862,7 +1913,7 @@ Hint Transparent uncurry.
     The first of these is easy; we can trivially prove the following:
     *)
 
-  (*** MS LEMMA {"original": True, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
   Lemma elements_empty :
       elements empty_tree = [].
   Proof.
@@ -1892,7 +1943,8 @@ Hint Transparent uncurry.
   Hint Immediate kvs_insert_equation_1 : tree_eqns.
   Hint Immediate kvs_insert_equation_2 : tree_eqns.
 
-  (*** MS LEMMA {"original": True, "goals": 4, "ms": 4, "hammer": 2, "crush": 2} *)
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals": 4, "ms": 4, "hammer": 2, "crush": 2} *)
 
   Lemma kvs_insert_split' :
     forall (e1 e2 : list (key * V)) (v v0 : V) (k k0 : key),
@@ -1927,7 +1979,7 @@ Hint Transparent uncurry.
 
   Hint Immediate kvs_insert_split' : tree_eqns.
   (** **** Exercise: 3 stars, standard, optional (kvs_insert_elements) *)
-  (*** MS LEMMA {"original": True, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Lemma kvs_insert_elements : forall (t : tree),
       BST t ->
       forall (k : key) (v : V),
@@ -1942,3 +1994,6 @@ Hint Transparent uncurry.
     induction t;
     mirrorsolve.
   Qed.
+
+End SearchTree.
+(*** MS EXTRA {"count": 17} *)

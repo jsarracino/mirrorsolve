@@ -1419,10 +1419,30 @@ Qed.
 
 Require Import MirrorSolve.FirstOrder.
 
+Require Import MirrorSolve.BV.
+Require Import MirrorSolve.SMT.
+Require Import MirrorSolve.UF.
+
+Require Import MirrorSolve.Reflection.Core.
+Require Import MirrorSolve.Reflection.FM.
+Require Import MirrorSolve.Reflection.Tactics.
+From Hammer Require Import Hammer.
+
+Require Import MirrorSolve.Crush.
+
+Ltac hammer' := timeout 60 hammer.
+Ltac crush' := timeout 60 crush.
+
+
 Section IntvSets.
 
+  Unset Universe Polymorphism.
+  Unset Implicit Arguments.
+
   (*** MS BEGIN {"type": "definition"} *)
-  Inductive t : Type := Nil | Cons (lo hi: Z) (tl: t).
+  Inductive t := Nil | Cons (lo hi: Z) (tl: t).
+
+  Hint Constructors t.
 
   Fixpoint In (x: Z) (s: t) :=
     match s with
@@ -1437,60 +1457,36 @@ Section IntvSets.
         (BELOW: forall x, In x s -> h < x)
         (OK: ok s),
         ok (Cons l h s).
-  Fixpoint ok' (x: t) : Prop := 
-    match x with 
-    | Nil => True
-    | (Cons l h s) => 
-      l < h /\ (forall x, In x s -> h < x) /\ ok' s
-    end.
-  Lemma ok_ok' : forall x, ok x <-> ok' x.
-    induction x; 
-    simpl in *;
-    intuition;
-    simpl in *;
-    intuition (econstructor || eauto).
-    - inversion H1; subst;
-      eauto.
-    - inversion H1; subst; eauto.
-    - eapply H;
-      inversion H1;
-      eauto.
-    - eauto.
-    - eapply H1.
-    - eauto.
-  Qed.
-
-  Fixpoint mem (x: Z) (s: t) : bool :=
-    match s with
-    | Nil => false
-    | Cons l h s' => ite (A := bool) (Z.ltb x h) (Z.leb l x) (mem x s')
-    end.
-
-  Fixpoint contains (L H: Z) (s: t) : bool :=
-    match s with
-    | Nil => false
-    | Cons l h s' => (Z.leb H h && Z.leb l L) || contains L H s'
-    end.
-
-  Fixpoint add (L H: Z) (s: t) {struct s} : t :=
-    match s with
-    | Nil => Cons L H Nil
-    | Cons l h s' =>
-        ite (Z.ltb h L) (Cons l h (add L H s'))
-        (ite (Z.ltb H l) (Cons L H s)
-        (add (Z.min l L) (Z.max h H) s'))
-    end.
   
-  Fixpoint remove (L H: Z) (s: t) {struct s} : t :=
-    match s with
-    | Nil => Nil
-    | Cons l h s' =>
-        ite (Z.ltb h L) (Cons l h (remove L H s'))
-        (ite (Z.ltb H l) s
-        (ite (Z.ltb l L)
-          (ite (Z.ltb H h) (Cons l L (Cons H h s')) (Cons l L (remove L H s')))
-          (ite (Z.ltb H h) (Cons H h s') (remove L H s'))))
-    end.
+  Hint Constructors ok.
+
+  Equations mem (x: Z) (s: t) : bool := {
+    mem _ Nil := false;
+    mem x (Cons l h s') := ite (Z.ltb x h) (Z.leb l x) (mem x s');
+  }.
+
+  Equations contains (L H: Z) (s: t) : bool := {
+    contains _ _ Nil := false;
+    contains L H (Cons l h s') := (Z.leb H h && Z.leb l L) || contains L H s';
+  }.
+
+  Equations add (L H: Z) (s: t) : t := {
+    add L H Nil := Cons L H Nil;
+    add L H (Cons l h s') := 
+      ite (Z.ltb h L) (Cons l h (add L H s')) (
+      ite (Z.ltb H l) (Cons L H (Cons l h s'))
+        (add (Z.min l L) (Z.max h H) s'));
+  }.
+  
+  Equations remove (L H: Z) (s: t) : t := {
+    remove _ _ Nil := Nil ;
+    remove L H (Cons l h s') := 
+      ite (Z.ltb h L) (Cons l h (remove L H s'))
+      (ite (Z.ltb H l) (Cons l h s')
+      (ite (Z.ltb l L)
+        (ite (Z.ltb H h) (Cons l L (Cons H h s')) (Cons l L (remove L H s')))
+        (ite (Z.ltb H h) (Cons H h s') (remove L H s'))))
+  }.
 
   Fixpoint inter (s1 s2: t) {struct s1} : t :=
     let fix intr (s2: t) : t :=
@@ -1507,430 +1503,185 @@ Section IntvSets.
       end
     in intr s2.
   
-  Fixpoint union (s1 s2: t) : t :=
-    match s1, s2 with
-    | Nil, _ => s2
-    | _, Nil => s1
-    | Cons l1 h1 s1', Cons l2 h2 s2' => add l1 h1 (add l2 h2 (union s1' s2'))
-    end.
+  Equations union (s1 s2: t) : t := {
+    union Nil s2 := s2;
+    union s1 Nil := s1;
+    union (Cons l1 h1 s1') (Cons l2 h2 s2') := add l1 h1 (add l2 h2 (union s1' s2'))
+  }.
 
-  Fixpoint beq (s1 s2: t) : bool :=
-    match s1, s2 with
-    | Nil, Nil => true
-    | Cons l1 h1 t1, Cons l2 h2 t2 => Z.eqb l1 l2 && Z.eqb h1 h2 && beq t1 t2
-    | _, _ => false
-    end.
+  Equations beq (s1 s2: t) : bool := {
+    beq Nil Nil := true;
+    beq (Cons l1 h1 t1) (Cons l2 h2 t2) := Z.eqb l1 l2 && Z.eqb h1 h2 && beq t1 t2;
+    beq _ _ := false;
+  }.
   (*** MS END {"type": "definition"} *)
 
+  (*** MS EFFORT {"type": "lemma"} *)
   (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
   Lemma in_nil: 
     forall z, 
       In z Nil <-> False.
-  Proof. intros; simpl; intuition. Qed.
+  Proof. 
+    intros; simpl; intuition. 
+  Qed.
 
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma in_cons: 
     forall x l h t, 
       (l <= x < h \/ In x t) <->
       In x (Cons l h t).
   Proof. intros; simpl; intuition. Qed.
 
-  Lemma ok'_nil: 
-    ok' Nil. 
-  Proof. intros; simpl; intuition. Qed.
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma ok_nil': 
+    ok Nil <-> True.
+  Proof.
+    intuition eauto.
+  Qed.
 
-  Lemma ok'_cons: 
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma ok_cons': 
     forall l h t, 
-      (l < h /\ (forall x, In x t -> h < x) /\ ok' t) <->
-      ok' (Cons l h t).
-  Proof. intros; simpl; intuition. Qed.
-  
-  Lemma mem_nil: 
-    forall x, 
-      mem x Nil = false. 
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma mem_cons: 
-    forall x l h t, 
-      mem x (Cons l h t) = ite (A := bool) (Z.ltb x h) (Z.leb l x) (mem x t).
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma contains_nil: 
-    forall x y, 
-      contains x y Nil = false. 
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma contains_cons: 
-    forall L H l h t, 
-      contains L H (Cons l h t) = (Z.leb H h && Z.leb l L) || contains L H t.
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma add_nil: 
-    forall L H, 
-      add L H Nil = Cons L H Nil. 
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma add_cons: 
-    forall L H l h s', 
-      add L H (Cons l h s') = 
-      ite (Z.ltb h L) (Cons l h (add L H s'))
-        (ite (Z.ltb H l) (Cons L H (Cons l h s'))
-        (add (Z.min l L) (Z.max h H) s')).
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma remove_nil: 
-    forall L H, 
-      remove L H Nil = Nil. 
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma remove_cons: 
-    forall L H l h s', 
-      remove L H (Cons l h s') = 
-      ite (Z.ltb h L) (Cons l h (remove L H s'))
-        (ite (Z.ltb H l) (Cons l h s')
-        (ite (Z.ltb l L)
-          (ite (Z.ltb H h) (Cons l L (Cons H h s')) (Cons l L (remove L H s')))
-          (ite (Z.ltb H h) (Cons H h s') (remove L H s')))).
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma union_nil_l: 
-    forall s2, 
-      union Nil s2 = s2. 
-  Proof. intros; exact eq_refl. Qed.
-  
-  Lemma union_nil_r: 
-    forall s1, 
-      union s1 Nil = s1. 
-  Proof. induction s1; intros; exact eq_refl. Qed.
-
-  Lemma union_cons_cons: 
-    forall l1 l2 h1 h2 s1' s2', 
-      union (Cons l1 h1 s1') (Cons l2 h2 s2') = 
-        add l1 h1 (add l2 h2 (union s1' s2')).
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma beq_nil_nil: 
-    beq Nil Nil = true. 
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma beq_nil_cons:
-    forall L H s,
-      beq Nil (Cons L H s) = false. 
-  Proof. intros; exact eq_refl. Qed.
-  
-  Lemma beq_cons_nil:
-    forall L H s,
-      beq (Cons L H s) Nil = false. 
-  Proof. intros; exact eq_refl. Qed.
-
-  Lemma beq_cons_cons:
-    forall l1 h1 t1 l2 h2 t2,
-      beq (Cons l1 h1 t1) (Cons l2 h2 t2) = Z.eqb l1 l2 && Z.eqb h1 h2 && beq t1 t2. 
-  Proof. intros; exact eq_refl. Qed.
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-  From Equations Require Import Equations.
-  Require Import Coq.Program.Equality.
-  Require Import Coq.Lists.List.
-  
-  Require Import MirrorSolve.FirstOrder.
-  Require Import MirrorSolve.HLists.
-  
-  Import ListNotations.
-  Import HListNotations.
-  
-  Require Import Coq.ZArith.BinInt.
-
-  Require Import MirrorSolve.BV.
-  Require Import MirrorSolve.SMT.
-  Require Import MirrorSolve.UF.
-
-  Require Import MirrorSolve.Reflection.Core.
-  Require Import MirrorSolve.Reflection.FM.
-  Require Import MirrorSolve.Reflection.Tactics.
-  From Hammer Require Import Hammer.
-
-  Set Hammer ATPLimit 5.
-  Set Hammer ReconstrLimit 10.
-  
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  Inductive sorts : Set := | BS | ZS | TS.
-  
-  Scheme Equality for sorts.
-  Set Universe Polymorphism.
-  
-  Inductive funs: arity sorts -> sorts -> Type :=
-    | b_lit : forall (b: bool), funs [] BS
-    | z_lt : funs [ZS; ZS] BS
-    | z_le : funs [ZS; ZS] BS
-    | z_gt : funs [ZS; ZS] BS
-    | z_ge : funs [ZS; ZS] BS
-    | z_eqb : funs [ZS; ZS] BS
-    | z_max : funs [ZS; ZS] ZS
-    | z_min : funs [ZS; ZS] ZS
-    | nil_f : funs [] TS
-    | cons_f : funs [ZS; ZS; TS] TS
-    | mem_f : funs [ZS; TS] BS
-    | contains_f : funs [ZS; ZS; TS] BS
-    | add_f : funs [ZS; ZS; TS] TS
-    | remove_f : funs [ZS; ZS; TS] TS
-    | union_f : funs [TS; TS] TS
-    | beq_f : funs [TS; TS] BS
-    | cond_b : funs [BS; BS; BS] BS
-    | cond_t : funs [BS; TS; TS] TS
-    | cond_z : funs [BS; ZS; ZS] ZS
-    | b_and : funs [BS; BS] BS
-    | b_or : funs [BS; BS] BS. 
-  
-  Inductive rels: arity sorts -> Type :=
-    | lt_z : rels [ZS; ZS] 
-    | gt_z : rels [ZS; ZS]
-    | le_z : rels [ZS; ZS]
-    | in_r : rels [ZS; TS]
-    | ok_r : rels [TS].
-  
-  Definition sig: signature :=
-    {| sig_sorts := sorts;
-      sig_funs := funs;
-      sig_rels := rels |}.
-
-  Definition fm ctx := FirstOrder.fm sig ctx.
-  Definition tm ctx := FirstOrder.tm sig ctx.
-
-  Definition mod_sorts (s: sig_sorts sig) : Type :=
-    match s with
-    | TS => t
-    | ZS => Z
-    | BS => bool
-    end.
-  
-  Local Obligation Tactic := idtac.
-  Equations 
-    mod_fns {params ret} (f: sig_funs sig params ret) (args: HList.t mod_sorts params) 
-    : mod_sorts ret :=
-    { 
-      mod_fns (b_lit b) _ := b;
-      mod_fns z_lt (l ::: r ::: _) := (l <? r)%Z;
-      mod_fns z_le (l ::: r ::: _) := (Z.leb l r)%Z;
-      mod_fns z_gt (l ::: r ::: _) := (l >? r)%Z;
-      mod_fns z_ge (l ::: r ::: _) := (Z.geb l r)%Z;
-      mod_fns z_eqb (l ::: r ::: _) := (Z.eqb l r)%Z;
-      mod_fns z_max (l ::: r ::: _) := Z.max l r;
-      mod_fns z_min (l ::: r ::: _) := Z.min l r;
-      mod_fns nil_f _ := IntvSets.Nil;
-      mod_fns cons_f (l ::: v ::: r ::: _) := IntvSets.Cons l v r;
-      mod_fns mem_f (k ::: t ::: _) := IntvSets.mem k t;
-      mod_fns contains_f (l ::: h ::: t ::: _) := IntvSets.contains l h t;
-      mod_fns add_f (l ::: h ::: t ::: _) := IntvSets.add l h t;
-      mod_fns remove_f (l ::: h ::: t ::: _) := IntvSets.remove l h t;
-      mod_fns union_f (l ::: r ::: _) := IntvSets.union l r;
-      mod_fns beq_f (l ::: r ::: _) := IntvSets.beq l r;
-      mod_fns cond_t (t ::: l ::: r ::: _) := ite t l r;
-      mod_fns cond_b (t ::: l ::: r ::: _) := ite t l r;
-      mod_fns cond_z (t ::: l ::: r ::: _) := ite t l r;
-      mod_fns b_and (l ::: r ::: _) :=  l && r;
-      mod_fns b_or (l ::: r ::: _) := l || r;
-    }.
-  
-  Equations mod_rels {params}
-    (r: sig_rels sig params)
-    (env: HList.t mod_sorts params) : Prop :=
-    { 
-      mod_rels lt_z (l ::: r ::: _) := (l < r)%Z;
-      mod_rels le_z (l ::: r ::: _) := (l <= r)%Z;
-      mod_rels gt_z (l ::: r ::: _) := (l > r)%Z;
-      mod_rels in_r (x ::: t ::: _) := IntvSets.In x t;
-      mod_rels ok_r (t ::: _) := IntvSets.ok' t;
-    }.
-
-  Arguments mod_fns _ _ _ _ : clear implicits.
-  Arguments mod_rels _ _ _ : clear implicits.
-  
-  Definition intvset_model : model sig := {|
-    FirstOrder.mod_sorts := mod_sorts;
-    FirstOrder.mod_fns := mod_fns;
-    FirstOrder.mod_rels := mod_rels;
-  |}.
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-
-  MetaCoq Quote Definition t_ite := @ite.
-  MetaCoq Quote Definition t_zlt := @Z.ltb.
-  MetaCoq Quote Definition t_zle := @Z.leb.
-  MetaCoq Quote Definition t_zgt := @Z.gtb.
-  MetaCoq Quote Definition t_zge := @Z.geb.
-  MetaCoq Quote Definition t_zeq := @Z.eqb.
-  MetaCoq Quote Definition t_zlt' := @Z.lt.
-  MetaCoq Quote Definition t_zle' := @Z.le.
-  MetaCoq Quote Definition t_zgt' := @Z.gt.
-  MetaCoq Quote Definition t_nil := @Nil.
-  MetaCoq Quote Definition t_cons := @Cons.
-  MetaCoq Quote Definition t_zmax := @Z.max.
-  MetaCoq Quote Definition t_zmin := @Z.min.
-  MetaCoq Quote Definition t_mem := (@IntvSets.mem).
-  MetaCoq Quote Definition t_contains := @IntvSets.contains.
-  MetaCoq Quote Definition t_add := (@IntvSets.add).
-  MetaCoq Quote Definition t_remove := @IntvSets.remove.
-  MetaCoq Quote Definition t_union := (@IntvSets.union).
-  MetaCoq Quote Definition t_beq := @IntvSets.beq.
-  MetaCoq Quote Definition t_andb := @andb.
-  MetaCoq Quote Definition t_orb := @orb. 
-  MetaCoq Quote Definition t_in := (@IntvSets.In).
-  MetaCoq Quote Definition t_ok := (@IntvSets.ok').
-  
-  Definition is_zlt t := eq_term t t_zlt.
-  Definition is_zle t := eq_term t t_zle.
-  Definition is_zgt t := eq_term t t_zgt.
-  Definition is_zge t := eq_term t t_zge.
-  Definition is_zeq t := eq_term t t_zeq.
-  Definition is_zlt' t := eq_term t t_zlt'.
-  Definition is_zle' t := eq_term t t_zle'.
-  Definition is_zgt' t := eq_term t t_zgt'.
-  Definition is_nil t := eq_term t t_nil.
-  Definition is_cons t := eq_term t t_cons.
-  Definition is_zmax t := eq_term t t_zmax.
-  Definition is_zmin t := eq_term t t_zmin.
-  Definition is_mem t := eq_ctor t t_mem.
-  Definition is_contains t := eq_term t t_contains.
-  Definition is_add t := eq_term t t_add.
-  Definition is_remove t := eq_term t t_remove.
-  Definition is_union t := eq_term t t_union.
-  Definition is_beq t := eq_term t t_beq.
-  Definition is_andb t := eq_term t t_andb.
-  Definition is_orb t := eq_term t t_orb.
-  Definition is_in t := eq_term t t_in.
-  Definition is_ok t := eq_term t t_ok.
-
-  MetaCoq Quote Definition t_bool := (bool).
-  MetaCoq Quote Definition t_Z := (Z).
-  MetaCoq Quote Definition t_T := (t).
-
-  Definition is_cond_b t :=
-    match t with 
-    | tApp f (t :: _) => 
-      andb (eq_term f t_ite) (eq_term t t_bool)
-    | _ => false
-    end.
-
-  Definition is_cond_t t :=
-    match t with 
-    | tApp f (t :: _) => 
-      andb (eq_term f t_ite) (eq_term t t_T)
-    | _ => false
-    end.
-
-  Definition is_cond_z t :=
-    match t with 
-    | tApp f (t :: _) => 
-      andb (eq_term f t_ite) (eq_term t t_Z)
-    | _ => false
-    end.
-
-  Notation tac_bool := (tacLit sig intvset_model bool_lit (fun b => (BS; b)) (fun b _ => (BS; TFun sig (b_lit b) hnil))).
-  Notation tac_fun f := (tacFun _ _ (Mk_fun_sym sig _ _ f)).
-  Notation tac_rel f := (tacRel _ _ (Mk_rel_sym sig _ f)).
-
-  Definition match_tacs : list ((term -> bool) * tac_syn sig intvset_model) := [
-        (is_zlt, tac_fun z_lt )
-      ; (is_zle, tac_fun z_le )
-      ; (is_zgt, tac_fun z_gt )
-      ; (is_zge, tac_fun z_ge )
-      ; (is_zeq, tac_fun z_eqb )
-      ; (is_nil, tac_fun nil_f )
-      ; (is_cons, tac_fun cons_f )
-      ; (is_zmax, tac_fun z_max )
-      ; (is_zmin, tac_fun z_min )
-      ; (is_mem, tac_fun mem_f )
-      ; (is_contains, tac_fun contains_f )
-      ; (is_add, tac_fun add_f )
-      ; (is_remove, tac_fun remove_f )
-      ; (is_union, tac_fun union_f )
-      ; (is_beq, tac_fun beq_f )
-      ; (is_andb, tac_fun b_and )
-      ; (is_orb, tac_fun b_or )
-      ; (is_cond_t, tac_fun cond_t )
-      ; (is_cond_b, tac_fun cond_b )
-      ; (is_cond_z, tac_fun cond_z )
-      ; (is_zgt', tac_rel gt_z)
-      ; (is_zle', tac_rel le_z)
-      ; (is_zlt', tac_rel lt_z)
-      ; (is_in, tac_rel in_r)
-      ; (is_ok, tac_rel ok_r)
-      ; ( is_bool_term, tac_bool )
-  ].
-
-  Definition match_inds : list ((term -> bool) * sorts) := [
-      (eq_term t_T, TS)
-    ; (eq_term t_bool, BS)
-    ; (eq_term t_Z, ZS)
-  ].
-  Transparent denote_tm.
+      (l < h /\ (forall x, In x t -> h < x) /\ ok t) <->
+      ok (Cons l h t).
+  Proof.
+    intuition eauto;
+    match goal with 
+    | H: ok _ |- _ => 
+      inversion H; subst; clear H
+    end;
+    intuition eauto.
+  Qed.
 
   Local Declare ML Module "mirrorsolve".
-  RegisterSMTInd TS (SICases [
-    ("cons"%string, [ 
-      SISort (SInt tt); 
-      SISort (SInt tt); 
-      SIRec]); 
-    ("nil"%string, [])
-    ]) "Interval".
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
-  (*** MS BEGIN {"type": "configuration", "config_type":"plugin"} *)
-  RegisterSMTSort ZS SInt.
-  RegisterSMTSort BS SBool.
+  From MetaCoq.Template Require Import All Loader.
+  Import MCMonadNotation.
+  Require Import MirrorSolve.Config.
+  Open Scope bs.
 
-  RegisterSMTUF "min" ZS ZS ZS.
-  RegisterSMTUF "max" ZS ZS ZS.
-  RegisterSMTUF "mem" BS ZS TS.
-  RegisterSMTUF "contains" BS ZS ZS TS.
-  RegisterSMTUF "add" TS ZS ZS TS.
-  RegisterSMTUF "remove" TS ZS ZS TS.
-  RegisterSMTUF "intset_union" TS TS TS.
-  (* RegisterSMTUF "beq" BS TS TS. *)
-  RegisterSMTUF "in" BS ZS TS.
-  RegisterSMTUF "ok" BS TS.
+  (* Unset Universe Polymorphism. *)
 
-  RegisterSMTFun IntvSets.z_lt "<" 2.
-  RegisterSMTFun IntvSets.z_gt ">" 2.
-  RegisterSMTFun IntvSets.z_le "<=" 2.
-  RegisterSMTFun IntvSets.z_ge ">=" 2.
-  RegisterSMTFun IntvSets.z_eqb "=" 2.
-  RegisterSMTFun IntvSets.lt_z "<" 2.
-  RegisterSMTFun IntvSets.le_z "<=" 2.
-  RegisterSMTFun IntvSets.gt_z ">" 2.
-  RegisterSMTFun IntvSets.nil_f "nil" 0.
-  RegisterSMTFun IntvSets.cons_f "cons" 3.
-  RegisterSMTFun IntvSets.z_max "max" 2.
-  RegisterSMTFun IntvSets.z_min "min" 2.
-  RegisterSMTFun IntvSets.mem_f "mem" 2.
-  RegisterSMTFun IntvSets.contains_f "contains" 3.
-  RegisterSMTFun IntvSets.add_f "add" 3.
-  RegisterSMTFun IntvSets.remove_f "remove" 3.
-  RegisterSMTFun IntvSets.union_f "intset_union" 2.
-  RegisterSMTFun IntvSets.beq_f "=" 2.
-  RegisterSMTFun IntvSets.b_and "and" 2.
-  RegisterSMTFun IntvSets.b_or "or" 2.
-  RegisterSMTFun IntvSets.cond_b "ite" 3.
-  RegisterSMTFun IntvSets.cond_t "ite" 3.
-  RegisterSMTFun IntvSets.cond_z "ite" 3.
-  RegisterSMTFun IntvSets.in_r "in" 2.
-  RegisterSMTFun IntvSets.ok_r "ok" 1.
+  (* MirrorSolve's automation needs this later. *)
+  Universe foo.
+  MetaCoq Quote Definition typ_term := Type@{foo}.
 
-  RegisterSMTBuiltin IntvSets.b_lit BoolLit.
-  (*** MS END {"type": "configuration", "config_type":"plugin"} *)
+  
+  Notation pack x := (existT _ _ x).
 
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
+  Definition fun_syms : list Config.packed := ([
+      pack IntvSets.mem
+    ; pack IntvSets.contains
+    ; pack IntvSets.add
+    ; pack IntvSets.remove
+    ; pack IntvSets.union
+    ; pack IntvSets.beq
+    ; pack IntvSets.t
+    ; pack Z.ltb
+    ; pack Z.leb
+    ; pack (@ite t)
+    ; pack Z.max
+    ; pack Z.min
+    ; pack orb
+    ; pack andb
+    ; pack (@ite Z)
+    ; pack (@ite bool)
+    ; pack inter
+    ; pack Z.eqb
+  ])%type.
+
+  Definition rel_syms : list Config.packed := ([ 
+      pack IntvSets.In
+    ; pack IntvSets.ok
+    ; pack Z.lt
+    ; pack Z.gt
+    ; pack Z.le
+  ])%type.
+
+  Definition prim_syms : list (Config.packed * String.string) := [
+      (pack Z.lt, "<"%string)
+    ; (pack Z.gt, ">"%string)
+    ; (pack Z.ltb, "<"%string)
+    ; (pack Z.gtb, ">"%string)
+    ; (pack Z.le, "<="%string)
+    ; (pack Z.leb, "<="%string)
+    ; (pack Z.eqb, "="%string)
+    ; (pack (@ite Z), "ite"%string)
+    ; (pack (@ite t), "ite"%string)
+    ; (pack (@ite bool), "ite"%string)
+    ; (pack orb, "or"%string)
+    ; (pack andb, "and"%string)
+  ].
+
+  MetaCoq Run (
+    xs <- add_funs typ_term fun_syms rel_syms ;;
+    xs' <- tmQuote xs ;;
+    tmMkDefinition "trans_tbl" xs'
+  ).
+
+  MetaCoq Run (
+    gen_sig typ_term sorts fol_funs fol_rels 
+  ).
+  MetaCoq Run (
+    gen_interp_funs sorts interp_sorts fol_funs trans_tbl
+  ).
+  MetaCoq Run (
+    gen_interp_rels sorts interp_sorts fol_rels trans_tbl
+  ).
+  Definition fm_model := Build_model sig interp_sorts interp_funs interp_rels.
+  MetaCoq Run (
+    match Utils.find _ _ smt_fun_base_beq IntLit (Utils.flip trans_tbl.(mp_consts)) with 
+    | Some v => add_const_wf_instance sig fm_model v IntLit 
+    | None => tmReturn tt
+    end
+  ).
+  MetaCoq Run (
+    match Utils.find _ _ smt_fun_base_beq BoolLit (Utils.flip trans_tbl.(mp_consts)) with 
+    | Some v => add_const_wf_instance sig fm_model v BoolLit 
+    | None => tmReturn tt
+    end
+  ).
+  MetaCoq Run (
+    add_matches sig fm_model trans_tbl
+  ).
+  MetaCoq Run (
+    ctx <- build_printing_ctx sig sort_Prop trans_tbl prim_syms;; 
+    ctx' <- tmEval all ctx ;;
+    rhs <- tmQuote ctx' ;; 
+    tmMkDefinition "fol_theory" rhs
+  ).
+
+  Require Import MirrorSolve.Reflection.Tactics.
+
   Transparent denote_tm.
   Require Import MirrorSolve.Axioms.
 
+  (* We make use of the verification trick of negating the goal and checking for unsat. 
+    The check_unsat_neg tactic behaves like idtac if the negated goal is unsat and otherwise fails.
+    *)
   Ltac check_goal_unsat := 
     match goal with 
-    | |- ?G => check_unsat_neg G; eapply UnsoundAxioms.interp_true
+    | |- ?G => check_unsat_neg_func fol_theory G; eapply UnsoundAxioms.interp_true
     end.
 
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-  (*** MS BEGIN {"type": "configuration", "config_type":"tactics"} *)
+  Create HintDb intvsets_eqns.
+
+  Ltac prep_proof := 
+    hints_foreach (fun x => pose proof x) "intvsets_eqns";
+    Utils.revert_all;
+    unfold "<->" in *.
+
+  Scheme Equality for sorts.
+
+  Ltac quote_reflect_intvsets := quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts.
+
+  Ltac mirrorsolve :=
+    timeout 60 (prep_proof;
+    quote_reflect_intvsets;
+    check_goal_unsat).
+
+
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma z_max_eq: 
     forall x y, Z.max x y = ite (Z.ltb x y) y x.
   Proof.
@@ -1939,6 +1690,7 @@ Section IntvSets.
     simpl;
     lia.
   Qed.
+  (*** MS EFFORT {"type": "lemma"} *)
   Lemma z_min_eq: 
     forall x y, Z.min x y = ite (Z.ltb x y) x y.
   Proof.
@@ -1948,108 +1700,21 @@ Section IntvSets.
     lia.
   Qed.
 
-  Ltac pose_intset_axioms := 
-      Utils.pose_all (tt, IntvSets.in_nil, IntvSets.in_cons)
-    ; Utils.pose_all (tt, IntvSets.ok'_nil, IntvSets.ok'_cons)
-    ; Utils.pose_all (tt, IntvSets.mem_nil, IntvSets.mem_cons)
-    ; Utils.pose_all (tt, IntvSets.contains_nil, IntvSets.contains_cons)
-    ; Utils.pose_all (tt, IntvSets.add_nil, IntvSets.add_cons)
-    ; Utils.pose_all (tt, IntvSets.remove_nil, IntvSets.remove_cons)
-    ; Utils.pose_all (tt, IntvSets.union_nil_l, IntvSets.union_nil_r, IntvSets.union_cons_cons)
-    ; Utils.pose_all (tt, IntvSets.beq_nil_nil, IntvSets.beq_nil_cons, IntvSets.beq_cons_nil, IntvSets.beq_cons_cons)
-    ; Utils.pose_all (tt, IntvSets.z_max_eq, IntvSets.z_min_eq).
-  
-  Ltac prep_proof := pose_intset_axioms;
-    unfold "<->" in *;
-    Utils.revert_all;
-    try (setoid_rewrite ok_ok').
-  Ltac reflect t := reflect_goal_trust sig intvset_model sorts_eq_dec match_tacs match_inds t.
+  Hint Immediate z_max_eq : intvsets_eqns.
+  Hint Immediate z_min_eq : intvsets_eqns.
 
-  (*** MS END {"type": "configuration", "config_type":"tactics"} *)
+  Hint Immediate mem_equation_1 : intvsets_eqns.
+  Hint Immediate mem_equation_2 : intvsets_eqns.
 
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  MetaCoq Quote Definition mem_In_Nil := (
-    
-forall x : Z,
-(forall (x0 l h : Z) (t : t),
- (l <= x0 < h \/ IntvSets.In x0 t -> IntvSets.In x0 (Cons l h t)) /\
- (IntvSets.In x0 (Cons l h t) -> l <= x0 < h \/ IntvSets.In x0 t)) ->
-(forall z : Z, (IntvSets.In z Nil -> False) /\ (False -> IntvSets.In z Nil)) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t)) ->
-ok' Nil ->
-(forall (x0 l h : Z) (t : t), mem x0 (Cons l h t) = ite (x0 <? h) (l <=? x0) (mem x0 t)) ->
-(forall x0 : Z, mem x0 Nil = false) ->
-(forall (L H5 l h : Z) (t : t), contains L H5 (Cons l h t) = (H5 <=? h) && (l <=? L) || contains L H5 t) ->
-(forall x0 y : Z, contains x0 y Nil = false) ->
-(forall (L H7 l h : Z) (s' : t),
- add L H7 (Cons l h s') =
- ite (h <? L) (Cons l h (add L H7 s')) (ite (H7 <? l) (Cons L H7 (Cons l h s')) (add (Z.min l L) (Z.max h H7) s'))) ->
-(forall L H8 : Z, add L H8 Nil = Cons L H8 Nil) ->
-(forall (L H9 l h : Z) (s' : t),
- IntvSets.remove L H9 (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H9 s'))
-   (ite (H9 <? l) (Cons l h s')
-      (ite (l <? L) (ite (H9 <? h) (Cons l L (Cons H9 h s')) (Cons l L (IntvSets.remove L H9 s')))
-         (ite (H9 <? h) (Cons H9 h s') (IntvSets.remove L H9 s'))))) ->
-(forall L H10 : Z, IntvSets.remove L H10 Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H15 : Z) (s : t), beq (Cons L H15 s) Nil = false) ->
-(forall (L H16 : Z) (s : t), beq Nil (Cons L H16 s) = false) ->
-beq Nil Nil = true ->
-(forall x0 y : Z, Z.min x0 y = ite (x0 <? y) x0 y) ->
-(forall x0 y : Z, Z.max x0 y = ite (x0 <? y) y x0) ->
-(mem x Nil = true -> IntvSets.In x Nil) /\ (IntvSets.In x Nil -> mem x Nil = true)
+  Hint Immediate in_nil : intvsets_eqns.
+  Hint Immediate in_cons : intvsets_eqns.
 
-).
-  MetaCoq Quote Definition mem_In_Cons := (
-    forall (x l h : Z) (s : t),
-l < h ->
-(forall x0 : Z, IntvSets.In x0 s -> h < x0) ->
-ok' s ->
-(mem x s = true -> IntvSets.In x s) /\ (IntvSets.In x s -> mem x s = true) ->
-(forall (x0 l0 h0 : Z) (t : t),
- (l0 <= x0 < h0 \/ IntvSets.In x0 t -> IntvSets.In x0 (Cons l0 h0 t)) /\
- (IntvSets.In x0 (Cons l0 h0 t) -> l0 <= x0 < h0 \/ IntvSets.In x0 t)) ->
-(forall z : Z, (IntvSets.In z Nil -> False) /\ (False -> IntvSets.In z Nil)) ->
-(forall (l0 h0 : Z) (t : t),
- (l0 < h0 /\ (forall x0 : Z, IntvSets.In x0 t -> h0 < x0) /\ ok' t -> ok' (Cons l0 h0 t)) /\
- (ok' (Cons l0 h0 t) -> l0 < h0 /\ (forall x0 : Z, IntvSets.In x0 t -> h0 < x0) /\ ok' t)) ->
-ok' Nil ->
-(forall (x0 l0 h0 : Z) (t : t), mem x0 (Cons l0 h0 t) = ite (x0 <? h0) (l0 <=? x0) (mem x0 t)) ->
-(forall x0 : Z, mem x0 Nil = false) ->
-(forall (L H l0 h0 : Z) (t : t), contains L H (Cons l0 h0 t) = (H <=? h0) && (l0 <=? L) || contains L H t) ->
-(forall x0 y : Z, contains x0 y Nil = false) ->
-(forall (L H l0 h0 : Z) (s' : t),
- add L H (Cons l0 h0 s') =
- ite (h0 <? L) (Cons l0 h0 (add L H s')) (ite (H <? l0) (Cons L H (Cons l0 h0 s')) (add (Z.min l0 L) (Z.max h0 H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l0 h0 : Z) (s' : t),
- IntvSets.remove L H (Cons l0 h0 s') =
- ite (h0 <? L) (Cons l0 h0 (IntvSets.remove L H s'))
-   (ite (H <? l0) (Cons l0 h0 s')
-      (ite (l0 <? L) (ite (H <? h0) (Cons l0 L (Cons H h0 s')) (Cons l0 L (IntvSets.remove L H s')))
-         (ite (H <? h0) (Cons H h0 s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s0 : t), beq (Cons L H s0) Nil = false) ->
-(forall (L H : Z) (s0 : t), beq Nil (Cons L H s0) = false) ->
-beq Nil Nil = true ->
-(forall x0 y : Z, Z.min x0 y = ite (x0 <? y) x0 y) ->
-(forall x0 y : Z, Z.max x0 y = ite (x0 <? y) y x0) ->
-(mem x (Cons l h s) = true -> IntvSets.In x (Cons l h s)) /\ (IntvSets.In x (Cons l h s) -> mem x (Cons l h s) = true)
-  ).
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
+  Hint Immediate ok_nil' : intvsets_eqns.
+  Hint Immediate ok_cons': intvsets_eqns.
 
+  SetSMTSolver "cvc5".
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   (*** MS BEGIN {"type": "proof_definition"} *)
   Lemma mem_In:
     forall x s, 
@@ -2057,2046 +1722,320 @@ beq Nil Nil = true ->
       (mem x s = true <-> IntvSets.In x s).
   (*** MS END {"type": "proof_definition"} *)
   Proof.
-    (*** MS BEGIN {"type": "proof", "proof_type":"manual"} *)
-    induction 1; 
-    simpl.
-  - intuition congruence.
-  - destruct (Z.ltb x h) eqn:?.
-  + destruct (Z.leb l x) eqn:?; 
-    simpl.
-    * intuition.
-    * split; 
-      intros. 
-      congruence.
-      exfalso. 
-      destruct H0. 
-      lia. 
-      exploit BELOW; 
-      eauto. 
-      lia.
-  + rewrite IHok. 
-    intuition.
-    (*** MS END {"type": "proof", "proof_type":"manual"} *)
+    induction s;
+    try hammer'.
     Restart.
-  Proof.
-    (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-    induction 1;
-    try (erewrite ok_ok' in *).
-    - hammer.
-    - admit. (* hammer. *)
+    induction s;
+    try crush'.
     Restart.
-    (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-  Proof.
-    (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
-    induction 1;
-    prep_proof.
-    - reflect mem_In_Nil;
-      check_goal_unsat.
-    - reflect mem_In_Cons;
-      check_goal_unsat.
-      (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
+    induction s;
+    mirrorsolve.
   Qed.
 
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  MetaCoq Quote Definition contains_In_Nil := (
-    forall l0 h0 : Z,
-l0 < h0 ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, (IntvSets.In z Nil -> False) /\ (False -> IntvSets.In z Nil)) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H6 l h : Z) (t : t), contains L H6 (Cons l h t) = (H6 <=? h) && (l <=? L) || contains L H6 t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H8 l h : Z) (s' : t),
- add L H8 (Cons l h s') =
- ite (h <? L) (Cons l h (add L H8 s')) (ite (H8 <? l) (Cons L H8 (Cons l h s')) (add (Z.min l L) (Z.max h H8) s'))) ->
-(forall L H9 : Z, add L H9 Nil = Cons L H9 Nil) ->
-(forall (L H10 l h : Z) (s' : t),
- IntvSets.remove L H10 (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H10 s'))
-   (ite (H10 <? l) (Cons l h s')
-      (ite (l <? L) (ite (H10 <? h) (Cons l L (Cons H10 h s')) (Cons l L (IntvSets.remove L H10 s')))
-         (ite (H10 <? h) (Cons H10 h s') (IntvSets.remove L H10 s'))))) ->
-(forall L H11 : Z, IntvSets.remove L H11 Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H16 : Z) (s : t), beq (Cons L H16 s) Nil = false) ->
-(forall (L H17 : Z) (s : t), beq Nil (Cons L H17 s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-(false = true -> forall x : Z, l0 <= x < h0 -> False) /\ ((forall x : Z, l0 <= x < h0 -> False) -> false = true)
-  ).
+  Hint Immediate mem_In : intvsets_eqns.
 
-  MetaCoq Quote Definition contains_In_Cons_1 := (
-    forall l0 h0 : Z,
-l0 < h0 ->
-forall (l h : Z) (s : t),
-l < h ->
-(forall x : Z, IntvSets.In x s -> h < x) ->
-ok' s ->
-(contains l0 h0 s = true -> forall x : Z, l0 <= x < h0 -> IntvSets.In x s) /\
-((forall x : Z, l0 <= x < h0 -> IntvSets.In x s) -> contains l0 h0 s = true) ->
-(h0 <=? h) = true ->
-(l <=? l0) = true ->
-(forall (x l1 h1 : Z) (t : t),
- (l1 <= x < h1 \/ IntvSets.In x t -> IntvSets.In x (Cons l1 h1 t)) /\
- (IntvSets.In x (Cons l1 h1 t) -> l1 <= x < h1 \/ IntvSets.In x t)) ->
-(forall z : Z, (IntvSets.In z Nil -> False) /\ (False -> IntvSets.In z Nil)) ->
-(forall (l1 h1 : Z) (t : t),
- (l1 < h1 /\ (forall x : Z, IntvSets.In x t -> h1 < x) /\ ok' t -> ok' (Cons l1 h1 t)) /\
- (ok' (Cons l1 h1 t) -> l1 < h1 /\ (forall x : Z, IntvSets.In x t -> h1 < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l1 h1 : Z) (t : t), mem x (Cons l1 h1 t) = ite (x <? h1) (l1 <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l1 h1 : Z) (t : t), contains L H (Cons l1 h1 t) = (H <=? h1) && (l1 <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l1 h1 : Z) (s' : t),
- add L H (Cons l1 h1 s') =
- ite (h1 <? L) (Cons l1 h1 (add L H s')) (ite (H <? l1) (Cons L H (Cons l1 h1 s')) (add (Z.min l1 L) (Z.max h1 H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l1 h1 : Z) (s' : t),
- IntvSets.remove L H (Cons l1 h1 s') =
- ite (h1 <? L) (Cons l1 h1 (IntvSets.remove L H s'))
-   (ite (H <? l1) (Cons l1 h1 s')
-      (ite (l1 <? L) (ite (H <? h1) (Cons l1 L (Cons H h1 s')) (Cons l1 L (IntvSets.remove L H s')))
-         (ite (H <? h1) (Cons H h1 s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s0 : t), beq (Cons L H s0) Nil = false) ->
-(forall (L H : Z) (s0 : t), beq Nil (Cons L H s0) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-(true = true -> forall x : Z, l0 <= x < h0 -> l <= x < h \/ IntvSets.In x s) /\
-((forall x : Z, l0 <= x < h0 -> l <= x < h \/ IntvSets.In x s) -> true = true)
-).
-MetaCoq Quote Definition contains_In_Cons_2 := (
-    
-forall l0 h0 : Z,
-l0 < h0 ->
-forall (l h : Z) (s : t),
-l < h ->
-(forall x : Z, IntvSets.In x s -> h < x) ->
-ok' s ->
-(contains l0 h0 s = true -> forall x : Z, l0 <= x < h0 -> IntvSets.In x s) /\
-((forall x : Z, l0 <= x < h0 -> IntvSets.In x s) -> contains l0 h0 s = true) ->
-(h0 <=? h) = true ->
-(l <=? l0) = false ->
-(forall (x l1 h1 : Z) (t : t),
- (l1 <= x < h1 \/ IntvSets.In x t -> IntvSets.In x (Cons l1 h1 t)) /\
- (IntvSets.In x (Cons l1 h1 t) -> l1 <= x < h1 \/ IntvSets.In x t)) ->
-(forall z : Z, (IntvSets.In z Nil -> False) /\ (False -> IntvSets.In z Nil)) ->
-(forall (l1 h1 : Z) (t : t),
- (l1 < h1 /\ (forall x : Z, IntvSets.In x t -> h1 < x) /\ ok' t -> ok' (Cons l1 h1 t)) /\
- (ok' (Cons l1 h1 t) -> l1 < h1 /\ (forall x : Z, IntvSets.In x t -> h1 < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l1 h1 : Z) (t : t), mem x (Cons l1 h1 t) = ite (x <? h1) (l1 <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l1 h1 : Z) (t : t), contains L H (Cons l1 h1 t) = (H <=? h1) && (l1 <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l1 h1 : Z) (s' : t),
- add L H (Cons l1 h1 s') =
- ite (h1 <? L) (Cons l1 h1 (add L H s')) (ite (H <? l1) (Cons L H (Cons l1 h1 s')) (add (Z.min l1 L) (Z.max h1 H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l1 h1 : Z) (s' : t),
- IntvSets.remove L H (Cons l1 h1 s') =
- ite (h1 <? L) (Cons l1 h1 (IntvSets.remove L H s'))
-   (ite (H <? l1) (Cons l1 h1 s')
-      (ite (l1 <? L) (ite (H <? h1) (Cons l1 L (Cons H h1 s')) (Cons l1 L (IntvSets.remove L H s')))
-         (ite (H <? h1) (Cons H h1 s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s0 : t), beq (Cons L H s0) Nil = false) ->
-(forall (L H : Z) (s0 : t), beq Nil (Cons L H s0) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-(contains l0 h0 s = true -> forall x : Z, l0 <= x < h0 -> l <= x < h \/ IntvSets.In x s) /\
-((forall x : Z, l0 <= x < h0 -> l <= x < h \/ IntvSets.In x s) -> contains l0 h0 s = true)
-).
-MetaCoq Quote Definition contains_In_Cons_3 := (
-  forall l0 h0 : Z,
-  l0 < h0 ->
-  forall (l h : Z) (s : t),
-  l < h ->
-  (forall x : Z, IntvSets.In x s -> h < x) ->
-  ok' s ->
-  (contains l0 h0 s = true -> forall x : Z, l0 <= x < h0 -> IntvSets.In x s) /\
-  ((forall x : Z, l0 <= x < h0 -> IntvSets.In x s) -> contains l0 h0 s = true) ->
-  (h0 <=? h) = false ->
-  (forall (x l1 h1 : Z) (t : t),
-   (l1 <= x < h1 \/ IntvSets.In x t -> IntvSets.In x (Cons l1 h1 t)) /\
-   (IntvSets.In x (Cons l1 h1 t) -> l1 <= x < h1 \/ IntvSets.In x t)) ->
-  (forall z : Z, (IntvSets.In z Nil -> False) /\ (False -> IntvSets.In z Nil)) ->
-  (forall (l1 h1 : Z) (t : t),
-   (l1 < h1 /\ (forall x : Z, IntvSets.In x t -> h1 < x) /\ ok' t -> ok' (Cons l1 h1 t)) /\
-   (ok' (Cons l1 h1 t) -> l1 < h1 /\ (forall x : Z, IntvSets.In x t -> h1 < x) /\ ok' t)) ->
-  ok' Nil ->
-  (forall (x l1 h1 : Z) (t : t), mem x (Cons l1 h1 t) = ite (x <? h1) (l1 <=? x) (mem x t)) ->
-  (forall x : Z, mem x Nil = false) ->
-  (forall (L H l1 h1 : Z) (t : t), contains L H (Cons l1 h1 t) = (H <=? h1) && (l1 <=? L) || contains L H t) ->
-  (forall x y : Z, contains x y Nil = false) ->
-  (forall (L H l1 h1 : Z) (s' : t),
-   add L H (Cons l1 h1 s') =
-   ite (h1 <? L) (Cons l1 h1 (add L H s')) (ite (H <? l1) (Cons L H (Cons l1 h1 s')) (add (Z.min l1 L) (Z.max h1 H) s'))) ->
-  (forall L H : Z, add L H Nil = Cons L H Nil) ->
-  (forall (L H l1 h1 : Z) (s' : t),
-   IntvSets.remove L H (Cons l1 h1 s') =
-   ite (h1 <? L) (Cons l1 h1 (IntvSets.remove L H s'))
-     (ite (H <? l1) (Cons l1 h1 s')
-        (ite (l1 <? L) (ite (H <? h1) (Cons l1 L (Cons H h1 s')) (Cons l1 L (IntvSets.remove L H s')))
-           (ite (H <? h1) (Cons H h1 s') (IntvSets.remove L H s'))))) ->
-  (forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-  (forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-  (forall s1 : t, union s1 Nil = s1) ->
-  (forall s2 : t, union Nil s2 = s2) ->
-  (forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
-   beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-  (forall (L H : Z) (s0 : t), beq (Cons L H s0) Nil = false) ->
-  (forall (L H : Z) (s0 : t), beq Nil (Cons L H s0) = false) ->
-  beq Nil Nil = true ->
-  (forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-  (forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-  (contains l0 h0 s = true -> forall x : Z, l0 <= x < h0 -> l <= x < h \/ IntvSets.In x s) /\
-  ((forall x : Z, l0 <= x < h0 -> l <= x < h \/ IntvSets.In x s) -> contains l0 h0 s = true)
-).
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
+  Hint Immediate contains_equation_1 : intvsets_eqns.
+  Hint Immediate contains_equation_2 : intvsets_eqns.
 
-(*** MS BEGIN {"type": "proof_definition"} *)
-Lemma contains_In:
-  forall l0 h0, 
-    l0 < h0 -> 
-    forall s, ok s ->
-  (contains l0 h0 s = true <-> (forall x, l0 <= x < h0 -> IntvSets.In x s)).
-(*** MS END {"type": "proof_definition"} *)
-Proof.
-  (*** MS BEGIN {"type": "proof", "proof_type":"manual"} *)
-  induction 2; 
-  simpl.
-- intuition.
-- destruct (Z.leb h0 h) eqn:?; 
-  simpl.
-  destruct (Z.leb l l0) eqn:?; 
-  simpl.
-  intuition.
-  rewrite IHok. 
-  intuition. 
-  destruct (H3 x); 
-  auto. 
-  exfalso.
-  destruct (H3 l0).
-  lia.
-  lia.
-  exploit BELOW; 
-  eauto.
-  lia.
-  rewrite IHok.
-  intuition.
-  destruct (H3 x); 
-  auto.
-  exfalso.
-  destruct (H3 h).
-  lia.
-  lia.
-  exploit BELOW; 
-  eauto.
-  lia.
-  Restart.
-  (*** MS END {"type": "proof", "proof_type":"manual"} *)
-Proof.
-    (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-    induction 2;
-    try (erewrite ok_ok' in *).
-    - hammer.
-    - admit. (* hammer. *)
-    Restart.
-    (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-Proof.
-  (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":4} *)
-  induction 2;
-  simpl in *.
-  prep_proof.
-  - reflect contains_In_Nil;
-    check_goal_unsat.
-  - destruct (_ <=? _) eqn:?;
-    simpl. 
-    destruct (l <=? l0) eqn:?;
-    simpl.
-    all: prep_proof.
-    + reflect contains_In_Cons_1;
-      check_goal_unsat.
-    + SetSMTSolver "z3".
-      reflect contains_In_Cons_2;
-      check_goal_unsat.
-    + reflect contains_In_Cons_3;
-      check_goal_unsat.
-  (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":4} *)
-Qed.
+  SetSMTSolver "z3".
 
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition In_add_Nil := (
-  forall x : Z,
-(forall (x0 l h : Z) (t : t),
- (l <= x0 < h \/ IntvSets.In x0 t -> IntvSets.In x0 (Cons l h t)) /\
- (IntvSets.In x0 (Cons l h t) -> l <= x0 < h \/ IntvSets.In x0 t)) ->
-(forall z : Z, (IntvSets.In z Nil -> False) /\ (False -> IntvSets.In z Nil)) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t)) ->
-ok' Nil ->
-(forall (x0 l h : Z) (t : t), mem x0 (Cons l h t) = ite (x0 <? h) (l <=? x0) (mem x0 t)) ->
-(forall x0 : Z, mem x0 Nil = false) ->
-(forall (L H5 l h : Z) (t : t), contains L H5 (Cons l h t) = (H5 <=? h) && (l <=? L) || contains L H5 t) ->
-(forall x0 y : Z, contains x0 y Nil = false) ->
-(forall (L H7 l h : Z) (s' : t),
- add L H7 (Cons l h s') =
- ite (h <? L) (Cons l h (add L H7 s')) (ite (H7 <? l) (Cons L H7 (Cons l h s')) (add (Z.min l L) (Z.max h H7) s'))) ->
-(forall L H8 : Z, add L H8 Nil = Cons L H8 Nil) ->
-(forall (L H9 l h : Z) (s' : t),
- IntvSets.remove L H9 (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H9 s'))
-   (ite (H9 <? l) (Cons l h s')
-      (ite (l <? L) (ite (H9 <? h) (Cons l L (Cons H9 h s')) (Cons l L (IntvSets.remove L H9 s')))
-         (ite (H9 <? h) (Cons H9 h s') (IntvSets.remove L H9 s'))))) ->
-(forall L H10 : Z, IntvSets.remove L H10 Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H15 : Z) (s : t), beq (Cons L H15 s) Nil = false) ->
-(forall (L H16 : Z) (s : t), beq Nil (Cons L H16 s) = false) ->
-beq Nil Nil = true ->
-(forall x0 y : Z, Z.min x0 y = ite (x0 <? y) x0 y) ->
-(forall x0 y : Z, Z.max x0 y = ite (x0 <? y) y x0) ->
-ok' Nil ->
-forall l0 h0 : Z,
-(IntvSets.In x (add l0 h0 Nil) -> l0 <= x < h0 \/ IntvSets.In x Nil) /\
-(l0 <= x < h0 \/ IntvSets.In x Nil -> IntvSets.In x (add l0 h0 Nil))
-).
-
-MetaCoq Quote Definition In_add_Cons := (
-  forall (x lo hi : Z) (s : t),
-(ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x0 l h : Z) (t : t),
- (l <= x0 < h \/ IntvSets.In x0 t -> IntvSets.In x0 (Cons l h t)) /\
- (IntvSets.In x0 (Cons l h t) -> l <= x0 < h \/ IntvSets.In x0 t)) ->
-(forall z : Z, (IntvSets.In z Nil -> False) /\ (False -> IntvSets.In z Nil)) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t)) ->
-ok' Nil ->
-(forall (x0 l h : Z) (t : t), mem x0 (Cons l h t) = ite (x0 <? h) (l <=? x0) (mem x0 t)) ->
-(forall x0 : Z, mem x0 Nil = false) ->
-(forall (L H5 l h : Z) (t : t), contains L H5 (Cons l h t) = (H5 <=? h) && (l <=? L) || contains L H5 t) ->
-(forall x0 y : Z, contains x0 y Nil = false) ->
-(forall (L H7 l h : Z) (s' : t),
- add L H7 (Cons l h s') =
- ite (h <? L) (Cons l h (add L H7 s')) (ite (H7 <? l) (Cons L H7 (Cons l h s')) (add (Z.min l L) (Z.max h H7) s'))) ->
-(forall L H8 : Z, add L H8 Nil = Cons L H8 Nil) ->
-(forall (L H9 l h : Z) (s' : t),
- IntvSets.remove L H9 (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H9 s'))
-   (ite (H9 <? l) (Cons l h s')
-      (ite (l <? L) (ite (H9 <? h) (Cons l L (Cons H9 h s')) (Cons l L (IntvSets.remove L H9 s')))
-         (ite (H9 <? h) (Cons H9 h s') (IntvSets.remove L H9 s'))))) ->
-(forall L H10 : Z, IntvSets.remove L H10 Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H15 : Z) (s0 : t), beq (Cons L H15 s0) Nil = false) ->
-(forall (L H16 : Z) (s0 : t), beq Nil (Cons L H16 s0) = false) ->
-beq Nil Nil = true ->
-(forall x0 y : Z, Z.min x0 y = ite (x0 <? y) x0 y) ->
-(forall x0 y : Z, Z.max x0 y = ite (x0 <? y) y x0) ->
-ok' (Cons lo hi s) ->
-forall l0 h0 : Z,
-(IntvSets.In x (add l0 h0 (Cons lo hi s)) -> l0 <= x < h0 \/ IntvSets.In x (Cons lo hi s)) /\
-(l0 <= x < h0 \/ IntvSets.In x (Cons lo hi s) -> IntvSets.In x (add l0 h0 (Cons lo hi s)))
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-(*** MS BEGIN {"type": "proof_definition"} *)
-Lemma In_add:
-  forall x s, 
-    ok s -> 
-    forall l0 h0, 
-      (IntvSets.In x (add l0 h0 s) <-> l0 <= x < h0 \/ IntvSets.In x s).
-(*** MS END {"type": "proof_definition"} *)
-Proof.
-  (*** MS BEGIN {"type": "proof", "proof_type":"manual"} *)
-  induction 1; 
-  simpl; 
-  intros.
-  tauto.
-  destruct (Z.ltb h l0) eqn:?;
-  simpl. 
-  rewrite IHok.
-  tauto.
-  destruct (Z.ltb h0 l) eqn:?;
-  simpl.
-  tauto.
-  rewrite IHok.
-  intuition.
-  assert (l0 <= x < h0 \/ l <= x < h) by extlia.
-  tauto.
-  Restart.
-  (*** MS END {"type": "proof", "proof_type":"manual"} *)
-Proof.
-    intros.
-    erewrite ok_ok' in *.
-    Utils.revert_all.
-    (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-    induction s.
-    - hammer.
-    - admit. (* hammer. *)
-    Restart.
-    (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-Proof.
-  intros;
-  erewrite ok_ok' in *;
-  Utils.revert_all.
-  (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
-  induction s;
-  prep_proof.
-  - admit. (* reflect In_add_Nil;
-    check_goal_unsat. *)
-  - reflect In_add_Cons;
-    check_goal_unsat.
-  (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
-Admitted.
-
-(*** MS BEGIN {"type": "configuration", "config_type":"tactics"} *)
-Ltac prep_proof' := pose proof In_add;
-  prep_proof.
-(*** MS END {"type": "configuration", "config_type":"tactics"} *)
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition add_ok_Nil := (
-  (forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s'))
-   (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t),
- union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-ok' Nil -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 Nil)
-).
-
-MetaCoq Quote Definition add_ok_Cons := (
-  forall (lo hi : Z) (s : t),
-(ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x : Z) (s0 : t),
- ok' s0 ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s0) -> l0 <= x < h0 \/ IntvSets.In x s0) /\
- (l0 <= x < h0 \/ IntvSets.In x s0 -> IntvSets.In x (add l0 h0 s0))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H6 l h : Z) (t : t), contains L H6 (Cons l h t) = (H6 <=? h) && (l <=? L) || contains L H6 t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H8 l h : Z) (s' : t),
- add L H8 (Cons l h s') =
- ite (h <? L) (Cons l h (add L H8 s')) (ite (H8 <? l) (Cons L H8 (Cons l h s')) (add (Z.min l L) (Z.max h H8) s'))) ->
-(forall L H9 : Z, add L H9 Nil = Cons L H9 Nil) ->
-(forall (L H10 l h : Z) (s' : t),
- IntvSets.remove L H10 (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H10 s'))
-   (ite (H10 <? l) (Cons l h s')
-      (ite (l <? L) (ite (H10 <? h) (Cons l L (Cons H10 h s')) (Cons l L (IntvSets.remove L H10 s')))
-         (ite (H10 <? h) (Cons H10 h s') (IntvSets.remove L H10 s'))))) ->
-(forall L H11 : Z, IntvSets.remove L H11 Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t),
- union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H16 : Z) (s0 : t), beq (Cons L H16 s0) Nil = false) ->
-(forall (L H17 : Z) (s0 : t), beq Nil (Cons L H17 s0) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-ok' (Cons lo hi s) -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 (Cons lo hi s))
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-(*** MS BEGIN {"type": "proof_definition"} *)
-Lemma add_ok:
-  forall s, 
-    ok s -> 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 0, "crush": 1} *)
+  (*** MS BEGIN {"type": "proof_definition"} *)
+  Lemma contains_In:
     forall l0 h0, 
       l0 < h0 -> 
-      ok (add l0 h0 s).
-(*** MS END {"type": "proof_definition"} *)
-Proof.
-  (*** MS BEGIN {"type": "proof", "proof_type":"manual"} *)
-  induction 1; 
-  simpl; 
-  intros.
-  constructor. 
-  auto. 
-  intros. 
-  inv H0. 
-  constructor.
-  destruct (Z.ltb h l0) eqn:?.
-  constructor; 
-  auto.
-  intros.
-  rewrite In_add in H1; 
-  auto.
-  destruct H1. 
-  lia. 
-  auto.
-  destruct (Z.ltb h0 l) eqn:?.
-  constructor.
-  auto.
-  simpl; 
-  intros.
-  destruct H1.
-  lia.
-  exploit BELOW; 
-  eauto.
-  lia.
-  constructor.
-  lia.
-  auto.
-  auto.
-  apply IHok.
-  extlia.
-  (*** MS END {"type": "proof", "proof_type":"manual"} *)
-  Restart.
-Proof.
-  intros.
-  erewrite ok_ok' in *.
-  Utils.revert_all.
-  (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-  induction s.
-  - admit. (* hammer. *) (* this one succeeds *)
-  - admit. (* hammer. *)
-  Restart.
-  (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-Proof.
-  intros;
-  erewrite ok_ok' in *;
-  Utils.revert_all.
-  (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
-  induction s;
-  prep_proof'.
-  - admit. (* reflect add_ok_Nil;
-    check_goal_unsat. *)
-  - admit. (* reflect add_ok_Cons;
-    check_goal_unsat. *)
-(*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
-Admitted.
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition In_remove_Nil := (
-  
-forall x l0 h0 : Z,
-(forall (x0 : Z) (s : t),
- ok' s ->
- forall l1 h1 : Z,
- (IntvSets.In x0 (add l1 h1 s) -> l1 <= x0 < h1 \/ IntvSets.In x0 s) /\
- (l1 <= x0 < h1 \/ IntvSets.In x0 s -> IntvSets.In x0 (add l1 h1 s))) ->
-(forall (x0 l h : Z) (t : t),
- (l <= x0 < h \/ IntvSets.In x0 t -> IntvSets.In x0 (Cons l h t)) /\
- (IntvSets.In x0 (Cons l h t) -> l <= x0 < h \/ IntvSets.In x0 t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t)) ->
-ok' Nil ->
-(forall (x0 l h : Z) (t : t), mem x0 (Cons l h t) = ite (x0 <? h) (l <=? x0) (mem x0 t)) ->
-(forall x0 : Z, mem x0 Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x0 y : Z, contains x0 y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s'))
-   (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t),
- union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x0 y : Z, Z.min x0 y = ite (x0 <? y) x0 y) ->
-(forall x0 y : Z, Z.max x0 y = ite (x0 <? y) y x0) ->
-ok' Nil ->
-(IntvSets.In x (IntvSets.remove l0 h0 Nil) -> ~ l0 <= x < h0 /\ IntvSets.In x Nil) /\
-(~ l0 <= x < h0 /\ IntvSets.In x Nil -> IntvSets.In x (IntvSets.remove l0 h0 Nil))
-).
-
-MetaCoq Quote Definition In_remove_Cons := (
-  forall (x l0 h0 lo hi : Z) (s : t),
-(ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x0 : Z) (s0 : t),
- ok' s0 ->
- forall l1 h1 : Z,
- (IntvSets.In x0 (add l1 h1 s0) -> l1 <= x0 < h1 \/ IntvSets.In x0 s0) /\
- (l1 <= x0 < h1 \/ IntvSets.In x0 s0 -> IntvSets.In x0 (add l1 h1 s0))) ->
-(forall (x0 l h : Z) (t : t),
- (l <= x0 < h \/ IntvSets.In x0 t -> IntvSets.In x0 (Cons l h t)) /\
- (IntvSets.In x0 (Cons l h t) -> l <= x0 < h \/ IntvSets.In x0 t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t)) ->
-ok' Nil ->
-(forall (x0 l h : Z) (t : t), mem x0 (Cons l h t) = ite (x0 <? h) (l <=? x0) (mem x0 t)) ->
-(forall x0 : Z, mem x0 Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x0 y : Z, contains x0 y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s'))
-   (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t),
- union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s0 : t), beq (Cons L H s0) Nil = false) ->
-(forall (L H : Z) (s0 : t), beq Nil (Cons L H s0) = false) ->
-beq Nil Nil = true ->
-(forall x0 y : Z, Z.min x0 y = ite (x0 <? y) x0 y) ->
-(forall x0 y : Z, Z.max x0 y = ite (x0 <? y) y x0) ->
-ok' (Cons lo hi s) ->
-(IntvSets.In x (IntvSets.remove l0 h0 (Cons lo hi s)) -> ~ l0 <= x < h0 /\ IntvSets.In x (Cons lo hi s)) /\
-(~ l0 <= x < h0 /\ IntvSets.In x (Cons lo hi s) -> IntvSets.In x (IntvSets.remove l0 h0 (Cons lo hi s)))
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-(*** MS BEGIN {"type": "proof_definition"} *)
-Lemma In_remove:
-  forall x l0 h0 s, 
-    ok s ->
-    (IntvSets.In x (IntvSets.remove l0 h0 s) <-> ~(l0 <= x < h0) /\ IntvSets.In x s).
-(*** MS END {"type": "proof_definition"} *)
-Proof.
-  (*** MS BEGIN {"type": "proof", "proof_type":"manual"} *)
-  induction 1; 
-  simpl.
-  tauto.
-  destruct (Z.ltb h l0) eqn:?;
-  simpl. 
-  rewrite IHok. 
-  intuition lia.
-  destruct (Z.ltb h0 l) eqn:?.
-  simpl. 
-  intuition. 
-  exploit BELOW;
-  eauto. 
-  lia.
-  destruct (Z.ltb l l0) eqn:?.
-  destruct (Z.ltb h0 h) eqn:?; 
-  simpl. 
-  clear IHok. 
-  split.
-  intros [A | [A | A]].
-  split. 
-  lia. 
-  left; 
-  lia.
-  split. 
-  lia. 
-  left; 
-  lia.
-  split. 
-  exploit BELOW; 
-  eauto. 
-  lia. 
-  auto.
-  intros [A [B | B]].
-  destruct (Z.ltb x l0) eqn:?. 
-  left; 
-  lia. 
-  right; 
-  left; 
-  lia.
-  auto.
-  intuition lia.
-  destruct (Z.ltb h0 h) eqn:?; 
-  simpl.
-  intuition. 
-  exploit BELOW;
-  eauto. 
-  lia.
-  rewrite IHok. 
-  intuition.
-  (*** MS END {"type": "proof", "proof_type":"manual"} *)
-  Restart.
-Proof.
-  intros.
-  erewrite ok_ok' in *.
-  Utils.revert_all.
-  (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-  induction s.
-  - admit. (* hammer. *) (* success *)
-  - admit. (* hammer. *)
-  Restart.
-  (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-Proof.
-  intros;
-  erewrite ok_ok' in *;
-  Utils.revert_all.
-  (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
-  induction s;
-  prep_proof'.
-  - reflect In_remove_Nil;
-    check_goal_unsat.
-  - reflect In_remove_Cons;
-    check_goal_unsat.
-(*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
-Qed.
-
-(*** MS BEGIN {"type": "configuration", "config_type":"tactics"} *)
-Ltac prep_proof'' := pose proof In_remove;
-  prep_proof'.
-(*** MS END {"type": "configuration", "config_type":"tactics"} *)
-
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition remove_ok_Nil := (
-  
-forall l0 h0 : Z,
-l0 < h0 ->
-(forall (x l1 h1 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l1 h1 s) -> ~ l1 <= x < h1 /\ IntvSets.In x s) /\
- (~ l1 <= x < h1 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l1 h1 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l1 h1 : Z,
- (IntvSets.In x (add l1 h1 s) -> l1 <= x < h1 \/ IntvSets.In x s) /\
- (l1 <= x < h1 \/ IntvSets.In x s -> IntvSets.In x (add l1 h1 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) -> ok' Nil -> ok' (IntvSets.remove l0 h0 Nil)
-).
-
-MetaCoq Quote Definition remove_ok_Cons := (
-  forall l0 h0 : Z,
-l0 < h0 ->
-forall (lo hi : Z) (s : t),
-(ok' s -> ok' (IntvSets.remove l0 h0 s)) ->
-(forall (x l1 h1 : Z) (s0 : t),
- ok' s0 ->
- (IntvSets.In x (IntvSets.remove l1 h1 s0) -> ~ l1 <= x < h1 /\ IntvSets.In x s0) /\
- (~ l1 <= x < h1 /\ IntvSets.In x s0 -> IntvSets.In x (IntvSets.remove l1 h1 s0))) ->
-(forall (x : Z) (s0 : t),
- ok' s0 ->
- forall l1 h1 : Z,
- (IntvSets.In x (add l1 h1 s0) -> l1 <= x < h1 \/ IntvSets.In x s0) /\
- (l1 <= x < h1 \/ IntvSets.In x s0 -> IntvSets.In x (add l1 h1 s0))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s2 : t, union Nil s2 = s2) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s0 : t), beq (Cons L H s0) Nil = false) ->
-(forall (L H : Z) (s0 : t), beq Nil (Cons L H s0) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) -> ok' (Cons lo hi s) -> ok' (IntvSets.remove l0 h0 (Cons lo hi s))
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-(*** MS BEGIN {"type": "configuration", "config_type":"plugin"} *)
-SetSMTSolver "z3".
-(*** MS END {"type": "configuration", "config_type":"plugin"} *)
-
-(*** MS BEGIN {"type": "proof_definition"} *)
-Lemma remove_ok:
-  forall l0 h0, 
-    l0 < h0 -> 
-      forall s, 
-        ok s -> 
-        ok (IntvSets.remove l0 h0 s).
-(*** MS END {"type": "proof_definition"} *)
-Proof.
-  (*** MS BEGIN {"type": "proof", "proof_type":"manual"} *)
-  induction 2; 
-  simpl.
-  constructor.
-  destruct (Z.ltb h l0) eqn:?.
-  constructor; 
-  auto. 
-  intros; 
-  apply BELOW.
-  rewrite In_remove in H1;
-  tauto.
-  destruct (Z.ltb h0 l) eqn:?.
-  constructor;
-  auto.
-  destruct (Z.ltb l l0) eqn:?.
-  destruct (Z.ltb h0 h) eqn:?.
-  constructor.
-  lia.
-  intros.
-  inv H1.
-  lia.
-  exploit BELOW;
-  eauto.
-  lia.
-  constructor.
-  lia.
-  auto.
-  auto.
-  constructor; 
-  lia || auto.
-  intros. 
-  rewrite In_remove in H1 by auto. 
-  destruct H1. 
-  exploit BELOW; 
-  eauto. 
-  lia.
-  destruct (Z.ltb h0 h) eqn:?.
-  constructor; 
-  lia || auto.
-  auto.
-  (*** MS END {"type": "proof", "proof_type":"manual"} *)
-  Restart.
-Proof.
-  intros.
-  erewrite ok_ok' in *.
-  Utils.revert_all.
-  (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-  induction s.
-  - hammer.
-  - admit. (* hammer. *)
-  Restart.
-  (*** MS END {"type": "proof", "proof_type":"hammer", "total":2, "finished":1} *)
-Proof.
-  intros;
-  erewrite ok_ok' in *;
-  Utils.revert_all.
-  (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
-  induction s;
-  prep_proof''.
-  - reflect remove_ok_Nil;
-    check_goal_unsat.
-  - reflect remove_ok_Cons;
-    check_goal_unsat.
-(*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":2} *)
-Qed.
-
-(* Lemma In_inter:
-  forall x s1, ok s1 -> forall s2, ok s2 ->
-  (IntvSets.In x (inter s1 s2) <-> IntvSets.In x s1 /\ IntvSets.In x s2).
-Proof.
-  induction 1.
-  simpl. induction 1; simpl. tauto. tauto.
-  assert (ok (Cons l h s)) by (constructor; auto).
-  induction 1; simpl.
-  tauto.
-  assert (ok (Cons l0 h0 s0)) by (constructor; auto).
-  destruct (zle h l0).
-  rewrite IHok; auto. simpl. intuition.
-  destruct H3; eauto; intuition.
-  exploit BELOW0; eauto. intros. extlia.
-  shelve.
-  destruct (zle h0 l).
-  simpl in IHok0; rewrite IHok0. intuition. extlia.
-  exploit BELOW; eauto. intros; extlia.
-  destruct (zle l l0).
-  destruct (zle h0 h).
-  simpl. simpl in IHok0; rewrite IHok0. intuition.
-  simpl. rewrite IHok; auto. simpl. intuition.  exploit BELOW0; eauto. intros; extlia.
-  destruct (zle h h0).
-  simpl. rewrite IHok; auto. simpl. intuition.
-  simpl. simpl in IHok0; rewrite IHok0. intuition.
-  exploit BELOW; eauto. intros; extlia.
-Qed. *)
-
-(* Lemma inter_ok:
-  forall s1, ok s1 -> forall s2, ok s2 -> ok (inter s1 s2).
-Proof.
-  induction 1.
-  intros; simpl. destruct s2; constructor.
-  assert (ok (Cons l h s)). constructor; auto.
-  induction 1; simpl.
-  constructor.
-  assert (ok (Cons l0 h0 s0)). constructor; auto.
-  destruct (zle h l0).
-  auto.
-  destruct (zle h0 l).
-  auto.
-  destruct (zle l l0).
-  destruct (zle h0 h).
-  constructor; auto. intros.
-  assert (In x (inter (Cons l h s) s0)) by exact H3.
-  rewrite In_inter in H4; auto. apply BELOW0. tauto.
-  constructor. lia. intros. rewrite In_inter in H3; auto. apply BELOW. tauto.
-  auto.
-  destruct (zle h h0).
-  constructor. lia. intros. rewrite In_inter in H3; auto. apply BELOW. tauto.
-  auto.
-  constructor. lia. intros.
-  assert (In x (inter (Cons l h s) s0)) by exact H3.
-  rewrite In_inter in H4; auto. apply BELOW0. tauto.
-  auto.
-Qed. *)
-
-(*** MS BEGIN {"type": "configuration", "config_type":"tactics"} *)
-Ltac prep_proof''' := pose proof add_ok;
-  prep_proof''.
-(*** MS END {"type": "configuration", "config_type":"tactics"} *)
-
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition In_ok_union_Nil_Nil := (
-  
-ok' Nil ->
-forall s2 : t,
-s2 = Nil ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t),
- union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-ok' Nil ->
-ok' (union Nil Nil) /\
-(forall x : Z,
- (IntvSets.In x Nil \/ IntvSets.In x Nil -> IntvSets.In x (union Nil Nil)) /\
- (IntvSets.In x (union Nil Nil) -> IntvSets.In x Nil \/ IntvSets.In x Nil))
-).
-
-MetaCoq Quote Definition In_ok_union_Nil_Cons := (
-  ok' Nil ->
-forall (s2 : t) (lo hi : Z) (t0 : t),
-s2 = Cons lo hi t0 ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t),
- union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-ok' (Cons lo hi t0) ->
-ok' (union Nil (Cons lo hi t0)) /\
-(forall x : Z,
- (IntvSets.In x Nil \/ IntvSets.In x (Cons lo hi t0) -> IntvSets.In x (union Nil (Cons lo hi t0))) /\
- (IntvSets.In x (union Nil (Cons lo hi t0)) -> IntvSets.In x Nil \/ IntvSets.In x (Cons lo hi t0)))
-
-).
-
-  MetaCoq Quote Definition In_ok_union_Cons_Nil := (
-    forall (lo hi : Z) (s1 : t),
-(ok' s1 ->
- forall s2 : t,
- ok' s2 ->
- ok' (union s1 s2) /\
- (forall x : Z,
-  (IntvSets.In x s1 \/ IntvSets.In x s2 -> IntvSets.In x (union s1 s2)) /\
-  (IntvSets.In x (union s1 s2) -> IntvSets.In x s1 \/ IntvSets.In x s2))) ->
-ok' (Cons lo hi s1) ->
-forall s2 : t,
-s2 = Nil ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t),
- union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s3 : t, union s3 Nil = s3) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-ok' Nil ->
-ok' (union (Cons lo hi s1) Nil) /\
-(forall x : Z,
- (IntvSets.In x (Cons lo hi s1) \/ IntvSets.In x Nil -> IntvSets.In x (union (Cons lo hi s1) Nil)) /\
- (IntvSets.In x (union (Cons lo hi s1) Nil) -> IntvSets.In x (Cons lo hi s1) \/ IntvSets.In x Nil))
-  ).
-
-MetaCoq Quote Definition In_ok_union_Cons_Cons := (
-  forall (lo hi : Z) (s1 : t),
-(ok' s1 ->
- forall s2 : t,
- ok' s2 ->
- ok' (union s1 s2) /\
- (forall x : Z,
-  (IntvSets.In x s1 \/ IntvSets.In x s2 -> IntvSets.In x (union s1 s2)) /\
-  (IntvSets.In x (union s1 s2) -> IntvSets.In x s1 \/ IntvSets.In x s2))) ->
-ok' (Cons lo hi s1) ->
-forall (s2 : t) (lo0 hi0 : Z) (t0 : t),
-s2 = Cons lo0 hi0 t0 ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t),
- union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s3 : t, union s3 Nil = s3) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-ok' (Cons lo0 hi0 t0) ->
-ok' (union (Cons lo hi s1) (Cons lo0 hi0 t0)) /\
-(forall x : Z,
- (IntvSets.In x (Cons lo hi s1) \/ IntvSets.In x (Cons lo0 hi0 t0) ->
-  IntvSets.In x (union (Cons lo hi s1) (Cons lo0 hi0 t0))) /\
- (IntvSets.In x (union (Cons lo hi s1) (Cons lo0 hi0 t0)) ->
-  IntvSets.In x (Cons lo hi s1) \/ IntvSets.In x (Cons lo0 hi0 t0)))
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-(*** MS BEGIN {"type": "configuration", "config_type":"plugin"} *)
-SetSMTSolver "cvc5".
-(*** MS END {"type": "configuration", "config_type":"plugin"} *)
-
-(*** MS BEGIN {"type": "proof_definition"} *)
-Lemma In_ok_union:
-  forall s1, 
-    ok s1 -> 
-    forall s2, 
-      ok s2 ->
-      ok (union s1 s2) /\ 
-      (forall x, IntvSets.In x s1 \/ IntvSets.In x s2 <-> IntvSets.In x (union s1 s2)).
-(*** MS END {"type": "proof_definition"} *)
-Proof.
-  (*** MS BEGIN {"type": "proof", "proof_type":"manual"} *)
-  induction 1; 
-  destruct 1; 
-  simpl.
-  split.
-  constructor.
-  tauto.
-  split.
-  constructor;
-  auto.
-  tauto.
-  split.
-  constructor;
-  auto.
-  tauto.
-  destruct (IHok s0) as [A B];
-  auto.
-  split.
-  apply add_ok;
-  auto.
-  apply add_ok;
-  auto.
-  intros.
-  rewrite In_add.
-  rewrite In_add.
-  rewrite <- B.
-  tauto. 
-  auto.
-  apply add_ok;
-  auto.
-  (*** MS END {"type": "proof", "proof_type":"manual"} *)
-  Restart.
-Proof.
-  intros.
-  erewrite ok_ok' in *.
-  Utils.revert_all.
-  (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":4, "finished":3} *)
-  induction s1;
-  destruct s2 eqn:?.
-  - hammer.
-  - hammer.
-  - hammer.
-  - admit. (* hammer. *)
-  Restart.
-  (*** MS END {"type": "proof", "proof_type":"hammer", "total":4, "finished":3} *)
-Proof.
-  intros;
-  erewrite ok_ok' in *;
-  Utils.revert_all.
-  (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":4} *)
-  induction s1;
-  destruct s2 eqn:?;
-  prep_proof'''.
-  - reflect In_ok_union_Nil_Nil;
-    check_goal_unsat.
-  - reflect In_ok_union_Nil_Cons;
-    check_goal_unsat.
-  - reflect In_ok_union_Cons_Nil;
-    check_goal_unsat.
-  - reflect In_ok_union_Cons_Cons;
-    check_goal_unsat.
-(*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":4} *)
-Qed.
-
-
-(*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-MetaCoq Quote Definition beq_spec_Nil_Nil := (
-  
-  ok' Nil ->
-  forall s2 : t,
-  s2 = Nil ->
-  (forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-  (forall (x l0 h0 : Z) (s : t),
-   ok' s ->
-   (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
-   (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-  (forall (x : Z) (s : t),
-   ok' s ->
-   forall l0 h0 : Z,
-   (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
-   (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-  (forall (x l h : Z) (t : t),
-   (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
-   (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-  (forall z : Z, ~ IntvSets.In z Nil) ->
-  (forall (l h : Z) (t : t),
-   (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
-   (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-  ok' Nil ->
-  (forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-  (forall x : Z, mem x Nil = false) ->
-  (forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-  (forall x y : Z, contains x y Nil = false) ->
-  (forall (L H l h : Z) (s' : t),
-   add L H (Cons l h s') =
-   ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-  (forall L H : Z, add L H Nil = Cons L H Nil) ->
-  (forall (L H l h : Z) (s' : t),
-   IntvSets.remove L H (Cons l h s') =
-   ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-     (ite (H <? l) (Cons l h s')
-        (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-           (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-  (forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-  (forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-  (forall s1 : t, union s1 Nil = s1) ->
-  (forall s3 : t, union Nil s3 = s3) ->
-  (forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
-   beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-  (forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-  (forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-  beq Nil Nil = true ->
-  (forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-  (forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-  ok' Nil ->
-  (beq Nil Nil = true -> forall x : Z, (IntvSets.In x Nil -> IntvSets.In x Nil) /\ (IntvSets.In x Nil -> IntvSets.In x Nil)) /\
-  ((forall x : Z, (IntvSets.In x Nil -> IntvSets.In x Nil) /\ (IntvSets.In x Nil -> IntvSets.In x Nil)) ->
-   beq Nil Nil = true)
-).
-
-MetaCoq Quote Definition beq_spec_Nil_Cons := (
-  ok' Nil ->
-forall (s2 : t) (lo hi : Z) (t0 : t),
-s2 = Cons lo hi t0 ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s1 : t, union s1 Nil = s1) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-ok' (Cons lo hi t0) ->
-(beq Nil (Cons lo hi t0) = true ->
- forall x : Z,
- (IntvSets.In x Nil -> IntvSets.In x (Cons lo hi t0)) /\ (IntvSets.In x (Cons lo hi t0) -> IntvSets.In x Nil)) /\
-((forall x : Z,
-  (IntvSets.In x Nil -> IntvSets.In x (Cons lo hi t0)) /\ (IntvSets.In x (Cons lo hi t0) -> IntvSets.In x Nil)) ->
- beq Nil (Cons lo hi t0) = true)
-).
-
-  MetaCoq Quote Definition beq_spec_Cons_Nil := (
-    forall (lo hi : Z) (s1 : t),
-(ok' s1 ->
- forall s2 : t,
- ok' s2 ->
- (beq s1 s2 = true -> forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) /\
- ((forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) -> beq s1 s2 = true)) ->
-ok' (Cons lo hi s1) ->
-forall s2 : t,
-s2 = Nil ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s3 : t, union s3 Nil = s3) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-ok' Nil ->
-(beq (Cons lo hi s1) Nil = true ->
- forall x : Z,
- (IntvSets.In x (Cons lo hi s1) -> IntvSets.In x Nil) /\ (IntvSets.In x Nil -> IntvSets.In x (Cons lo hi s1))) /\
-((forall x : Z,
-  (IntvSets.In x (Cons lo hi s1) -> IntvSets.In x Nil) /\ (IntvSets.In x Nil -> IntvSets.In x (Cons lo hi s1))) ->
- beq (Cons lo hi s1) Nil = true)
-  ).
-
-MetaCoq Quote Definition beq_spec_Cons_Cons_0 := (
-  forall (lo hi : Z) (s1 : t),
-  (ok' s1 ->
-   forall s2 : t,
-   ok' s2 ->
-   (beq s1 s2 = true -> forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) /\
-   ((forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) -> beq s1 s2 = true)) ->
-  lo < hi /\ (forall x : Z, IntvSets.In x s1 -> hi < x) /\ ok' s1 ->
-  forall (s2 : t) (lo0 hi0 : Z) (t0 : t),
-  s2 = Cons lo0 hi0 t0 ->
-  lo0 < hi0 /\ (forall x : Z, IntvSets.In x t0 -> hi0 < x) /\ ok' t0 ->
-  (lo =? lo0) && (hi =? hi0) && beq s1 t0 = true ->
-  forall x : Z,
-  (forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-  (forall (x0 l0 h0 : Z) (s : t),
-   ok' s ->
-   (IntvSets.In x0 (IntvSets.remove l0 h0 s) -> ~ l0 <= x0 < h0 /\ IntvSets.In x0 s) /\
-   (~ l0 <= x0 < h0 /\ IntvSets.In x0 s -> IntvSets.In x0 (IntvSets.remove l0 h0 s))) ->
-  (forall (x0 : Z) (s : t),
-   ok' s ->
-   forall l0 h0 : Z,
-   (IntvSets.In x0 (add l0 h0 s) -> l0 <= x0 < h0 \/ IntvSets.In x0 s) /\
-   (l0 <= x0 < h0 \/ IntvSets.In x0 s -> IntvSets.In x0 (add l0 h0 s))) ->
-  (forall (x0 l h : Z) (t : t),
-   (l <= x0 < h \/ IntvSets.In x0 t -> IntvSets.In x0 (Cons l h t)) /\
-   (IntvSets.In x0 (Cons l h t) -> l <= x0 < h \/ IntvSets.In x0 t)) ->
-  (forall z : Z, ~ IntvSets.In z Nil) ->
-  (forall (l h : Z) (t : t),
-   (l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t -> ok' (Cons l h t)) /\
-   (ok' (Cons l h t) -> l < h /\ (forall x0 : Z, IntvSets.In x0 t -> h < x0) /\ ok' t)) ->
-  ok' Nil ->
-  (forall (x0 l h : Z) (t : t), mem x0 (Cons l h t) = ite (x0 <? h) (l <=? x0) (mem x0 t)) ->
-  (forall x0 : Z, mem x0 Nil = false) ->
-  (forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-  (forall x0 y : Z, contains x0 y Nil = false) ->
-  (forall (L H l h : Z) (s' : t),
-   add L H (Cons l h s') =
-   ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-  (forall L H : Z, add L H Nil = Cons L H Nil) ->
-  (forall (L H l h : Z) (s' : t),
-   IntvSets.remove L H (Cons l h s') =
-   ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-     (ite (H <? l) (Cons l h s')
-        (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-           (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-  (forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-  (forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-  (forall s3 : t, union s3 Nil = s3) ->
-  (forall s3 : t, union Nil s3 = s3) ->
-  (forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
-   beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-  (forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-  (forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-  beq Nil Nil = true ->
-  (forall x0 y : Z, Z.min x0 y = ite (x0 <? y) x0 y) ->
-  (forall x0 y : Z, Z.max x0 y = ite (x0 <? y) y x0) ->
-  (lo <= x < hi \/ IntvSets.In x s1 -> lo0 <= x < hi0 \/ IntvSets.In x t0) /\
-  (lo0 <= x < hi0 \/ IntvSets.In x t0 -> lo <= x < hi \/ IntvSets.In x s1)
-).
-
-
-MetaCoq Quote Definition beq_spec_Cons_Cons_11 := (
-  
-forall (lo hi : Z) (s1 : t),
-(ok' s1 ->
- forall s2 : t,
- ok' s2 ->
- (beq s1 s2 = true -> forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) /\
- ((forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) -> beq s1 s2 = true)) ->
-lo < hi /\ (forall x : Z, IntvSets.In x s1 -> hi < x) /\ ok' s1 ->
-forall (s2 : t) (lo0 hi0 : Z) (t0 : t),
-s2 = Cons lo0 hi0 t0 ->
-lo0 < hi0 /\ (forall x : Z, IntvSets.In x t0 -> hi0 < x) /\ ok' t0 ->
-(forall x : Z,
- (lo <= x < hi \/ IntvSets.In x s1 -> lo0 <= x < hi0 \/ IntvSets.In x t0) /\
- (lo0 <= x < hi0 \/ IntvSets.In x t0 -> lo <= x < hi \/ IntvSets.In x s1)) ->
-(lo =? lo0) = true ->
-(hi =? hi0) = true ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s3 : t, union s3 Nil = s3) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) -> (forall x y : Z, Z.max x y = ite (x <? y) y x) -> ok' s1
-
-).
-
-MetaCoq Quote Definition beq_spec_Cons_Cons_12 := (
-  
-forall (lo hi : Z) (s1 : t),
-(ok' s1 ->
- forall s2 : t,
- ok' s2 ->
- (beq s1 s2 = true -> forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) /\
- ((forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) -> beq s1 s2 = true)) ->
-lo < hi /\ (forall x : Z, IntvSets.In x s1 -> hi < x) /\ ok' s1 ->
-forall (s2 : t) (lo0 hi0 : Z) (t0 : t),
-s2 = Cons lo0 hi0 t0 ->
-lo0 < hi0 /\ (forall x : Z, IntvSets.In x t0 -> hi0 < x) /\ ok' t0 ->
-(forall x : Z,
- (lo <= x < hi \/ IntvSets.In x s1 -> lo0 <= x < hi0 \/ IntvSets.In x t0) /\
- (lo0 <= x < hi0 \/ IntvSets.In x t0 -> lo <= x < hi \/ IntvSets.In x s1)) ->
-(lo =? lo0) = true ->
-(hi =? hi0) = true ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s3 : t, union s3 Nil = s3) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) -> (forall x y : Z, Z.max x y = ite (x <? y) y x) -> ok' t0
-
-).
-
-MetaCoq Quote Definition beq_spec_Cons_Cons_13 := (
-  forall (lo hi : Z) (s1 : t),
-(ok' s1 ->
- forall s2 : t,
- ok' s2 ->
- (beq s1 s2 = true -> forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) /\
- ((forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) -> beq s1 s2 = true)) ->
-lo < hi /\ (forall x : Z, IntvSets.In x s1 -> hi < x) /\ ok' s1 ->
-forall (s2 : t) (lo0 hi0 : Z) (t0 : t),
-s2 = Cons lo0 hi0 t0 ->
-lo0 < hi0 /\ (forall x : Z, IntvSets.In x t0 -> hi0 < x) /\ ok' t0 ->
-(forall x : Z,
- (lo <= x < hi \/ IntvSets.In x s1 -> lo0 <= x < hi0 \/ IntvSets.In x t0) /\
- (lo0 <= x < hi0 \/ IntvSets.In x t0 -> lo <= x < hi \/ IntvSets.In x s1)) ->
-(lo =? lo0) = true ->
-(hi =? hi0) = true ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s3 : t, union s3 Nil = s3) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) ->
-forall x : Z, (IntvSets.In x s1 -> IntvSets.In x t0) /\ (IntvSets.In x t0 -> IntvSets.In x s1)
-
-
-).
-
-MetaCoq Quote Definition beq_spec_Cons_Cons_14 := (
-  forall (lo hi : Z) (s1 : t),
-(ok' s1 ->
- forall s2 : t,
- ok' s2 ->
- (beq s1 s2 = true -> forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) /\
- ((forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) -> beq s1 s2 = true)) ->
-lo < hi /\ (forall x : Z, IntvSets.In x s1 -> hi < x) /\ ok' s1 ->
-forall (s2 : t) (lo0 hi0 : Z) (t0 : t),
-s2 = Cons lo0 hi0 t0 ->
-lo0 < hi0 /\ (forall x : Z, IntvSets.In x t0 -> hi0 < x) /\ ok' t0 ->
-(forall x : Z,
- (lo <= x < hi \/ IntvSets.In x s1 -> lo0 <= x < hi0 \/ IntvSets.In x t0) /\
- (lo0 <= x < hi0 \/ IntvSets.In x t0 -> lo <= x < hi \/ IntvSets.In x s1)) ->
-(lo =? lo0) = false ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s3 : t, union s3 Nil = s3) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) -> false && (hi =? hi0) && beq s1 t0 = true
-).
-
-MetaCoq Quote Definition beq_spec_Cons_Cons_15 := (
-  
-forall (lo hi : Z) (s1 : t),
-(ok' s1 ->
- forall s2 : t,
- ok' s2 ->
- (beq s1 s2 = true -> forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) /\
- ((forall x : Z, (IntvSets.In x s1 -> IntvSets.In x s2) /\ (IntvSets.In x s2 -> IntvSets.In x s1)) -> beq s1 s2 = true)) ->
-lo < hi /\ (forall x : Z, IntvSets.In x s1 -> hi < x) /\ ok' s1 ->
-forall (s2 : t) (lo0 hi0 : Z) (t0 : t),
-s2 = Cons lo0 hi0 t0 ->
-lo0 < hi0 /\ (forall x : Z, IntvSets.In x t0 -> hi0 < x) /\ ok' t0 ->
-(forall x : Z,
- (lo <= x < hi \/ IntvSets.In x s1 -> lo0 <= x < hi0 \/ IntvSets.In x t0) /\
- (lo0 <= x < hi0 \/ IntvSets.In x t0 -> lo <= x < hi \/ IntvSets.In x s1)) ->
-(lo =? lo0) = true ->
-(hi =? hi0) = false ->
-(forall s : t, ok' s -> forall l0 h0 : Z, l0 < h0 -> ok' (add l0 h0 s)) ->
-(forall (x l0 h0 : Z) (s : t),
- ok' s ->
- (IntvSets.In x (IntvSets.remove l0 h0 s) -> ~ l0 <= x < h0 /\ IntvSets.In x s) /\
- (~ l0 <= x < h0 /\ IntvSets.In x s -> IntvSets.In x (IntvSets.remove l0 h0 s))) ->
-(forall (x : Z) (s : t),
- ok' s ->
- forall l0 h0 : Z,
- (IntvSets.In x (add l0 h0 s) -> l0 <= x < h0 \/ IntvSets.In x s) /\
- (l0 <= x < h0 \/ IntvSets.In x s -> IntvSets.In x (add l0 h0 s))) ->
-(forall (x l h : Z) (t : t),
- (l <= x < h \/ IntvSets.In x t -> IntvSets.In x (Cons l h t)) /\
- (IntvSets.In x (Cons l h t) -> l <= x < h \/ IntvSets.In x t)) ->
-(forall z : Z, ~ IntvSets.In z Nil) ->
-(forall (l h : Z) (t : t),
- (l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t -> ok' (Cons l h t)) /\
- (ok' (Cons l h t) -> l < h /\ (forall x : Z, IntvSets.In x t -> h < x) /\ ok' t)) ->
-ok' Nil ->
-(forall (x l h : Z) (t : t), mem x (Cons l h t) = ite (x <? h) (l <=? x) (mem x t)) ->
-(forall x : Z, mem x Nil = false) ->
-(forall (L H l h : Z) (t : t), contains L H (Cons l h t) = (H <=? h) && (l <=? L) || contains L H t) ->
-(forall x y : Z, contains x y Nil = false) ->
-(forall (L H l h : Z) (s' : t),
- add L H (Cons l h s') =
- ite (h <? L) (Cons l h (add L H s')) (ite (H <? l) (Cons L H (Cons l h s')) (add (Z.min l L) (Z.max h H) s'))) ->
-(forall L H : Z, add L H Nil = Cons L H Nil) ->
-(forall (L H l h : Z) (s' : t),
- IntvSets.remove L H (Cons l h s') =
- ite (h <? L) (Cons l h (IntvSets.remove L H s'))
-   (ite (H <? l) (Cons l h s')
-      (ite (l <? L) (ite (H <? h) (Cons l L (Cons H h s')) (Cons l L (IntvSets.remove L H s')))
-         (ite (H <? h) (Cons H h s') (IntvSets.remove L H s'))))) ->
-(forall L H : Z, IntvSets.remove L H Nil = Nil) ->
-(forall (l1 l2 h1 h2 : Z) (s1' s2' : t), union (Cons l1 h1 s1') (Cons l2 h2 s2') = add l1 h1 (add l2 h2 (union s1' s2'))) ->
-(forall s3 : t, union s3 Nil = s3) ->
-(forall s3 : t, union Nil s3 = s3) ->
-(forall (l1 h1 : Z) (t1 : t) (l2 h2 : Z) (t2 : t),
- beq (Cons l1 h1 t1) (Cons l2 h2 t2) = (l1 =? l2) && (h1 =? h2) && beq t1 t2) ->
-(forall (L H : Z) (s : t), beq (Cons L H s) Nil = false) ->
-(forall (L H : Z) (s : t), beq Nil (Cons L H s) = false) ->
-beq Nil Nil = true ->
-(forall x y : Z, Z.min x y = ite (x <? y) x y) ->
-(forall x y : Z, Z.max x y = ite (x <? y) y x) -> true && false && beq s1 t0 = true
-).
-(*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
-
-(*** MS BEGIN {"type": "proof_definition"} *)
-Lemma beq_spec:
-  forall s1,  
-    ok s1 -> 
-    forall s2, 
-      ok s2 ->
-      (beq s1 s2 = true <-> (forall x, IntvSets.In x s1 <-> IntvSets.In x s2)).
-(*** MS END {"type": "proof_definition"} *)
-Proof.
-  (*** MS BEGIN {"type": "proof", "proof_type":"manual"} *)
-  induction 1; 
-  destruct 1; 
-  simpl.
-- tauto.
-- split;
-  intros.
-  discriminate.
-  exfalso.
-  apply (H0 l).
-  left;
-  lia.
-- split;
-  intros.
-  discriminate.
-  exfalso.
-  apply (H0 l).
-  left;
-  lia.
-- split; 
-  intros.
-  + InvBooleans. 
-    subst. 
-    rewrite IHok in H3 by auto.
-    rewrite H3.
-    intuition.
-  + destruct (Z.eqb l l0) eqn:?;
-    simpl.
-    destruct (Z.eqb h h0) eqn:?;
-    simpl.
-    apply IHok.
-    auto.
-    intros;
-    split;
-    intros.
-    destruct (proj1 (H1 x));
-    auto.
-    exfalso.
-    exploit BELOW;
-    eauto.
-    lia.
-    destruct (proj2 (H1 x));
-    auto.
-    exfalso.
-    exploit BELOW0;
-    eauto. 
-    lia.
-    exfalso. 
-    destruct (zlt h h0).
-    destruct (proj2 (H1 h)). 
-    left; 
-    lia. 
-    lia. 
-    exploit BELOW; 
-    eauto. 
-    lia.
-    destruct (proj1 (H1 h0)). 
-    left; 
-    lia. 
-    lia. 
-    exploit BELOW0; 
-    eauto. 
-    lia.
-    exfalso. 
-    destruct (zlt l l0).
-    destruct (proj1 (H1 l)).
-    left;
-    lia.
-    lia.
-    exploit BELOW0;
-    eauto.
-    lia.
-    destruct (proj2 (H1 l0)).
-    left;
-    lia.
-    lia.
-    exploit BELOW;
-    eauto.
-    lia.
-    (*** MS END {"type": "proof", "proof_type":"manual"} *)
-  Restart.
+      forall s, ok s ->
+    (contains l0 h0 s = true <-> (forall x, l0 <= x < h0 -> IntvSets.In x s)).
+  (*** MS END {"type": "proof_definition"} *)
   Proof.
-    intros.
-    erewrite ok_ok' in *.
-    Utils.revert_all.
-    (*** MS BEGIN {"type": "proof", "proof_type":"hammer", "total":4, "finished":2} *)
-    induction s1;
-    destruct s2 eqn:?.
-    - hammer.
-    - admit. (* hammer. *) (* succeeds *)
-    - admit. (* hammer. *)
-    - admit. (* hammer. *)
+    induction 2;
+    try hammer'.
     Restart.
-    (*** MS END {"type": "proof", "proof_type":"hammer", "total":4, "finished":2} *)
-  Proof.
-    intros;
-    erewrite ok_ok' in *;
-    Utils.revert_all.
-    (*** MS BEGIN {"type": "proof", "proof_type":"mirrorsolve", "total":4} *)
-    induction s1;
-    destruct s2 eqn:?.
-    1-3: prep_proof'''.
-    - reflect beq_spec_Nil_Nil;
-      check_goal_unsat.
-    - SetSMTSolver "z3".
-      reflect beq_spec_Nil_Cons;
-      check_goal_unsat.
-    - reflect beq_spec_Cons_Nil;
-      check_goal_unsat.
-    - simpl in *.
-      split;
-      intros.
-      prep_proof'''.
-      + reflect beq_spec_Cons_Cons_0;
-        check_goal_unsat.
-      + destruct (lo =? lo0) eqn:?; [
-          | shelve
-        ];
-        destruct (hi =? hi0) eqn:?; [
-          | shelve
-        ];
-        simpl.
-        eapply IHs1;
-        eauto.
-        Unshelve.
-        1-3: prep_proof'''.
-        -- reflect beq_spec_Cons_Cons_11;
-           check_goal_unsat.
-        -- reflect beq_spec_Cons_Cons_12;
-           check_goal_unsat.
-        -- reflect beq_spec_Cons_Cons_13;
-           check_goal_unsat.
-        -- admit.
-        -- admit. (* TODO *)
-  (*** MS END {"type": "proof", "proof_type":"mirrorsolve", "total":4} *)
-Admitted.
+    induction 2.
+    - crush'.
+    - crush';
+      admit.
+    Restart.
+    induction 2;
+    mirrorsolve.
+  Qed.
 
-End ISet.
+  Hint Immediate contains_In : intvsets_eqns.
+  Hint Immediate add_equation_1 : intvsets_eqns.
+  Hint Immediate add_equation_2 : intvsets_eqns.
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 0} *)
+  (*** MS BEGIN {"type": "proof_definition"} *)
+  Lemma In_add:
+    forall x s, 
+      ok s -> 
+      forall l0 h0, 
+        (IntvSets.In x (add l0 h0 s) <-> l0 <= x < h0 \/ IntvSets.In x s).
+  (*** MS END {"type": "proof_definition"} *)
+  Proof.
+    induction s;
+    try hammer'.
+    Restart.
+    induction s.
+    - crush';
+      admit.
+    - crush';
+      admit.
+    Restart.
+    induction s;
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate In_add : intvsets_eqns.
+
+
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 0, "crush": 0} *)
+  (*** MS BEGIN {"type": "proof_definition"} *)
+  Lemma add_ok:
+    forall s, 
+      ok s -> 
+      forall l0 h0, 
+        l0 < h0 -> 
+        ok (add l0 h0 s).
+  (*** MS END {"type": "proof_definition"} *)
+  Proof.
+    induction s;
+    try hammer'.
+    Restart.
+    induction s.
+    - crush'.
+      admit.
+    - crush';
+      admit.
+    Restart.
+    SetSMTSolver "cvc5".
+    induction s;
+    try mirrorsolve.
+  Qed.
+
+  Hint Immediate add_ok : intvsets_eqns.
+
+  Hint Immediate remove_equation_1 : intvsets_eqns.
+  Hint Immediate remove_equation_2 : intvsets_eqns.
+
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  (*** MS BEGIN {"type": "proof_definition"} *)
+  Lemma In_remove:
+    forall x l0 h0 s, 
+      ok s ->
+      (IntvSets.In x (IntvSets.remove l0 h0 s) <-> ~(l0 <= x < h0) /\ IntvSets.In x s).
+  (*** MS END {"type": "proof_definition"} *)
+  Proof.
+    induction s;
+    try hammer'.
+    Restart.
+    induction s.
+    - crush'.
+    - crush';
+      admit.
+    Restart.
+    induction s;
+    try mirrorsolve.
+  Qed.
+
+  Hint Immediate In_remove : intvsets_eqns.
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  (*** MS BEGIN {"type": "proof_definition"} *)
+  Lemma remove_ok:
+    forall l0 h0, 
+      l0 < h0 -> 
+        forall s, 
+          ok s -> 
+          ok (IntvSets.remove l0 h0 s).
+  (*** MS END {"type": "proof_definition"} *)
+  Proof.
+    induction s;
+    try hammer'.
+    Restart.
+    induction s.
+    - crush'.
+    - crush';
+      admit.
+    Restart.
+    induction s;
+    try mirrorsolve.
+  Qed.
+
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma inter_equation_1 : 
+    forall x, inter Nil x = Nil.
+  Proof. 
+    induction x;
+    intuition eauto.
+  Qed.
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma inter_equation_2 : 
+    forall x, inter x Nil = Nil.
+  Proof. 
+    induction x;
+    intuition eauto.
+  Qed.
+
+  Hint Immediate inter_equation_1 : intvsets_eqns.
+  Hint Immediate inter_equation_2 : intvsets_eqns.
+
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 4, "ms": 3, "hammer": 3, "crush": 3} *)
+  Lemma In_inter:
+    forall x s1, ok s1 -> forall s2, ok s2 ->
+    (IntvSets.In x (inter s1 s2) <-> IntvSets.In x s1 /\ IntvSets.In x s2).
+  Proof.
+    induction 1;
+    induction 1;
+    try hammer'.
+    Restart.
+    induction 1;
+    induction 1.
+    - crush'.
+    - crush'.
+    - crush'.
+    - crush';
+      admit.
+    Restart.
+    induction 1;
+    induction 1;
+    try mirrorsolve.
+  Admitted.
+
+  Hint Immediate In_inter : intvsets_eqns.
+
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 4, "ms": 3, "hammer": 3, "crush": 3} *)
+  Lemma inter_ok:
+    forall s1, ok s1 -> forall s2, ok s2 -> ok (inter s1 s2).
+  Proof.
+    induction 1;
+    induction 1;
+    try hammer'.
+    Restart.
+    induction 1;
+    induction 1.
+    - crush'.
+    - crush'.
+    - crush'.
+    - crush';
+      admit.
+    Restart.
+    induction 1;
+    induction 1;
+    try mirrorsolve.
+  Admitted.
+
+  Hint Immediate inter_ok : intvsets_eqns.
+
+  Hint Immediate union_equation_1 : intvsets_eqns.
+  Hint Immediate union_equation_2 : intvsets_eqns.
+  Hint Immediate union_equation_3 : intvsets_eqns.
+  
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 4, "ms": 4, "hammer": 3, "crush": 1} *)
+    
+  (*** MS BEGIN {"type": "proof_definition"} *)
+  Lemma In_ok_union:
+    forall s1, 
+      ok s1 -> 
+      forall s2, 
+        ok s2 ->
+        ok (union s1 s2) /\ 
+        (forall x, IntvSets.In x s1 \/ IntvSets.In x s2 <-> IntvSets.In x (union s1 s2)).
+  (*** MS END {"type": "proof_definition"} *)
+  Proof.
+    induction 1;
+    induction 1;
+    try hammer'.
+    Restart.
+    induction 1;
+    induction 1.
+    - crush'.
+    - crush'; 
+      admit.
+    - crush'; 
+      admit.
+    - crush';
+      admit.
+    Restart.
+    induction 1;
+    induction 1;
+    try mirrorsolve.
+  Qed.
+
+
+
+  Hint Immediate In_ok_union : intvsets_eqns.
+  Hint Immediate beq_equation_1 : intvsets_eqns.
+  Hint Immediate beq_equation_2 : intvsets_eqns.
+  Hint Immediate beq_equation_3 : intvsets_eqns.
+  Hint Immediate beq_equation_4 : intvsets_eqns.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals": 4, "ms": 4, "hammer": 3, "crush": 3} *)
+  Lemma beq_eq : 
+    forall x y, beq x y = true <-> x = y.
+  Proof.
+    induction x;
+    induction y;
+    try hammer'.
+    Restart.
+    induction x;
+    induction y.
+    - try crush'.
+    - try crush'.
+    - crush'.
+    - 
+      (* crush'. *)
+      admit.
+    Restart.
+    induction x;
+    induction y;
+    try mirrorsolve.
+  Qed.
+
+  Hint Immediate beq_eq : intvsets_eqns.
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 4, "ms": 3, "hammer": 1, "crush": 3} *)
+    
+  (*** MS BEGIN {"type": "proof_definition"} *)
+  Lemma beq_spec:
+    forall s1,  
+      ok s1 -> 
+      forall s2, 
+        ok s2 ->
+        (beq s1 s2 = true <-> (forall x, IntvSets.In x s1 <-> IntvSets.In x s2)).
+  (*** MS END {"type": "proof_definition"} *)
+  Proof.
+
+    induction 1; 
+    induction 1.
+    - mirrorsolve.
+    - SetSMTSolver "z3".
+      mirrorsolve.
+    - SetSMTSolver "cvc5".
+      mirrorsolve.
+    - admit.
+    Restart.
+    induction 1;
+    induction 1;
+    try hammer'.
+    Restart.
+    induction 1;
+    induction 1.
+    - crush'.
+    - crush'.
+    - crush'.
+    - 
+      (* crush'. *)
+      admit.
+  Admitted.
+
+End IntvSets.
 
 
 

@@ -1561,6 +1561,10 @@ Section Config.
     | tConstruct _ _ _
     | tApp (tConstruct _ _ _) _ => 
       tmReturn (SMTSig.PSF s _ _ f, FPrim (F_sym name))
+
+    | tApp (tVar _) _ 
+    | tVar _ => 
+      tmReturn (SMTSig.PSF s _ _ f, FUninterp name)
       
     | _ => 
       tmPrint "don't know how to handle term:" ;;
@@ -1587,6 +1591,11 @@ Section Config.
       | tApp (tInd _ _) _
       | tInd _ _ => 
         tmReturn (SMTSig.PSR s _ sort_prop f, FUninterp name)
+
+      | tApp (tVar _) _ 
+      | tVar _ => 
+        tmReturn (SMTSig.PSR s _ sort_prop f, FUninterp name)
+        
       | _ => 
         tmPrint "don't know how to handle term:" ;;
         tmPrint x.1 ;; 

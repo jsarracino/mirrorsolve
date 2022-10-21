@@ -14,7 +14,8 @@ class GoalTally:
   total: int
 
   def pretty(self):
-    return f"{self.completed}/{self.total}"
+    percentage = "{0:.0%}".format(float(self.completed)/float(self.total) if self.total else 1.0)
+    return f"{self.completed} ({percentage})"
 
   @staticmethod
   def empty():
@@ -31,7 +32,7 @@ class ProverTally:
   mirror: GoalTally
 
   def pretty(self):
-    return f"{self.crush.pretty()}, {self.hammer.pretty()}, {self.mirror.pretty()}"
+    return f"{self.crush.total}, {self.crush.pretty()}, {self.hammer.pretty()}, {self.mirror.pretty()}"
 
   @staticmethod
   def empty():
@@ -46,7 +47,7 @@ class ProverTally:
   
   @staticmethod
   def make_header():
-    return "Crush completed/total, Hammer completed/total, MirrorSolve completed/total"
+    return "Total, Crush, Hammer, MirrorSolve"
 
 
 @dataclass
@@ -275,7 +276,9 @@ if __name__ == "__main__":
   files = sys.argv[1:]
 
   print("Expressiveness table:")
+  print("\\toprule")
   print(('Bench, ' + ExpressivenessTally.make_header()).replace(',',' &') + " \\\\")
+  
 
   aggregate = ExpressivenessTally.empty()
   
@@ -284,56 +287,72 @@ if __name__ == "__main__":
     aggregate += stats
     print(f"{os.path.basename(fl).split('.')[0]}, {stats.pretty()} \\\\".replace(',',' &'))
 
+  print("\\midrule")
   print(f"Total, {aggregate.pretty()} \\\\".replace(',',' &'))
+  print("\\bottomrule")
   
 
   print("goal table:")
+  print("\\toprule")
   print(('Bench, ' + ProverTally.make_header()).replace(',',' &') + " \\\\")
+  
 
   helper_aggregate = ProverTally.empty()
   original_aggregate = ProverTally.empty()
 
   
-  for fl in files:
+  for i, fl in enumerate(files):
     helper_stats = read_file_goals(fl, ("original", lambda x: not x))
     original_stats = read_file_goals(fl, ("original", lambda x: x))
     total_stats = helper_stats + original_stats
-    print(f"{os.path.basename(fl).split('.')[0]} (helper), {helper_stats.pretty()} \\\\".replace(',',' &'))
-    print(f"{os.path.basename(fl).split('.')[0]} (original), {original_stats.pretty()} \\\\".replace(',',' &'))
-    print(f"{os.path.basename(fl).split('.')[0]} (total), {total_stats.pretty()} \\\\".replace(',',' &'))
+    print(f"{os.path.basename(fl).split('.')[0]} (helper), {helper_stats.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+    print(f"{os.path.basename(fl).split('.')[0]} (original), {original_stats.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+    print(f"{os.path.basename(fl).split('.')[0]} (total), {total_stats.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+
+    if i < len(files) + 1:
+      print("\\cmidrule{2-5}")
 
     helper_aggregate += helper_stats
     original_aggregate += original_stats
 
-  print(f"Aggregate (helper), {helper_aggregate.pretty()} \\\\".replace(',',' &'))
-  print(f"Aggregate (original), {original_aggregate.pretty()} \\\\".replace(',',' &'))
-  print(f"Aggregate (total), {(helper_aggregate + original_aggregate).pretty()} \\\\".replace(',',' &'))
+  print("\\midrule")
+  print(f"Aggregate (helper), {helper_aggregate.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+  print(f"Aggregate (original), {original_aggregate.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+  print(f"Aggregate (total), {(helper_aggregate + original_aggregate).pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+  print("\\bottomrule")
 
 
   print("lemma table:")
+  print("\\toprule")
   print(('Bench, ' + ProverTally.make_header()).replace(',',' &') + " \\\\")
+  print("\\midrule")
 
   helper_aggregate = ProverTally.empty()
   original_aggregate = ProverTally.empty()
 
   
-  for fl in files:
+  for i, fl in enumerate(files):
     helper_stats = read_file_lemmas(fl, ("original", lambda x: not x))
     original_stats = read_file_lemmas(fl, ("original", lambda x: x))
     total_stats = helper_stats + original_stats
-    print(f"{os.path.basename(fl).split('.')[0]} (helper), {helper_stats.pretty()} \\\\".replace(',',' &'))
-    print(f"{os.path.basename(fl).split('.')[0]} (original), {original_stats.pretty()} \\\\".replace(',',' &'))
-    print(f"{os.path.basename(fl).split('.')[0]} (total), {total_stats.pretty()} \\\\".replace(',',' &'))
+    print(f"{os.path.basename(fl).split('.')[0]} (helper), {helper_stats.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+    print(f"{os.path.basename(fl).split('.')[0]} (original), {original_stats.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+    print(f"{os.path.basename(fl).split('.')[0]} (total), {total_stats.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+
+    if i < len(files) + 1:
+      print("\\cmidrule{2-5}")
 
     helper_aggregate += helper_stats
     original_aggregate += original_stats
 
-  print(f"Aggregate (helper), {helper_aggregate.pretty()} \\\\".replace(',',' &'))
-  print(f"Aggregate (original), {original_aggregate.pretty()} \\\\".replace(',',' &'))
-  print(f"Aggregate (total), {(helper_aggregate + original_aggregate).pretty()} \\\\".replace(',',' &'))
-
+  print("\\midrule")
+  print(f"Aggregate (helper), {helper_aggregate.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+  print(f"Aggregate (original), {original_aggregate.pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+  print(f"Aggregate (total), {(helper_aggregate + original_aggregate).pretty()} \\\\".replace(',',' &').replace('%', '\\%'))
+  print("\\bottomrule")
 
   print("Effort table:")
+  print("\\toprule")
   print(('Bench, ' + EffortTally.make_header()).replace(',',' &') + " \\\\")
 
   aggregate = EffortTally.empty()
@@ -343,7 +362,9 @@ if __name__ == "__main__":
     aggregate += stats
     print(f"{os.path.basename(fl).split('.')[0]}, {stats.pretty()} \\\\".replace(',',' &'))
 
+  print("\\midrule")
   print(f"Total, {aggregate.pretty()} \\\\".replace(',',' &'))
+  print("\\bottomrule")
   
 
   

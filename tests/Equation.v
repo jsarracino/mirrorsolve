@@ -6,20 +6,6 @@ Import MCMonadNotation.
 Import ListNotations.
 Open Scope bs.
 
-Definition decr (n: nat) : nat :=
-  match n with
-  | 0 => 0
-  | S n => n
-  end
-.
-
-Fixpoint decr_rec (n: nat) : nat :=
-  match n with
-  | 0 => 0
-  | S n => decr_rec n
-  end
-.
-
 Definition print_body {A: Type} (f: A) :=
   func_quoted <- tmQuote f ;;
   match func_quoted with
@@ -148,10 +134,37 @@ Definition infer_equations {A: Type} (func: A) :=
   end
 .
 
-MetaCoq Run (infer_equations decr).
-Check decr_equation_1.
-Check decr_equation_2.
+Section Tests.
+  Definition decr (n: nat) : nat :=
+    match n with
+    | 0 => 0
+    | S n => n
+    end
+  .
 
-MetaCoq Run (infer_equations decr_rec).
-Check decr_rec_equation_1.
-Check decr_rec_equation_2.
+  MetaCoq Run (infer_equations decr).
+  Check decr_equation_1.
+  Check decr_equation_2.
+
+  Definition decr_strange (n: nat) : nat :=
+    match n with
+    | 0 => 0
+    | S m => n
+    end
+  .
+
+  MetaCoq Run (infer_equations decr_strange).
+  Check decr_strange_equation_1.
+  Check decr_strange_equation_2.
+
+  Fixpoint decr_rec (n: nat) : nat :=
+    match n with
+    | 0 => 0
+    | S n => decr_rec n
+    end
+  .
+
+  MetaCoq Run (infer_equations decr_rec).
+  Check decr_rec_equation_1.
+  Check decr_rec_equation_2.
+End Tests.

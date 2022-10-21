@@ -27,7 +27,7 @@ let check_sort_name s =
 
 let repair_sort s = 
   begin match s with 
-  | Custom_sort x -> Custom_sort (String.capitalize_ascii x)
+  | Custom_sort x -> Custom_sort (Str.global_replace (Str.regexp "'") "_pr" (String.capitalize_ascii x))
   | _ -> s
   end
 

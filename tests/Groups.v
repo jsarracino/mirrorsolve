@@ -169,6 +169,51 @@ Section Groups.
   Hint Immediate inv_r : groups_eqns.
   Hint Immediate id_r : groups_eqns.
 
+  Hint Transparent f'.
+  Hint Transparent e'.
+  Hint Transparent i'.
+
+  Hint Resolve assoc.
+  Hint Resolve inv_r.
+  Hint Resolve id_r.
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
+  Lemma mult_both : 
+    forall a b c d1 d2, 
+      a <+> c = d1
+      -> b <+> c = d2
+      -> a = b
+      -> d1 = d2.
+  Proof.
+    crush'.
+    Restart.
+    hammer'.
+    Restart.
+    mirrorsolve.
+  Qed.
+
+  Hint Extern 100 (_ = _) =>
+  match goal with
+    | [ _ : True |- _ ] => fail 1
+    | _ => assert True by constructor; eapply mult_both 
+  end.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
+  Lemma add_right : 
+    forall a b c, 
+      a <+> b = a <+> c -> 
+      a <+> b <+> i' b = a <+> c <+> i' c.
+  Proof.
+    crush'.
+    Restart.
+    hammer'.
+    Restart.
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate add_right : groups_eqns.
+  Hint Resolve add_right.
+
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
   (*** MS BEGIN {"type": "proof_definition"} *)
@@ -186,10 +231,11 @@ Section Groups.
   Qed.
 
   Hint Immediate unique_id : groups_eqns.
+  Hint Resolve unique_id.
 
   (* [i a] is the left-inverse of [a]. *)
   (*** MS EFFORT {"type": "edit"} *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
   (*** MS BEGIN {"type": "proof_definition"} *)
   Lemma inv_l : 
     forall a, 
@@ -204,6 +250,7 @@ Section Groups.
   Qed.
 
   Hint Immediate inv_l : groups_eqns.
+  Hint Resolve inv_l.
 
 
   (* [e] is the left-identity. *)
@@ -223,10 +270,29 @@ Section Groups.
   Qed.
 
   Hint Immediate id_l : groups_eqns.
+  Hint Resolve id_l.
+
+  (*** MS LEMMA {"original": False , "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
+  Lemma cancel_inv_r : 
+    forall a b x, 
+      a <+> x <+> i' x = b <+> x <+> i' x 
+      -> a = b.
+  Proof.
+    try hammer'.
+    Restart.
+    try crush'.
+    Restart.
+    SetSMTSolver "z3".
+    mirrorsolve.
+  Qed.
+
+  Hint Resolve cancel_inv_r.
+  Hint Immediate cancel_inv_r : groups_eqns.
+
 
 
   (* [x] can be cancelled on the right. *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 0, "hammer": 0, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 0, "crush": 0} *)
   (*** MS BEGIN {"type": "proof_definition"} *)
   Lemma cancel_r : 
     forall a b x, 
@@ -238,14 +304,30 @@ Section Groups.
     Restart.
     try crush'.
     Restart.
-    SetSMTSolver "cvc5".
-    try mirrorsolve.
-  Admitted.
+    mirrorsolve.
+  Qed.
 
   Hint Immediate cancel_r : groups_eqns.
+  Hint Resolve cancel_r.
+
+  (*** MS LEMMA {"original": False , "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
+  Lemma cancel_inv_l : 
+    forall a b x, 
+      x <+> i' x <+> a = x <+> i' x <+> b ->
+      a = b.
+  Proof.
+    try hammer'.
+    Restart.
+    try crush'.
+    Restart.
+    mirrorsolve.
+  Qed.
+
+  Hint Resolve cancel_inv_l.
+  Hint Immediate cancel_inv_l : groups_eqns.
 
   (* [x] can be cancelled on the left. *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 0, "hammer": 1, "crush": 0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
   (*** MS BEGIN {"type": "proof_definition"} *)
   Lemma cancel_l: 
     forall a b x, 
@@ -257,11 +339,11 @@ Section Groups.
     Restart.
     try crush'.
     Restart.
-    SetSMTSolver "z3".
     try mirrorsolve.
-  Admitted.
+  Qed.
 
   Hint Immediate cancel_l : groups_eqns.
+  Hint Resolve cancel_l : groups_eqns.
 
   (* The left identity is unique. *)
   (*** MS EFFORT {"type": "edit"} *)
@@ -280,6 +362,9 @@ Section Groups.
     try mirrorsolve.
   Qed.
 
+  Hint Immediate e_uniq_l : groups_eqns.
+  Hint Resolve e_uniq_l.
+
   (* The left inverse is unique. *)
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
@@ -290,14 +375,6 @@ Section Groups.
       a = i' b.
     (*** MS END {"type": "proof_definition"} *)
   Proof.
-    (*** MS BEGIN {"type": "proof", "proof_type":"manual"} *)
-    intros.
-    eapply cancel_r.
-    erewrite <- inv_l in H.
-    eauto.
-    (*** MS END {"type": "proof", "proof_type":"manual"} *)
-    Restart.
-  Proof.
     try hammer'.
     Restart.
     try crush'.
@@ -306,6 +383,7 @@ Section Groups.
   Qed.
 
   Hint Immediate inv_uniq_l : groups_eqns.
+  Hint Resolve inv_uniq_l.
 
   (* The right identity is unique. *)
   (*** MS EFFORT {"type": "edit"} *)
@@ -326,6 +404,7 @@ Section Groups.
   Qed.
 
   Hint Immediate e_uniq_r : groups_eqns.
+  Hint Resolve e_uniq_r.
 
   (* The right inverse is unique. *)
   (*** MS EFFORT {"type": "edit"} *)
@@ -342,11 +421,11 @@ Section Groups.
     Restart.
     try crush'.
     Restart.
-    SetSMTSolver "z3".
     try mirrorsolve.
   Qed.
 
   Hint Immediate inv_uniq_r : groups_eqns.
+  Hint Resolve inv_uniq_r.
 
   (* The right inverse is unique. *)
 
@@ -366,6 +445,9 @@ Section Groups.
     try mirrorsolve.
   Qed.
 
+  Hint Immediate inv_distr : groups_eqns.
+  Hint Resolve inv_distr.
+
   (* The inverse of an inverse produces the original element. *)
    (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
@@ -383,6 +465,7 @@ Section Groups.
   Qed.
 
   Hint Immediate double_inv : groups_eqns.
+  Hint Resolve inv_distr.
 
   (* The identity is its own inverse. *)
    (*** MS EFFORT {"type": "edit"} *)

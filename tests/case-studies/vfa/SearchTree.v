@@ -336,8 +336,6 @@ Section SearchTree.
       ; pack disjoint
   ])%type.
 
-  Print rel_syms.
-
 
   Definition prim_syms : list (packed * String.string) := [
       (pack Z.add, "+"%string)

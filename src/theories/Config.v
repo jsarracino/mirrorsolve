@@ -1401,6 +1401,11 @@ Section Config.
 
   Fixpoint subst_tys (env: list smt_ind_base) (rec_name: ident) (x: term) {struct x} : option ident := 
     match x with 
+    | tInd ind _ => 
+      match ind.(inductive_ind) with 
+      | 0 => Some ind.(inductive_mind).2
+      | _ => None
+      end
     | tApp f es => 
       match subst_tys env rec_name f with 
       | Some f' => 
@@ -1451,6 +1456,11 @@ Section Config.
       else if orb (Core.eq_term x t_prop) (Core.eq_term x t_bool) then 
         tmReturn (SISort SBool)
       else
+        tmPrint "unhandled type?" ;;
+        tmPrint x ;;
+        env <- tmEval all env ;;
+        tmPrint "env:" ;;
+        tmPrint env ;;
         tmFail "weird error in translate_cstr_type_base"
     end.
       

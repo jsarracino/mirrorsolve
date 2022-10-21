@@ -37,7 +37,7 @@ Definition binder_anon :=
 Definition subst_recursive_args (rec: term) (args: context) :=
   map (fun arg => subst1 arg.(decl_type) 0 rec) args.
 
-Definition lookup_constructor_arguments
+Definition constructor_argument_count
   (ind_term: term)
   (index: nat)
 :=
@@ -48,7 +48,7 @@ Definition lookup_constructor_arguments
     | first_body :: nil =>
       match nth_error first_body.(ind_ctors) index with
       | Some inductive_ctor =>
-        tmReturn (subst_recursive_args ind_term inductive_ctor.(cstr_args))
+        tmReturn (List.length inductive_ctor.(cstr_args))
       | None =>
         tmFail "Inductive constructor out of range"
       end
@@ -60,19 +60,19 @@ Definition lookup_constructor_arguments
   end
 .
 
-Fixpoint wrap_type (args: list term) (body: term) :=
-  match args with
-  | nil => body
-  | arg :: args =>
-    tProd binder_anon arg (wrap_type args body)
+Fixpoint wrap_type (count: nat) (body: term) :=
+  match count with
+  | 0 => body
+  | S count =>
+    tProd binder_anon hole (wrap_type count body)
   end
 .
 
-Fixpoint wrap_body (args: list term) (body: term) :=
-  match args with
-  | nil => body
-  | arg :: args =>
-    tLambda binder_anon arg (wrap_type args body)
+Fixpoint wrap_body (count: nat) (body: term) :=
+  match count with
+  | 0 => body
+  | S count =>
+    tLambda binder_anon hole (wrap_type count body)
   end
 .
 
@@ -83,45 +83,37 @@ Fixpoint dummy_args (count: nat) (offset: nat) :=
   end
 .
 
+MetaCoq Quote Definition eq_quoted := @eq.
+MetaCoq Quote Definition eq_refl_quoted := @eq_refl.
+
 Definition infer_equation
-  (return_type_quoted: term)
   (arg_type_quoted: term)
   (func_quoted: term)
   (info: case_info)
   (body: term)
   (index: nat)
 :=
-  return_type <- tmUnquoteTyped Type return_type_quoted ;;
-  eq_refl_quoted <- tmQuote (@eq_refl return_type) ;;
-  eq_quoted <- tmQuote (@eq) ;;
-  args <- lookup_constructor_arguments arg_type_quoted index ;;
+  arg_count <- constructor_argument_count arg_type_quoted index ;;
   match func_quoted with
   | tConst (_, func_name) _ =>
+    let claim_lhs := tApp func_quoted
+                          [tApp (tConstruct info.(ci_ind) index [])
+                                (dummy_args arg_count 0)] in
     let claim_quoted :=
-      wrap_type
-        args
-        (tApp eq_quoted
-              [return_type_quoted;
-               tApp func_quoted
-                    [tApp (tConstruct info.(ci_ind) index [])
-                          (dummy_args (List.length args) 0)];
-               body]) in
+      wrap_type arg_count (tApp eq_quoted [hole; claim_lhs; body]) in
     claim <- tmUnquoteTyped Type claim_quoted ;;
     let proof_quoted :=
-      wrap_body args (tApp eq_refl_quoted [body]) in
+      wrap_body arg_count (tApp eq_refl_quoted [hole; body]) in
     proof <- tmUnquoteTyped claim proof_quoted ;;
     let eqn_base := func_name ++ "_equation_" ++ string_of_nat (index+1) in
     eqn_name <- tmFreshName eqn_base ;;
-    tmDefinitionRed eqn_name
-                    (Some (unfold (Common_kn "my_projT1")))
-                    proof ;;
+    tmDefinitionRed eqn_name (Some (unfold (Common_kn "my_projT1"))) proof ;;
     tmReturn tt
   | _ => tmFail "Symbol is not a constant."
   end
 .
 
 Fixpoint infer_equations_inner
-  (return_type_quoted: term)
   (arg_type_quoted: term)
   (func_quoted: term)
   (info: case_info)
@@ -131,19 +123,8 @@ Fixpoint infer_equations_inner
   match bodies with
   | nil => tmReturn 0
   | body :: bodies =>
-    infer_equation return_type_quoted
-                   arg_type_quoted
-                   func_quoted
-                   info
-                   body.(bbody)
-                   index ;;
-    infer_equations_inner
-                   return_type_quoted
-                   arg_type_quoted
-                   func_quoted
-                   info
-                   bodies
-                   (S index)
+    infer_equation arg_type_quoted func_quoted info body.(bbody) index ;;
+    infer_equations_inner arg_type_quoted func_quoted info bodies (S index)
   end
 .
 
@@ -152,29 +133,13 @@ Definition infer_equations {A: Type} (func: A) :=
   match func_quoted with
   | tConst func_path _ =>
     def <- tmQuoteConstant func_path true ;;
-    return_type_quoted <-
-      match def.(cst_type) with
-      | tProd _ _ t =>
-        tmReturn t
-      | _ => tmFail "Symbol type is not a function type."
-      end ;;
     match cst_body def with
     | Some (tLambda _ arg_type_quoted (tCase info _ (tRel 0) bodies)) =>
-      infer_equations_inner return_type_quoted
-                            arg_type_quoted
-                            func_quoted
-                            info
-                            bodies
-                            0
+      infer_equations_inner arg_type_quoted func_quoted info bodies 0
     | Some (tFix (first_fixpoint :: nil) 0) =>
       match subst1 func_quoted 0 first_fixpoint.(dbody) with
       | tLambda _ arg_type_quoted (tCase info _ (tRel 0) bodies) =>
-        infer_equations_inner return_type_quoted
-                              arg_type_quoted
-                              func_quoted
-                              info
-                              bodies
-                              0
+        infer_equations_inner arg_type_quoted func_quoted info bodies 0
       | _ => tmFail "foo"
       end
     | _ => tmFail "Symbol body is not a function with a match inside."

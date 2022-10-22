@@ -107,7 +107,7 @@ Section PTree.
   Arguments Empty {A}.
   Arguments Nodes {A} _.
 
-  Scheme tree'_ind := Induction for tree' Sort Prop.
+  (* Scheme tree'_ind := Induction for tree' Sort Prop. *)
 
   Variable (A: Type).
 
@@ -233,6 +233,125 @@ Section PTree.
     remove p (Nodes m') := remove' p m';
   }.
 
+  Definition not_trivially_empty (l: tree A) (o: option A) (r: tree A) :=
+    match l, o, r with
+    | Empty, None, Empty => False
+    | _, _, _ => True
+    end.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma not_trivially_empty_equation_1 : 
+    not_trivially_empty Empty None Empty <-> False.
+  Proof.
+    intuition eauto.
+  Qed.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma not_trivially_empty_equation_2 : 
+    forall x y z, 
+    not_trivially_empty x (Some y) z <-> True.
+  Proof.
+    destruct x; 
+    destruct z;
+    intuition eauto.
+  Qed.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma not_trivially_empty_equation_3 : 
+    forall x y z, 
+    not_trivially_empty (Nodes x) y z <-> True.
+  Proof.
+    destruct y; 
+    destruct z;
+    intuition eauto.
+  Qed.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma not_trivially_empty_equation_4 : 
+    forall x y z, 
+    not_trivially_empty x y (Nodes z) <-> True.
+  Proof.
+    destruct x; 
+    destruct y;
+    intuition eauto.
+  Qed.
+
+  Variable (B: Type)
+          (empty: B)
+          (node: tree A -> option A -> tree A -> B).
+
+  Definition node' := node.
+  Definition empty' := empty.
+
+  Equations tree_case (m: tree A) : B := {
+    tree_case (Empty) := empty';
+    tree_case (Nodes (Node001 r)) := node' Empty None (Nodes r);
+    tree_case (Nodes (Node010 x)) := node' Empty (Some x) Empty;
+    tree_case (Nodes (Node011 x r)) := node' Empty (Some x) (Nodes r);
+    tree_case (Nodes (Node100 l)) := node' (Nodes l) None Empty;
+    tree_case (Nodes (Node101 l r)) := node' (Nodes l) None (Nodes r);
+    tree_case (Nodes (Node110 l x)) := node' (Nodes l) (Some x) Empty;
+    tree_case (Nodes (Node111 l x r)) := node' (Nodes l) (Some x) (Nodes r);
+  }.
+
+  Variable (node_rec: tree A -> B -> option A -> tree A -> B -> B).
+  Definition node_rec' := node_rec.
+
+  Equations tree'_rec' (m: tree' A) : B := {
+    tree'_rec' (Node001 r) := node_rec' Empty empty' None (Nodes r) (tree'_rec' r);
+    tree'_rec' (Node010 x) := node_rec' Empty empty' (Some x) Empty empty';
+    tree'_rec' (Node011 x r) := node_rec' Empty empty' (Some x) (Nodes r) (tree'_rec' r);
+    tree'_rec' (Node100 l) := node_rec' (Nodes l) (tree'_rec' l) None Empty empty;
+    tree'_rec' (Node101 l r) := node_rec' (Nodes l) (tree'_rec' l) None (Nodes r) (tree'_rec' r);
+    tree'_rec' (Node110 l x) := node_rec' (Nodes l) (tree'_rec' l) (Some x) Empty empty';
+    tree'_rec' (Node111 l x r) := node_rec' (Nodes l) (tree'_rec' l) (Some x) (Nodes r) (tree'_rec' r);
+  }.
+
+  Equations tree_rec' (m: tree A) : B := {
+    tree_rec' Empty := empty';
+    tree_rec' (Nodes m') := tree'_rec' m';
+  }.
+
+  Fixpoint prev_append (i j: positive) {struct i} : positive :=
+    match i with
+      | xH => j
+      | xI i' => prev_append i' (xI j)
+      | xO i' => prev_append i' (xO j)
+    end.
+
+  Definition prev (i: positive) : positive :=
+    prev_append i xH.
+
+  Variable beqA: A -> A -> bool.
+  Definition beqA' := beqA.
+
+  Equations beq' (m1 m2: tree' A) : bool := {
+    beq' (Node001 r1) (Node001 r2) := beq' r1 r2;
+    beq' (Node010 x1) (Node010 x2) := beqA' x1 x2;
+    beq' (Node011 x1 r1) (Node011 x2 r2) := beqA' x1 x2 && beq' r1 r2;
+    beq' (Node100 l1) (Node100 l2) := beq' l1 l2;
+    beq' (Node101 l1 r1) (Node101 l2 r2) := beq' l1 l2 && beq' r1 r2;
+    beq' (Node110 l1 x1) (Node110 l2 x2) := beqA' x1 x2 && beq' l1 l2;
+    beq' (Node111 l1 x1 r1) (Node111 l2 x2 r2 ) := beqA' x1 x2 && beq' l1 l2 && beq' r1 r2;
+    beq' (_) (_) := false;
+  }.
+
+  (* Note: there are 49 (!!!) equations for beq' *)
+
+  Equations beq (m1 m2: tree A) : bool := {
+    beq Empty Empty := true;
+    beq (Nodes m1') (Nodes m2') := beq' m1' m2';
+    beq _ _ := false
+  }.
+  (* Note, there are 4 equations for beq *)
+
+  Equations beq_optA (o1 o2: option A) : bool := {
+    beq_optA (None) (None) := true;
+    beq_optA (Some a1) (Some a2) := beqA' a1 a2;
+    beq_optA (_) (_) := false;
+  }.
+   (* Note, there are 4 equations for beq_optA *)
+
   Local Declare ML Module "mirrorsolve".
 
   From MetaCoq.Template Require Import All Loader.
@@ -264,8 +383,15 @@ Section PTree.
     ; pack PTree.remove
     ; pack (option A)
     ; pack positive
+    ; pack node'
+    ; pack tree_case
+    ; pack empty'
+    ; pack node_rec'
+    ; pack tree_rec'
+    ; pack tree'_rec'
   ])%type.
   Definition rel_syms : list Config.packed := ([ 
+    pack not_trivially_empty
   ])%type.
 
   Definition prim_syms : list (Config.packed * String.string) := [
@@ -308,6 +434,7 @@ Section PTree.
     rhs <- tmQuote ctx' ;; 
     tmMkDefinition "fol_theory" rhs
   ).
+  
 
   Require Import MirrorSolve.Reflection.Tactics.
 
@@ -483,22 +610,19 @@ Section PTree.
   Theorem gss:
     forall (i: positive) (x: A) (m: tree A), get i (set i x m) = Some x.
   Proof.
-    induction i;
     induction m;
     try hammer'.
     Restart.
-    induction i;
     induction m;
     try crush'.
     Restart.
-    induction i;
     induction m;
     try mirrorsolve.
   Qed.
 
   Hint Immediate gss : eqns.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":63, "ms":63, "hammer":6, "crush":1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":63, "ms":63, "hammer":63, "crush":49} *)
   Theorem gso':
     forall (i j: positive) (x: A) (m: tree' A),
     i <> j -> get' i (set' j x m) = get' i m.
@@ -511,27 +635,17 @@ Section PTree.
     induction i;
     induction j;
     induction m;
+    crush'.
+    Restart.
 
     SetSMTSolver "z3".
     induction i;
     induction j;
     induction m;
     mirrorsolve.
+  Qed.
 
-    
-    all: try mirrorsolve.
-
-
-    mirrorsolve.
-    mirrorsolve.
-    mirrorsolve.
-    mirrorsolve.
-    mirrorsolve.
-    mirrorsolve.
-    mirrorsolve.
-    mirrorsolve.
-    mirrorsolve.
-    mirrorsolve.
+  Hint Immediate gso': eqns.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":2, "crush":1} *)
@@ -606,79 +720,69 @@ Section PTree.
     inspect and recurse over values of type [tree A].  This is achieved
     by defining appropriate principles for case analysis and induction. *)
 
-  Definition not_trivially_empty {A} (l: tree A) (o: option A) (r: tree A) :=
-    match l, o, r with
-    | Empty, None, Empty => False
-    | _, _, _ => True
-    end.
-
   (** A case analysis principle *)
 
-  Section TREE_CASE.
+  Hint Immediate not_trivially_empty_equation_1 : eqns.
+  Hint Immediate not_trivially_empty_equation_2 : eqns.
+  Hint Immediate not_trivially_empty_equation_3 : eqns.
+  Hint Immediate not_trivially_empty_equation_4 : eqns.
 
-  Context {A B: Type}
-          (empty: B)
-          (node: tree A -> option A -> tree A -> B).
+  Hint Immediate tree_case_equation_1 : eqns.
+  Hint Immediate tree_case_equation_2 : eqns.
+  Hint Immediate tree_case_equation_3 : eqns.
+  Hint Immediate tree_case_equation_4 : eqns.
+  Hint Immediate tree_case_equation_5 : eqns.
+  Hint Immediate tree_case_equation_6 : eqns.
+  Hint Immediate tree_case_equation_7 : eqns.
+  Hint Immediate tree_case_equation_8 : eqns.
 
-  Definition tree_case (m: tree A) : B :=
-    match m with
-    | Empty => empty
-    | Nodes (Node001 r) => node Empty None (Nodes r)
-    | Nodes (Node010 x) => node Empty (Some x) Empty
-    | Nodes (Node011 x r) => node Empty (Some x) (Nodes r)
-    | Nodes (Node100 l) => node (Nodes l) None Empty
-    | Nodes (Node101 l r) => node (Nodes l) None (Nodes r)
-    | Nodes (Node110 l x) => node (Nodes l) (Some x) Empty
-    | Nodes (Node111 l x r) => node (Nodes l) (Some x) (Nodes r)
-    end.
+  Hint Immediate Node_equation_1 : eqns.
+  Hint Immediate Node_equation_2 : eqns.
+  Hint Immediate Node_equation_3 : eqns.
+  Hint Immediate Node_equation_4 : eqns.
+  Hint Immediate Node_equation_5 : eqns.
+  Hint Immediate Node_equation_6 : eqns.
+  Hint Immediate Node_equation_7 : eqns.
+  Hint Immediate Node_equation_8 : eqns.
 
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":8, "crush":8} *)
   Lemma unroll_tree_case: forall l o r,
     not_trivially_empty l o r ->
-    tree_case (Node l o r) = node l o r.
+    tree_case (Node l o r) = node' l o r.
   Proof.
-    destruct l, o, r; simpl; intros; auto. contradiction.
+    induction l;
+    induction o;
+    induction r;
+    try hammer'.
+    Restart.
+    induction l;
+    induction o;
+    induction r;
+    try crush'.
+    Restart.
+    induction l;
+    induction o;
+    induction r;
+    try mirrorsolve.
   Qed.
 
-  End TREE_CASE.
-
+  Hint Immediate unroll_tree_case : eqns.
   (** A recursion principle *)
-
-  Section TREE_REC.
-
-  Context {A B: Type}
-          (empty: B)
-          (node: tree A -> B -> option A -> tree A -> B -> B).
-
-  Fixpoint tree_rec' (m: tree' A) : B :=
-    match m with
-    | Node001 r => node Empty empty None (Nodes r) (tree_rec' r)
-    | Node010 x => node Empty empty (Some x) Empty empty
-    | Node011 x r => node Empty empty (Some x) (Nodes r) (tree_rec' r)
-    | Node100 l => node (Nodes l) (tree_rec' l) None Empty empty
-    | Node101 l r => node (Nodes l) (tree_rec' l) None (Nodes r) (tree_rec' r)
-    | Node110 l x => node (Nodes l) (tree_rec' l) (Some x) Empty empty
-    | Node111 l x r => node (Nodes l) (tree_rec' l) (Some x) (Nodes r) (tree_rec' r)
-    end.
-
-  Definition tree_rec (m: tree A) : B :=
-    match m with
-    | Empty => empty
-    | Nodes m' => tree_rec' m'
-    end.
 
   Lemma unroll_tree_rec: forall l o r,
     not_trivially_empty l o r ->
-    tree_rec (Node l o r) = node l (tree_rec l) o r (tree_rec r).
+    tree'_rec' (Node l o r) = node' l (tree'_rec' l) o r (tree'_rec' r).
   Proof.
     destruct l, o, r; simpl; intros; auto. contradiction.
   Qed.
 
-  End TREE_REC.
-
   (** A double recursion principle *)
 
-  Section TREE_REC2.
-
+  (* 
+      MIRRORSOLVE @TODO: adapt these
+  *)
+(* 
   Context {A B C: Type}
           (base: C)
           (base1: tree B -> C) 
@@ -701,16 +805,16 @@ Section PTree.
     | solve [ exact (tree_rec2' l1 l2) | exact (base2 (Nodes l1)) | exact (base1 (Nodes l2)) | exact base ]
     | solve [ exact (tree_rec2' r1 r2) | exact (base2 (Nodes r1)) | exact (base1 (Nodes r2)) | exact base ]
     ]).
-  Defined.
+  Defined. *)
 
-  Definition tree_rec2 (a: tree A) (b: tree B) : C :=
+  (* Definition tree_rec2 (a: tree A) (b: tree B) : C :=
     match a, b with
     | Empty, Empty => base
     | Empty, _ => base1 b
     | _, Empty => base2 a
     | Nodes a', Nodes b' => tree_rec2' a' b'
-    end.
-
+    end. *)
+(* 
   Lemma unroll_tree_rec2_NE:
     forall l1 o1 r1,
     not_trivially_empty l1 o1 r1 ->
@@ -737,11 +841,11 @@ Section PTree.
     destruct l1, o1, r1; try contradiction; destruct l2, o2, r2; try contradiction; reflexivity.
   Qed.
 
-  End TREE_REC2.
+  End TREE_REC2. *)
 
 (** An induction principle *)
 
-  Section TREE_IND.
+  (* Section TREE_IND.
 
   Context {A: Type} (P: tree A -> Type)
           (empty: P Empty)
@@ -765,10 +869,11 @@ Section PTree.
     | Nodes m' => tree_ind' m'
     end.
 
-  End TREE_IND.
+  End TREE_IND. *)
 
 (** ** Extensionality property *)
 
+(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Lemma tree'_not_empty:
     forall {A} (m: tree' A), exists i, get' i m <> None.
   Proof.
@@ -782,6 +887,7 @@ Section PTree.
    - exists xH; simpl; congruence.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Corollary extensionality_empty:
     forall {A} (m: tree A),
     (forall i, get i m = None) -> m = Empty.
@@ -790,6 +896,7 @@ Section PTree.
     elim GET. apply H.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Theorem extensionality:
     forall (A: Type) (m1 m2: tree A),
     (forall i, get i m1 = get i m2) -> m1 = m2.
@@ -806,6 +913,7 @@ Section PTree.
 
   (** Some consequences of extensionality *)
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Theorem gsident:
     forall {A} (i: positive) (m: t A) (v: A),
     get i m = Some v -> set i v m = m.
@@ -814,6 +922,7 @@ Section PTree.
     rewrite gsspec. destruct (peq j i); congruence.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Theorem set2:
     forall {A} (i: elt) (m: t A) (v1 v2: A),
     set i v2 (set i v1 m) = set i v2 m.
@@ -823,38 +932,8 @@ Section PTree.
   Qed.
 
 (** ** Boolean equality *)
-
-  Section BOOLEAN_EQUALITY.
-
-    Variable A: Type.
-    Variable beqA: A -> A -> bool.
-
-    Fixpoint beq' (m1 m2: tree' A) {struct m1} : bool :=
-    match m1, m2 with
-    | Node001 r1, Node001 r2 => beq' r1 r2
-    | Node010 x1, Node010 x2 => beqA x1 x2
-    | Node011 x1 r1, Node011 x2 r2 => beqA x1 x2 && beq' r1 r2
-    | Node100 l1, Node100 l2 => beq' l1 l2
-    | Node101 l1 r1, Node101 l2 r2 => beq' l1 l2 && beq' r1 r2
-    | Node110 l1 x1, Node110 l2 x2 => beqA x1 x2 && beq' l1 l2
-    | Node111 l1 x1 r1, Node111 l2 x2 r2  => beqA x1 x2 && beq' l1 l2 && beq' r1 r2
-    | _, _ => false
-    end.
-
-    Definition beq (m1 m2: t A) : bool :=
-    match m1, m2 with
-    | Empty, Empty => true
-    | Nodes m1', Nodes m2' => beq' m1' m2'
-    | _, _ => false
-    end.
-
-    Let beq_optA (o1 o2: option A) : bool :=
-      match o1, o2 with
-      | None, None => true
-      | Some a1, Some a2 => beqA a1 a2
-      | _, _ => false
-      end.
-
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 4, "ms": 3, "hammer": 3, "crush": 3} *)
+  
     Lemma beq_correct_bool:
       forall m1 m2,
       beq m1 m2 = true <-> (forall x, beq_optA (get x m1) (get x m2) = true).
@@ -890,6 +969,8 @@ Section PTree.
         * apply IHm0. intros. specialize (H1 (xI x)); rewrite ! gNode in H1; auto.
     Qed.
 
+    (** MS EFFORT {"type": "edit"} *)
+    (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
     Theorem beq_correct:
       forall m1 m2,
       beq m1 m2 = true <->
@@ -905,20 +986,10 @@ Section PTree.
     - specialize (H x). destruct (get x m1), (get x m2); intuition auto.
     Qed.
 
-  End BOOLEAN_EQUALITY.
-
 (** ** Collective operations *)
 
-  Fixpoint prev_append (i j: positive) {struct i} : positive :=
-    match i with
-      | xH => j
-      | xI i' => prev_append i' (xI j)
-      | xO i' => prev_append i' (xO j)
-    end.
-
-  Definition prev (i: positive) : positive :=
-    prev_append i xH.
-
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
+    
   Lemma prev_append_prev i j:
     prev (prev_append i j) = prev_append j i.
   Proof.

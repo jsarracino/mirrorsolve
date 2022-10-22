@@ -44,32 +44,29 @@ Inductive sorted : list Z -> Prop :=
 Hint Constructors sorted.
 
 (*** MS EFFORT {"type": "definition"} *)
-Inductive NoDup_Z : list Z -> Prop :=
-  NoDup_nil_z : NoDup_Z []
-| NoDup_cons_z : forall (x : Z) (l : list Z),
-                ~ In x l -> NoDup_Z l -> NoDup_Z (x :: l).
-
-Hint Constructors NoDup_Z.
+Fixpoint NoDup_Z (xs: list Z) := 
+  match xs with 
+  | [] => True
+  | x' :: xs' => 
+    ~ In x' xs' /\ NoDup_Z xs'
+  end.
 
 (*** MS EFFORT {"type": "lemma"} *)
 Lemma nd_z_nil : 
   NoDup_Z [] <-> True.
 Proof.
-  intuition eauto.
+  intros.
+  refine (iff_refl _).
 Qed.
 
 (*** MS EFFORT {"type": "lemma"} *)
-Lemma nd_z_cons : 
+Lemma nd_z_cons: 
   forall (x: Z) (l: list Z), 
     NoDup_Z (x :: l) <-> (~ In x l /\ NoDup_Z l).
 Proof.
   intros.
-  split; intros.
-  - inversion H;
-    subst.
-    intuition eauto.
-  - intuition eauto.
-Qed.
+  refine (iff_refl _).
+Qed.     
 
 Definition disjoint (l1 l2: list Z) := forall (x : Z),
   In x l1 -> ~ In x l2.

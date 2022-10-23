@@ -500,7 +500,8 @@ Section SearchTree.
 
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma gt_emp: 
-    forall x, gt_t x E <-> True.
+    forall x,
+      gt_t x E <-> True.
   Proof. 
     intros; 
     simpl; 

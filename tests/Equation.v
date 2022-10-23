@@ -6,6 +6,10 @@ Import MCMonadNotation.
 Import ListNotations.
 Open Scope bs.
 
+Definition tmDebug {A: Type} (thing: A) : TemplateMonad unit :=
+  tmEval all thing >>= tmPrint
+.
+
 Definition print_body {A: Type} (f: A) :=
   func_quoted <- tmQuote f ;;
   match func_quoted with
@@ -23,7 +27,7 @@ Definition binder_anon :=
 Definition subst_recursive_args (rec: term) (args: context) :=
   map (fun arg => subst1 arg.(decl_type) 0 rec) args.
 
-Definition constructor_argument_count
+Fixpoint inspect_ctor_args
   (ind_term: term)
   (index: nat)
 :=
@@ -34,14 +38,18 @@ Definition constructor_argument_count
     | first_body :: nil =>
       match nth_error first_body.(ind_ctors) index with
       | Some inductive_ctor =>
-        tmReturn (List.length inductive_ctor.(cstr_args))
+        tmReturn (List.length inductive_ctor.(cstr_args), nil)
       | None =>
         tmFail "Inductive constructor out of range"
       end
     | _ =>
       tmFail "Inductive has more than one body."
     end
+  | tApp ind_term args =>
+    mlet '(arg_count, type_args) <- inspect_ctor_args ind_term index ;;
+    tmReturn (arg_count, args ++ type_args)%list
   | _ =>
+    tmDebug ind_term ;;
     tmFail "Term is not an inductive."
   end
 .
@@ -71,10 +79,6 @@ Fixpoint dummy_args (count: nat) (offset: nat) :=
 
 MetaCoq Quote Definition eq_quoted := @eq.
 MetaCoq Quote Definition eq_refl_quoted := @eq_refl.
-
-Definition tmDebug {A: Type} (thing: A) : TemplateMonad unit :=
-  tmEval all thing >>= tmPrint
-.
 
 (* Custom version of MetaCoq's subst function. Theirs assumes that bound terms
    within the arguments will need to be shifted within the produced term, but
@@ -125,11 +129,11 @@ Definition infer_equation
   (offset: nat)
   (index: nat)
 :=
-  arg_count <- constructor_argument_count arg_type_quoted index ;;
+  mlet (arg_count, inst_args) <- inspect_ctor_args arg_type_quoted index ;;
   match func_quoted with
   | tConst (_, func_name) _ =>
     let construct := tApp (tConstruct info.(ci_ind) index [])
-                          (dummy_args arg_count 0) in
+                          (inst_args ++ dummy_args arg_count 0)%list in
     let args_pre := dummy_args (depth-1-offset) (offset+arg_count) in
     let args_post := dummy_args offset arg_count in
     let args := (args_pre ++ [construct] ++ args_post)%list in
@@ -182,7 +186,6 @@ Fixpoint infer_equations_inner
       tmFail "Term contains match on something that is not an argument."
     end
   | _ =>
-    tmDebug body ;;
     tmFail "Symbol body is not a function with a match inside."
   end
 .
@@ -277,4 +280,10 @@ Section Tests.
   MetaCoq Run (infer_equations Nat.mul).
   Check mul_equation_1.
   Check mul_equation_2.
+
+  Definition app_nat := Eval compute in (@List.app nat).
+
+  MetaCoq Run (infer_equations app_nat).
+  Check app_nat_equation_1.
+  Check app_nat_equation_2.
 End Tests.

@@ -10,11 +10,13 @@ and we provide a proof of soundness for this translation.
 
 # Prerequisites
 
+The easiest way to handle dependencies is through [opam](https://opam.ocaml.org/doc/Install.html). See [Dependencies.md](Dependencies.md) for instructions on making a fresh switch with the right repositories, flags, and Coq version.
+
 MirrorSolve requires `dune` and is tested against the dependencies in [dune-project](dune-project) (in particular Coq 8.15, MetaCoq, SMTCoq, and Equations). It also requires one of CVC5, Z3, or CVC4 to be installed and available as a binary. The default is CVC5 and if you use a different solver, you should use the vernacular `SetSMTSolver "<solver>".` to switch solvers (for example `SetSMTSolver "z3".`).
 
 Proofs are tested against:
-  * cvc5 version 0.0.5
-  * Z3 version 4.8.14
+  * cvc5 version 1.0.2
+  * Z3 version 4.11.1
   * CVC4 version 1.8
 
 ## Building and installing

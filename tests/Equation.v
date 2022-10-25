@@ -173,18 +173,13 @@ Fixpoint infer_equations_walk_cases
 Fixpoint infer_equations_inner
   (body: term)
   (top_quoted: term)
-  (context: list term)
+  (depth: nat)
 :=
   match body with
   | tLambda _ arg_type_quoted body =>
-    infer_equations_inner body top_quoted (arg_type_quoted :: context)
-  | tCase info _ (tRel offset) bodies =>
-    match nth_error context offset with
-    | Some arg_type_quoted =>
-      infer_equations_walk_cases arg_type_quoted top_quoted info bodies (List.length context) offset 0
-    | None =>
-      tmFail "Term contains match on something that is not an argument."
-    end
+    infer_equations_inner body top_quoted (S depth)
+  | tCase info pred (tRel offset) bodies =>
+    infer_equations_walk_cases pred.(preturn) top_quoted info bodies depth offset 0
   | _ =>
     tmFail "Symbol body is not a function with a match inside."
   end
@@ -197,9 +192,9 @@ Definition infer_equations_handle_fixpoint
   match body with
   | tFix (first_fixpoint :: nil) 0 =>
     let body := subst10 func_quoted first_fixpoint.(dbody) in
-    infer_equations_inner body func_quoted nil
+    infer_equations_inner body func_quoted 0
   | _ =>
-    infer_equations_inner body func_quoted nil
+    infer_equations_inner body func_quoted 0
   end
 .
 

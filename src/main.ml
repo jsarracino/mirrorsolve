@@ -1242,15 +1242,6 @@ let rec check_interp ?(ctx_e  = None) (e: C.t) (negate_toplevel: bool) : string 
 
 
 
-let set_backend_solver name = 
-  let open Smt in 
-  begin match Smt.str_to_solver name with 
-  | Some s -> set_solver s
-  | None -> 
-    let _ = Feedback.msg_warning (Pp.str ("Unrecognized solver name: " ^ name)) in
-      Feedback.msg_warning (Pp.str "Expected z3/cvc4/cvc5/boolector")
-  end
-
 let set_smt_language lang_s = 
   let open Smt in 
   begin match Smt.str_to_language lang_s with 

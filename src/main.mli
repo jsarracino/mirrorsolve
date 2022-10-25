@@ -101,7 +101,6 @@ val print_bools : bool list -> Pp.t
 val c_n_tuple_to_bools : Constr.t -> bool list
 val format_args : Constr.t array -> Pp.t
 
-val set_backend_solver : string -> unit
 val set_smt_language : string -> unit
 
 val reg_ind_decl : string -> EConstr.t -> EConstr.t -> unit

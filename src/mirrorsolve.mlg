@@ -235,12 +235,6 @@ TACTIC EXTEND CheckUnsatNegF
   }
 END
 
-VERNAC COMMAND EXTEND SetBackend CLASSIFIED AS QUERY
-| [ "SetSMTSolver" string(s) ] -> { 
-    Main.set_backend_solver s
-  }
-END
-
 VERNAC COMMAND EXTEND SetLanguage CLASSIFIED AS QUERY
 | [ "SetSMTLang" string(s) ] -> { 
     Main.set_smt_language s

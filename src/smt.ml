@@ -21,9 +21,23 @@ let str_to_solver s =
   | "boolector" -> Some Boolector
   | _ -> None
   end
-let solver = ref CVC4
-let set_solver = (:=) solver
-let get_solver _ = !solver
+
+let opt_solver_str =
+  Goptions.declare_stringopt_option_and_ref
+    ~depr:false
+    ~key:["MirrorSolve";"Solver"]
+
+let join o = 
+  begin match o with 
+  | Some(Some(x)) -> Some(x)
+  | _ -> None
+  end
+
+let get_solver () = 
+  begin match join @@ Option.map str_to_solver (opt_solver_str ()) with 
+  | Some x -> x
+  | None -> Z3
+  end
 
 type language_t = All | BV
 let show_language l = 

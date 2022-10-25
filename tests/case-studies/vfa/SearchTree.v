@@ -414,7 +414,7 @@ Section SearchTree.
     quote_reflect_tree;
     check_goal_unsat).
 
-  SetSMTSolver "z3".
+  Set MirrorSolve Solver "z3".
 
   Hint Immediate ordered_spec : tree_eqns. 
 
@@ -1126,7 +1126,7 @@ Hint Transparent uncurry.
   Hint Immediate lt_list_trans : tree_eqns.
   Hint Immediate gt_list_trans : tree_eqns.
 
-  SetSMTSolver "z3".
+  Set MirrorSolve Solver "z3".
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma lt_list_In : 
@@ -1528,7 +1528,7 @@ Hint Transparent uncurry.
   Hint Immediate app_nil_l_Z_V : tree_eqns.
   Hint Immediate app_cons_l_Z_V : tree_eqns.
 
-  SetSMTSolver "cvc5".
+  Set MirrorSolve Solver "cvc5".
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Lemma map_fst_app :

@@ -327,7 +327,7 @@ Section IntvSets.
   Hint Immediate ok_nil' : intvsets_eqns.
   Hint Immediate ok_cons': intvsets_eqns.
 
-  SetSMTSolver "cvc5".
+  Set MirrorSolve Solver "cvc5".
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   (*** MS BEGIN {"type": "proof_definition"} *)
@@ -352,7 +352,7 @@ Section IntvSets.
   Hint Immediate contains_equation_1 : intvsets_eqns.
   Hint Immediate contains_equation_2 : intvsets_eqns.
 
-  SetSMTSolver "z3".
+  Set MirrorSolve Solver "z3".
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 0, "crush": 1} *)
   (*** MS BEGIN {"type": "proof_definition"} *)
@@ -424,7 +424,7 @@ Section IntvSets.
     - crush';
       admit.
     Restart.
-    SetSMTSolver "cvc5".
+    Set MirrorSolve Solver "cvc5".
     induction s;
     try mirrorsolve.
   Qed.
@@ -630,9 +630,9 @@ Section IntvSets.
     induction 1; 
     induction 1.
     - mirrorsolve.
-    - SetSMTSolver "z3".
+    - Set MirrorSolve Solver "z3".
       mirrorsolve.
-    - SetSMTSolver "cvc5".
+    - Set MirrorSolve Solver "cvc5".
       mirrorsolve.
     - admit.
     Restart.

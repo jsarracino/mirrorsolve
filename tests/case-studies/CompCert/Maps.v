@@ -277,11 +277,11 @@ Section PTree.
   Qed.
 
   Variable (B: Type)
-          (empty: B)
+          (empty_b: B)
           (node: tree A -> option A -> tree A -> B).
 
   Definition node' := node.
-  Definition empty' := empty.
+  Definition empty' := empty_b.
 
   Equations tree_case (m: tree A) : B := {
     tree_case (Empty) := empty';
@@ -301,7 +301,7 @@ Section PTree.
     tree'_rec' (Node001 r) := node_rec' Empty empty' None (Nodes r) (tree'_rec' r);
     tree'_rec' (Node010 x) := node_rec' Empty empty' (Some x) Empty empty';
     tree'_rec' (Node011 x r) := node_rec' Empty empty' (Some x) (Nodes r) (tree'_rec' r);
-    tree'_rec' (Node100 l) := node_rec' (Nodes l) (tree'_rec' l) None Empty empty;
+    tree'_rec' (Node100 l) := node_rec' (Nodes l) (tree'_rec' l) None Empty empty';
     tree'_rec' (Node101 l r) := node_rec' (Nodes l) (tree'_rec' l) None (Nodes r) (tree'_rec' r);
     tree'_rec' (Node110 l x) := node_rec' (Nodes l) (tree'_rec' l) (Some x) Empty empty';
     tree'_rec' (Node111 l x r) := node_rec' (Nodes l) (tree'_rec' l) (Some x) (Nodes r) (tree'_rec' r);
@@ -389,6 +389,10 @@ Section PTree.
     ; pack node_rec'
     ; pack tree_rec'
     ; pack tree'_rec'
+    ; pack beqA'
+    ; pack beq
+    ; pack beq'
+    ; pack beq_optA
   ])%type.
   Definition rel_syms : list Config.packed := ([ 
     pack not_trivially_empty
@@ -465,7 +469,7 @@ Section PTree.
 
 (** ** Good variable properties for the basic operations *)
 
-  Hint Immediate get'_equation_1 : eqns.
+  (* Hint Immediate get'_equation_1 : eqns.
   Hint Immediate get'_equation_2 : eqns.
   Hint Immediate get'_equation_3 : eqns.
   Hint Immediate get'_equation_4 : eqns.
@@ -485,24 +489,115 @@ Section PTree.
   Hint Immediate get'_equation_18 : eqns.
   Hint Immediate get'_equation_19 : eqns.
   Hint Immediate get'_equation_20 : eqns.
-  Hint Immediate get'_equation_21 : eqns.
+  Hint Immediate get'_equation_21 : eqns. *)
+
+  Hint Immediate tree_case_equation_1 : eqns.
+  Hint Immediate tree_case_equation_2 : eqns.
+  Hint Immediate tree_case_equation_3 : eqns.
+  Hint Immediate tree_case_equation_4 : eqns.
+  Hint Immediate tree_case_equation_5 : eqns.
+  Hint Immediate tree_case_equation_6 : eqns.
+  Hint Immediate tree_case_equation_7 : eqns.
+  Hint Immediate tree_case_equation_8 : eqns.
+
+  Hint Immediate tree'_rec'_equation_1 : eqns.
+  Hint Immediate tree'_rec'_equation_2 : eqns.
+  Hint Immediate tree'_rec'_equation_3 : eqns.
+  Hint Immediate tree'_rec'_equation_4 : eqns.
+  Hint Immediate tree'_rec'_equation_5 : eqns.
+  Hint Immediate tree'_rec'_equation_6 : eqns.
+  Hint Immediate tree'_rec'_equation_7 : eqns.
 
   Hint Immediate get_equation_1 : eqns.
   Hint Immediate get_equation_2 : eqns.
 
   Hint Immediate empty_equation_1 : eqns.
 
+  Hint Immediate beq'_equation_1 : eqns.
+  Hint Immediate beq'_equation_2 : eqns.
+  Hint Immediate beq'_equation_3 : eqns.
+  Hint Immediate beq'_equation_4 : eqns.
+  Hint Immediate beq'_equation_5 : eqns.
+  Hint Immediate beq'_equation_6 : eqns.
+  Hint Immediate beq'_equation_7 : eqns.
+  Hint Immediate beq'_equation_8 : eqns.
+  Hint Immediate beq'_equation_9 : eqns. 
+  Hint Immediate beq'_equation_10 : eqns.
+  
+  (* Hint Immediate beq'_equation_11 : eqns.
+  Hint Immediate beq'_equation_12 : eqns.
+  Hint Immediate beq'_equation_13 : eqns.
+  Hint Immediate beq'_equation_14 : eqns.
+  Hint Immediate beq'_equation_15 : eqns.
+  Hint Immediate beq'_equation_16 : eqns.
+  Hint Immediate beq'_equation_17 : eqns.
+  Hint Immediate beq'_equation_18 : eqns.
+  Hint Immediate beq'_equation_19 : eqns.
+  Hint Immediate beq'_equation_20 : eqns.
+  Hint Immediate beq'_equation_21 : eqns.
+  Hint Immediate beq'_equation_22 : eqns.
+  Hint Immediate beq'_equation_23 : eqns.
+  Hint Immediate beq'_equation_24 : eqns.
+  Hint Immediate beq'_equation_25 : eqns.
+  Hint Immediate beq'_equation_26 : eqns.
+  Hint Immediate beq'_equation_27 : eqns.
+  Hint Immediate beq'_equation_28 : eqns.
+  Hint Immediate beq'_equation_29 : eqns.
+  Hint Immediate beq'_equation_30 : eqns.
+  Hint Immediate beq'_equation_31 : eqns.
+  Hint Immediate beq'_equation_32 : eqns.
+  Hint Immediate beq'_equation_33 : eqns.
+  Hint Immediate beq'_equation_34 : eqns.
+  Hint Immediate beq'_equation_35 : eqns.
+  Hint Immediate beq'_equation_36 : eqns.
+  Hint Immediate beq'_equation_37 : eqns.
+  Hint Immediate beq'_equation_38 : eqns.
+  Hint Immediate beq'_equation_39 : eqns.
+  Hint Immediate beq'_equation_40 : eqns.
+  Hint Immediate beq'_equation_41 : eqns.
+  Hint Immediate beq'_equation_42 : eqns.
+  Hint Immediate beq'_equation_43 : eqns.
+  Hint Immediate beq'_equation_44 : eqns.
+  Hint Immediate beq'_equation_45 : eqns.
+  Hint Immediate beq'_equation_46 : eqns.
+  Hint Immediate beq'_equation_47 : eqns.
+  Hint Immediate beq'_equation_48 : eqns. 
+  Hint Immediate beq'_equation_49 : eqns.
+
+  Hint Immediate beq_equation_1 : eqns.
+  Hint Immediate beq_equation_2 : eqns.
+  Hint Immediate beq_equation_3 : eqns.
+  Hint Immediate beq_equation_4 : eqns. 
+
+  Hint Immediate beq_optA_equation_1 : eqns.
+  Hint Immediate beq_optA_equation_2 : eqns.
+  Hint Immediate beq_optA_equation_3 : eqns.
+  Hint Immediate beq_optA_equation_4 : eqns.  *)
+
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Theorem gempty:
     forall (i: positive), get i (empty) = None.
-  Proof. 
+  Proof.
+    quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts.
+    prep_proof.
+    intros ? ? ?.
+    clear X.
+    clear X0. clear X1.
+    intros ?.
+    clear X.
+    mirrorsolve.
+    clear H.
+    clear 1.
+    mirrorsolve.
+    mirrorsolve. 
     induction i;
     hammer'.
     Restart.
     induction i;
     crush'.
     Restart.
-    induction i;
+    induction i.
+    mirrorsolve.
     mirrorsolve.  
   Qed.
 
@@ -638,7 +733,7 @@ Section PTree.
     crush'.
     Restart.
 
-    SetSMTSolver "z3".
+    Set MirrorSolve Solver "z3".
     induction i;
     induction j;
     induction m;

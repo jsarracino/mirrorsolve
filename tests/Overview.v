@@ -557,7 +557,7 @@ Section GT.
     quote_reflect_tree;
     check_goal_unsat).
 
-  SetSMTSolver "z3".
+  Set MirrorSolve Solver "z3".
 
   Create HintDb eqns.
   MetaCoq Run (infer_equations insert').

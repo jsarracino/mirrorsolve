@@ -490,7 +490,7 @@ Ltac mirrorsolve :=
     quote_reflect_list;
     check_goal_unsat.
 
-SetSMTSolver "z3".
+Set MirrorSolve Solver "z3".
 
 Lemma app_nil_l: 
   forall (x: list ascii), [] ++ x = x.
@@ -515,7 +515,7 @@ Qed.
 
 Hint Immediate app_nil_r : regexp_eqns.
 
-SetSMTSolver "cvc5".
+Set MirrorSolve Solver "cvc5".
 
 Lemma emp_is_emp' : forall R, is_emp R = true -> matches (emp R) nil.
 Proof.

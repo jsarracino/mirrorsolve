@@ -7,13 +7,23 @@
 )
 (declare-fun gt_t (Int Tree_V) Bool)
 (assert (not 
-    (forall ((fvar_0 Int) (fvar_1 Int)) 
-        (=> (> fvar_0 fvar_1) 
-        (=> (forall ((fvar_2 Int) (fvar_3 Tree_V) (fvar_4 Int) (fvar_5 V) (fvar_6 Tree_V)) (and (=> (and (> fvar_4 fvar_2) (and (gt_t fvar_2 fvar_3) (gt_t fvar_2 fvar_6))) (gt_t fvar_2 (T_V fvar_3 fvar_4 fvar_5 fvar_6))) (=> (gt_t fvar_2 (T_V fvar_3 fvar_4 fvar_5 fvar_6)) (and (> fvar_4 fvar_2) (and (gt_t fvar_2 fvar_3) (gt_t fvar_2 fvar_6)))))) 
-        (=> (forall ((fvar_2 Int)) (and (=> (gt_t fvar_2 E_V) true) (=> true (gt_t fvar_2 E_V)))) (=> (gt_t fvar_0 E_V) (gt_t fvar_1 E_V)))))
+    (forall ((x Int) (y Int)) 
+        (=> (> x y) 
+        (=> (forall ((k Int) (l Tree_V) (kp Int) (v V) (r Tree_V)) 
+            (and 
+                (=> (and (> kp k) (and (gt_t k l) (gt_t k r))) 
+                    (gt_t k (T_V l kp v r))) 
+                (=> (gt_t k (T_V l kp v r)) 
+                    (and (> kp k) (and (gt_t k l) (gt_t k r)))))) 
+        (=> (forall ((x Int)) 
+            (and 
+                (=> (gt_t x E_V) true) 
+                (=> true (gt_t x E_V))
+            )) 
+        (=> (gt_t x E_V) 
+            (gt_t y E_V)
+        ))))
     )
 ))
  
-
 (check-sat)
-

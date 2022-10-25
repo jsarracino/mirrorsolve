@@ -161,7 +161,7 @@ Section Groups.
     quote_reflect_groups;
     check_goal_unsat).
 
-  SetSMTSolver "z3".
+  Set MirrorSolve Solver "z3".
   (*** MS END {"type": "configuration", "config_type":"tactics"} *)
 
 
@@ -282,7 +282,7 @@ Section Groups.
     Restart.
     try crush'.
     Restart.
-    SetSMTSolver "z3".
+    Set MirrorSolve Solver "z3".
     mirrorsolve.
   Qed.
 

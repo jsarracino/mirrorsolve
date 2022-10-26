@@ -393,6 +393,7 @@ Section PTree.
     ; pack beq
     ; pack beq'
     ; pack beq_optA
+    ; pack andb
   ])%type.
   Definition rel_syms : list Config.packed := ([ 
     pack not_trivially_empty
@@ -469,7 +470,8 @@ Section PTree.
 
 (** ** Good variable properties for the basic operations *)
 
-  (* Hint Immediate get'_equation_1 : eqns.
+  (* MirrorSolve hints *)
+  Hint Immediate get'_equation_1 : eqns.
   Hint Immediate get'_equation_2 : eqns.
   Hint Immediate get'_equation_3 : eqns.
   Hint Immediate get'_equation_4 : eqns.
@@ -489,7 +491,29 @@ Section PTree.
   Hint Immediate get'_equation_18 : eqns.
   Hint Immediate get'_equation_19 : eqns.
   Hint Immediate get'_equation_20 : eqns.
-  Hint Immediate get'_equation_21 : eqns. *)
+  Hint Immediate get'_equation_21 : eqns.
+
+  Hint Immediate get'_equation_1 : eqns.
+  Hint Immediate get'_equation_2 : eqns.
+  Hint Immediate get'_equation_3 : eqns.
+  Hint Immediate get'_equation_4 : eqns.
+  Hint Immediate get'_equation_5 : eqns.
+  Hint Immediate get'_equation_6 : eqns.
+  Hint Immediate get'_equation_7 : eqns.
+  Hint Immediate get'_equation_8 : eqns.
+  Hint Immediate get'_equation_9 : eqns.
+  Hint Immediate get'_equation_10 : eqns.
+  Hint Immediate get'_equation_11 : eqns.
+  Hint Immediate get'_equation_12 : eqns.
+  Hint Immediate get'_equation_13 : eqns.
+  Hint Immediate get'_equation_14 : eqns.
+  Hint Immediate get'_equation_15 : eqns.
+  Hint Immediate get'_equation_16 : eqns.
+  Hint Immediate get'_equation_17 : eqns.
+  Hint Immediate get'_equation_18 : eqns.
+  Hint Immediate get'_equation_19 : eqns.
+  Hint Immediate get'_equation_20 : eqns.
+  Hint Immediate get'_equation_21 : eqns.
 
   Hint Immediate tree_case_equation_1 : eqns.
   Hint Immediate tree_case_equation_2 : eqns.
@@ -524,7 +548,7 @@ Section PTree.
   Hint Immediate beq'_equation_9 : eqns. 
   Hint Immediate beq'_equation_10 : eqns.
   
-  (* Hint Immediate beq'_equation_11 : eqns.
+  Hint Immediate beq'_equation_11 : eqns.
   Hint Immediate beq'_equation_12 : eqns.
   Hint Immediate beq'_equation_13 : eqns.
   Hint Immediate beq'_equation_14 : eqns.
@@ -572,36 +596,153 @@ Section PTree.
   Hint Immediate beq_optA_equation_1 : eqns.
   Hint Immediate beq_optA_equation_2 : eqns.
   Hint Immediate beq_optA_equation_3 : eqns.
-  Hint Immediate beq_optA_equation_4 : eqns.  *)
+  Hint Immediate beq_optA_equation_4 : eqns. 
+
+
+  Hint Immediate get'_equation_1 : eqns.
+  Hint Immediate get'_equation_2 : eqns.
+  Hint Immediate get'_equation_3 : eqns.
+  Hint Immediate get'_equation_4 : eqns.
+  Hint Immediate get'_equation_5 : eqns.
+  Hint Immediate get'_equation_6 : eqns.
+  Hint Immediate get'_equation_7 : eqns.
+  Hint Immediate get'_equation_8 : eqns.
+  Hint Immediate get'_equation_9 : eqns.
+  Hint Immediate get'_equation_10 : eqns.
+  Hint Immediate get'_equation_11 : eqns.
+  Hint Immediate get'_equation_12 : eqns.
+  Hint Immediate get'_equation_13 : eqns.
+  Hint Immediate get'_equation_14 : eqns.
+  Hint Immediate get'_equation_15 : eqns.
+  Hint Immediate get'_equation_16 : eqns.
+  Hint Immediate get'_equation_17 : eqns.
+  Hint Immediate get'_equation_18 : eqns.
+  Hint Immediate get'_equation_19 : eqns.
+  Hint Immediate get'_equation_20 : eqns.
+  Hint Immediate get'_equation_21 : eqns.
+
+  (* crush hints *)
+  Hint Resolve get'_equation_1.
+  Hint Resolve get'_equation_2.
+  Hint Resolve get'_equation_3.
+  Hint Resolve get'_equation_4.
+  Hint Resolve get'_equation_5.
+  Hint Resolve get'_equation_6.
+  Hint Resolve get'_equation_7.
+  Hint Resolve get'_equation_8.
+  Hint Resolve get'_equation_9.
+  Hint Resolve get'_equation_10.
+  Hint Resolve get'_equation_11.
+  Hint Resolve get'_equation_12.
+  Hint Resolve get'_equation_13.
+  Hint Resolve get'_equation_14.
+  Hint Resolve get'_equation_15.
+  Hint Resolve get'_equation_16.
+  Hint Resolve get'_equation_17.
+  Hint Resolve get'_equation_18.
+  Hint Resolve get'_equation_19.
+  Hint Resolve get'_equation_20.
+  Hint Resolve get'_equation_21.
+
+  Hint Resolve tree_case_equation_1.
+  Hint Resolve tree_case_equation_2.
+  Hint Resolve tree_case_equation_3.
+  Hint Resolve tree_case_equation_4.
+  Hint Resolve tree_case_equation_5.
+  Hint Resolve tree_case_equation_6.
+  Hint Resolve tree_case_equation_7.
+  Hint Resolve tree_case_equation_8.
+
+  Hint Resolve tree'_rec'_equation_1.
+  Hint Resolve tree'_rec'_equation_2.
+  Hint Resolve tree'_rec'_equation_3.
+  Hint Resolve tree'_rec'_equation_4.
+  Hint Resolve tree'_rec'_equation_5.
+  Hint Resolve tree'_rec'_equation_6.
+  Hint Resolve tree'_rec'_equation_7.
+
+  Hint Resolve get_equation_1.
+  Hint Resolve get_equation_2.
+
+  Hint Resolve empty_equation_1.
+
+  Hint Resolve beq'_equation_1.
+  Hint Resolve beq'_equation_2.
+  Hint Resolve beq'_equation_3.
+  Hint Resolve beq'_equation_4.
+  Hint Resolve beq'_equation_5.
+  Hint Resolve beq'_equation_6.
+  Hint Resolve beq'_equation_7.
+  Hint Resolve beq'_equation_8.
+  Hint Resolve beq'_equation_9.
+  Hint Resolve beq'_equation_10.
+  
+  Hint Resolve beq'_equation_11.
+  Hint Resolve beq'_equation_12.
+  Hint Resolve beq'_equation_13.
+  Hint Resolve beq'_equation_14.
+  Hint Resolve beq'_equation_15.
+  Hint Resolve beq'_equation_16.
+  Hint Resolve beq'_equation_17.
+  Hint Resolve beq'_equation_18.
+  Hint Resolve beq'_equation_19.
+  Hint Resolve beq'_equation_20.
+  Hint Resolve beq'_equation_21.
+  Hint Resolve beq'_equation_22.
+  Hint Resolve beq'_equation_23.
+  Hint Resolve beq'_equation_24.
+  Hint Resolve beq'_equation_25.
+  Hint Resolve beq'_equation_26.
+  Hint Resolve beq'_equation_27.
+  Hint Resolve beq'_equation_28.
+  Hint Resolve beq'_equation_29.
+  Hint Resolve beq'_equation_30.
+  Hint Resolve beq'_equation_31.
+  Hint Resolve beq'_equation_32.
+  Hint Resolve beq'_equation_33.
+  Hint Resolve beq'_equation_34.
+  Hint Resolve beq'_equation_35.
+  Hint Resolve beq'_equation_36.
+  Hint Resolve beq'_equation_37.
+  Hint Resolve beq'_equation_38.
+  Hint Resolve beq'_equation_39.
+  Hint Resolve beq'_equation_40.
+  Hint Resolve beq'_equation_41.
+  Hint Resolve beq'_equation_42.
+  Hint Resolve beq'_equation_43.
+  Hint Resolve beq'_equation_44.
+  Hint Resolve beq'_equation_45.
+  Hint Resolve beq'_equation_46.
+  Hint Resolve beq'_equation_47.
+  Hint Resolve beq'_equation_48.
+  Hint Resolve beq'_equation_49.
+
+  Hint Resolve beq_equation_1.
+  Hint Resolve beq_equation_2.
+  Hint Resolve beq_equation_3.
+  Hint Resolve beq_equation_4.
+
+  Hint Resolve beq_optA_equation_1.
+  Hint Resolve beq_optA_equation_2.
+  Hint Resolve beq_optA_equation_3.
+  Hint Resolve beq_optA_equation_4.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Theorem gempty:
     forall (i: positive), get i (empty) = None.
   Proof.
-    quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts.
-    prep_proof.
-    intros ? ? ?.
-    clear X.
-    clear X0. clear X1.
-    intros ?.
-    clear X.
-    mirrorsolve.
-    clear H.
-    clear 1.
-    mirrorsolve.
-    mirrorsolve. 
     induction i;
     hammer'.
     Restart.
     induction i;
     crush'.
     Restart.
-    induction i.
+    induction i;
     mirrorsolve.
-    mirrorsolve.  
   Qed.
 
   Hint Immediate gempty : eqns.
+  Hint Resolve gempty.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":1, "crush":1} *)
@@ -614,7 +755,6 @@ Section PTree.
     Restart.
     mirrorsolve.
   Qed.
-
 
   Hint Immediate set0_equation_1 : eqns.
   Hint Immediate set0_equation_2 : eqns.

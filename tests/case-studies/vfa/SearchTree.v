@@ -28,6 +28,7 @@ Require Import MirrorSolve.UF.
 Require Import MirrorSolve.Reflection.Core.
 Require Import MirrorSolve.Reflection.FM.
 Require Import MirrorSolve.Reflection.Tactics.
+Require Import MirrorSolve.Automation.Equations.
 From Hammer Require Import Hammer.
 
 Require Import MirrorSolve.Crush.

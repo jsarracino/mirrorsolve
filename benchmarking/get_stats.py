@@ -278,6 +278,7 @@ if __name__ == "__main__":
   print("Expressiveness table:")
   print("\\toprule")
   print(('Bench, ' + ExpressivenessTally.make_header()).replace(',',' &') + " \\\\")
+  print("\\midrule")
   
 
   aggregate = ExpressivenessTally.empty()
@@ -295,6 +296,7 @@ if __name__ == "__main__":
   print("goal table:")
   print("\\toprule")
   print(('Bench, ' + ProverTally.make_header()).replace(',',' &') + " \\\\")
+  print("\\midrule")
   
 
   helper_aggregate = ProverTally.empty()
@@ -354,6 +356,7 @@ if __name__ == "__main__":
   print("Effort table:")
   print("\\toprule")
   print(('Bench, ' + EffortTally.make_header()).replace(',',' &') + " \\\\")
+  print("\\midrule")
 
   aggregate = EffortTally.empty()
   

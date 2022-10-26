@@ -24,7 +24,7 @@ Section Meta.
   Definition term_ind' : forall P : term -> Prop,
     (forall n : nat, P (tRel n)) ->
     (forall id : ident, P (tVar id)) ->
-    (forall (ev : nat) (args : list term), P (tEvar ev args)) ->
+    (forall (ev : nat) (args : list term), List.Forall P args -> P (tEvar ev args)) ->
     (forall s : Universe.t, P (tSort s)) ->
     (forall t : term,
     P t ->
@@ -46,17 +46,21 @@ Section Meta.
     (forall (ind : inductive) (u : Instance.t), P (tInd ind u)) ->
     (forall (ind : inductive) (idx : nat) (u : Instance.t),
     P (tConstruct ind idx u)) ->
-    (forall (ci : case_info) (type_info : predicate term) (discr : term),
+    (forall (ci : case_info) (type_info : predicate term),
+        Forall P type_info.(pparams) ->
+        P type_info.(preturn) ->
+        forall (discr : term),
         P discr ->
         forall branches : list (branch term),
+        Forall (P ∘ bbody) branches ->
         P (tCase ci type_info discr branches)) ->
     (forall (proj : projection) (t : term), P t -> P (tProj proj t)) ->
-    (forall (mfix : mfixpoint term) (idx : nat), P (tFix mfix idx)) ->
-    (forall (mfix : mfixpoint term) (idx : nat), P (tCoFix mfix idx)) -> 
+    (forall (mfix : mfixpoint term) (idx : nat), Forall (P ∘ dtype) mfix -> Forall (P ∘ dbody) mfix -> P (tFix mfix idx)) ->
+    (forall (mfix : mfixpoint term) (idx : nat), Forall (P ∘ dtype) mfix -> Forall (P ∘ dbody) mfix -> P (tCoFix mfix idx)) ->
     forall (t: term), P t :=
   fun (P : term -> Prop) (f : forall n : nat, P (tRel n))
     (f0 : forall id : ident, P (tVar id))
-    (f1 : forall (ev : nat) (args : list term), P (tEvar ev args))
+    (f1 : forall (ev : nat) (args : list term), List.Forall P args -> P (tEvar ev args))
     (f2 : forall s : Universe.t, P (tSort s))
     (f3 : forall t : term,
         P t ->
@@ -78,19 +82,29 @@ Section Meta.
     (f9 : forall (ind : inductive) (u : Instance.t), P (tInd ind u))
     (f10 : forall (ind : inductive) (idx : nat) (u : Instance.t),
           P (tConstruct ind idx u))
-    (f11 : forall (ci : case_info) (type_info : predicate term) (discr : term),
+    (f11 : forall (ci : case_info) (type_info : predicate term),
+          Forall P type_info.(pparams) ->
+          P type_info.(preturn) ->
+          forall (discr : term),
           P discr ->
           forall branches : list (branch term),
+          Forall (P ∘ bbody) branches ->
           P (tCase ci type_info discr branches))
     (f12 : forall (proj : projection) (t : term), P t -> P (tProj proj t))
-    (f13 : forall (mfix : mfixpoint term) (idx : nat), P (tFix mfix idx))
-    (f14 : forall (mfix : mfixpoint term) (idx : nat), P (tCoFix mfix idx))
+    (f13 : forall (mfix : mfixpoint term) (idx : nat), Forall (P ∘ dtype) mfix -> Forall (P ∘ dbody) mfix -> P (tFix mfix idx))
+    (f14 : forall (mfix : mfixpoint term) (idx : nat), Forall (P ∘ dtype) mfix -> Forall (P ∘ dbody) mfix -> P (tCoFix mfix idx))
      =>
     fix F (t : term) : P t :=
     match t as t0 return (P t0) with
     | tRel n => f n
     | tVar id => f0 id
-    | tEvar ev args => f1 ev args
+    | tEvar ev args =>
+        f1 ev args ((fix args_F (l: list term) : List.Forall P l := 
+          match l with 
+          | nil => Forall_nil P 
+          | t :: ts => Forall_cons _ (F t) (args_F ts)
+          end
+        ) args)
     | tSort s => f2 s
     | tCast t0 kind v => f3 t0 (F t0) kind v (F v)
     | tProd na ty body => f4 na ty (F ty) body (F body)
@@ -109,10 +123,42 @@ Section Meta.
     | tInd ind u => f9 ind u
     | tConstruct ind idx u => f10 ind idx u
     | tCase ci type_info discr branches =>
-      f11 ci type_info discr (F discr) branches
+      let fix rec1 l : List.Forall P l :=
+        match l with 
+        | nil => Forall_nil P
+        | t :: ts => Forall_cons _ (F t) (rec1 ts)
+        end in
+      let fix rec2 l : List.Forall (P ∘ bbody) l :=
+        match l with 
+        | nil => Forall_nil (P ∘ bbody) 
+        | t :: ts => Forall_cons _ (F t.(bbody)) (rec2 ts)
+        end in
+      f11 ci type_info (rec1 type_info.(pparams)) (F type_info.(preturn)) discr (F discr) branches (rec2 branches)
     | tProj proj t0 => f12 proj t0 (F t0)
-    | tFix mfix idx => f13 mfix idx
-    | tCoFix mfix idx => f14 mfix idx
+    | tFix mfix idx =>
+      let fix rec1 l : List.Forall (P ∘ dtype) l :=
+        match l with 
+        | nil => Forall_nil _
+        | t :: ts => Forall_cons _ (F t.(dtype)) (rec1 ts)
+        end in
+      let fix rec2 l : List.Forall (P ∘ dbody) l :=
+        match l with 
+        | nil => Forall_nil _
+        | t :: ts => Forall_cons _ (F t.(dbody)) (rec2 ts)
+        end in
+      f13 mfix idx (rec1 mfix) (rec2 mfix)
+    | tCoFix mfix idx =>
+      let fix rec1 l : List.Forall (P ∘ dtype) l :=
+        match l with 
+        | nil => Forall_nil _
+        | t :: ts => Forall_cons _ (F t.(dtype)) (rec1 ts)
+        end in
+      let fix rec2 l : List.Forall (P ∘ dbody) l :=
+        match l with 
+        | nil => Forall_nil _
+        | t :: ts => Forall_cons _ (F t.(dbody)) (rec2 ts)
+        end in
+      f14 mfix idx (rec1 mfix) (rec2 mfix)
     end.
 
   Inductive EquivEnvs {c} : 

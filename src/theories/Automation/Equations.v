@@ -24,8 +24,16 @@ Definition print_body {A: Type} (f: A) :=
   end
 .
 
-Definition binder_anon :=
-  {| binder_name := nAnon; binder_relevance := Relevant |}
+Require Coq.Strings.BinaryString.
+Check Coq.Strings.BinaryString.of_nat.
+
+Eval compute in Coq.Strings.BinaryString.of_nat 5.
+
+Definition n_to_str n := 
+  String.of_string (Coq.Strings.BinaryString.of_nat n).
+
+Definition make_binder (n: nat) :=
+  {| binder_name := nNamed ("x_" ++ n_to_str n); binder_relevance := Relevant |}
 .
 
 Definition subst_recursive_args (rec: term) (args: context) :=
@@ -62,7 +70,7 @@ Fixpoint wrap_type (count: nat) (body: term) :=
   match count with
   | 0 => body
   | S count =>
-    tProd binder_anon hole (wrap_type count body)
+    tProd (make_binder count) hole (wrap_type count body)
   end
 .
 
@@ -70,7 +78,7 @@ Fixpoint wrap_body (count: nat) (body: term) :=
   match count with
   | 0 => body
   | S count =>
-    tLambda binder_anon hole (wrap_body count body)
+    tLambda (make_binder count) hole (wrap_body count body)
   end
 .
 

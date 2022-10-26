@@ -52,22 +52,7 @@ Fixpoint NoDup_Z (xs: list Z) :=
     ~ In x' xs' /\ NoDup_Z xs'
   end.
 
-(*** MS EFFORT {"type": "lemma"} *)
-Lemma nd_z_nil : 
-  NoDup_Z [] <-> True.
-Proof.
-  intros.
-  refine (iff_refl _).
-Qed.
-
-(*** MS EFFORT {"type": "lemma"} *)
-Lemma nd_z_cons: 
-  forall (x: Z) (l: list Z), 
-    NoDup_Z (x :: l) <-> (~ In x l /\ NoDup_Z l).
-Proof.
-  intros.
-  refine (iff_refl _).
-Qed.     
+MetaCoq Run (infer_equations NoDup_Z).
 
 Definition disjoint (l1 l2: list Z) := forall (x : Z),
   In x l1 -> ~ In x l2.
@@ -419,32 +404,10 @@ Section SearchTree.
 
   Hint Immediate ordered_spec : tree_eqns. 
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  Lemma ordered_emp: 
-    ordered E.
-  Proof. 
-    intros; 
-    simpl; 
-    intuition. 
-  Qed.
+  MetaCoq Run (infer_equations ordered).
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma ordered_node: 
-    forall l k v r, 
-      (lt_t k l /\ 
-      gt_t k r /\ 
-      ordered l /\ ordered r) <->
-      ordered (T l k v r).
-  Proof. 
-    intros; 
-    simpl; 
-    intuition. 
-  Qed.
-
-  Hint Immediate ordered_emp : tree_eqns. 
-  Hint Immediate ordered_node : tree_eqns. 
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
+  Hint Immediate ordered_equation_1 : tree_eqns. 
+  Hint Immediate ordered_equation_2 : tree_eqns. 
     
 
 (** **** Exercise: 1 star, standard (empty_tree_BST) *)
@@ -473,65 +436,18 @@ Section SearchTree.
 
   (* first, reflect lt_t and gt_t: *)
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  Lemma lt_emp: 
-    forall x, lt_t x E <-> True.
-  Proof. 
-    intros; 
-    simpl; 
-    intuition. 
-  Qed.
+  MetaCoq Run (infer_equations lt_t).
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma lt_node: 
-    forall x l k v r, 
-      (lt_t x l /\ 
-       lt_t x r /\
-       k < x) <->
-      lt_t x (T l k v r).
-  Proof. 
-    intros; 
-    simpl; 
-    intuition. 
-  Qed.
+  Hint Immediate lt_t_equation_1 : tree_eqns. 
+  Hint Immediate lt_t_equation_2 : tree_eqns. 
 
-  Hint Immediate lt_emp : tree_eqns. 
-  Hint Immediate lt_node : tree_eqns. 
+  MetaCoq Run (infer_equations gt_t).
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma gt_emp: 
-    forall x,
-      gt_t x E <-> True.
-  Proof. 
-    intros; 
-    simpl; 
-    intuition. 
-  Qed.
-
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma gt_node: 
-    forall x l k v r, 
-      (gt_t x l /\ 
-       gt_t x r /\
-       k > x) <->
-      gt_t x (T l k v r).
-  Proof. 
-    intros; 
-    simpl; 
-    intuition. 
-  Qed.
-
-  Hint Immediate gt_emp : tree_eqns. 
-  Hint Immediate gt_node : tree_eqns. 
-
-
-  Hint Immediate gt_emp : tree_eqns. 
-  Hint Immediate gt_node : tree_eqns. 
+  Hint Immediate gt_t_equation_1 : tree_eqns. 
+  Hint Immediate gt_t_equation_2 : tree_eqns. 
 
   Hint Immediate insert_t_equation_1 : tree_eqns.
   Hint Immediate insert_t_equation_2 : tree_eqns.
-  (*** MS END {"type": "configuration", "config_type":"boilerplate"} *)
 
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
@@ -955,6 +871,8 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Hint Immediate elements_equation_1 : tree_eqns.
   Hint Immediate elements_equation_2 : tree_eqns.
 
+  (* MetaCoq Run (infer_equations (@In (key * V))). *)
+
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma In_nil : 
     forall (x : key * V), 
@@ -1047,46 +965,13 @@ Hint Transparent uncurry.
     to use [elements_preserves_forall] and library theorem
     [Forall_forall]. *)
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma lt_list_nil : 
-    forall x, lt_list x [] <-> True.
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
+  MetaCoq Run (infer_equations lt_list).
+  MetaCoq Run (infer_equations gt_list).
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma lt_list_cons : 
-    forall x y v l, lt_list x ((y, v) :: l)  <-> (y < x /\ lt_list x l).
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
-
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma gt_list_nil : 
-    forall x, gt_list x [] <-> True.
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
-
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma gt_list_cons : 
-    forall x y v l, gt_list x ((y, v) :: l)  <-> (y > x /\ gt_list x l).
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
-
-  Hint Immediate lt_list_nil : tree_eqns.
-  Hint Immediate lt_list_cons : tree_eqns.
-  Hint Immediate gt_list_nil : tree_eqns.
-  Hint Immediate gt_list_cons : tree_eqns.
+  Hint Immediate lt_list_equation_1 : tree_eqns.
+  Hint Immediate lt_list_equation_2 : tree_eqns.
+  Hint Immediate gt_list_equation_1 : tree_eqns.
+  Hint Immediate gt_list_equation_2 : tree_eqns.
 
   (* However, we can prove that it preserves lt_t and gt_t, as well as that lt_list and gt_list are transitive *)
 
@@ -1292,6 +1177,8 @@ Hint Transparent uncurry.
 
   (* First we reflect the definition of sorted to UF: *)
 
+  (* MetaCoq Run (infer_equations sorted). *)
+
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma sorted_nil' : 
     sorted [] <-> True.
@@ -1329,27 +1216,12 @@ Hint Transparent uncurry.
   Hint Immediate sorted_one' : tree_eqns.
   Hint Immediate sorted_cons' : tree_eqns.
 
+  MetaCoq Run (infer_equations lt_list_s).
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma lt_list_s_nil : 
-    forall x, lt_list_s x [] <-> True.
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
+  Hint Immediate lt_list_s_equation_1 : tree_eqns.
+  Hint Immediate lt_list_s_equation_2 : tree_eqns.
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma lt_list_s_cons : 
-    forall l x y, lt_list_s x (y :: l)  <-> (y < x /\ lt_list_s x l).
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
-
-  Hint Immediate lt_list_s_nil : tree_eqns.
-  Hint Immediate lt_list_s_cons : tree_eqns.
+  (* MetaCoq Run (infer_equations (@List.app key)). *)
   
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma app_nil_l_Z : 
@@ -1388,26 +1260,10 @@ Hint Transparent uncurry.
 
   Hint Immediate sorted_lt_end : tree_eqns.
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma gt_list_s_nil : 
-    forall x, gt_list_s x [] <-> True.
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
+  MetaCoq Run (infer_equations gt_list_s).
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma gt_list_s_cons : 
-    forall l x y, gt_list_s x (y :: l)  <-> (y > x /\ gt_list_s x l).
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
-
-  Hint Immediate gt_list_s_nil : tree_eqns.
-  Hint Immediate gt_list_s_cons : tree_eqns.
+  Hint Immediate gt_list_s_equation_1 : tree_eqns.
+  Hint Immediate gt_list_s_equation_2 : tree_eqns.
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 2} *)
   Lemma sorted_gt_beginning : 
@@ -1511,6 +1367,8 @@ Hint Transparent uncurry.
   Hint Immediate map_fst_lts : tree_eqns.
   Hint Immediate map_fst_gts : tree_eqns.
 
+  MetaCoq Run (infer_equations (@List.app (key * V)))
+
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma app_nil_l_Z_V : 
     forall (x: list (key * V)), ([] ++ x = x)%list.
@@ -1581,9 +1439,10 @@ Hint Transparent uncurry.
     for two lists to be disjoint: *)
 
   Hint Immediate disjoint_spec : tree_eqns.
-  Hint Immediate nd_z_nil : tree_eqns.
-  Hint Immediate nd_z_cons : tree_eqns.
+  Hint Immediate nd_z_equation_1 : tree_eqns.
+  Hint Immediate nd_z_equation_2 : tree_eqns.
 
+  (* MetaCoq Run (infer_equations (@In Z)). *)
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma In_nil_Z : 
     forall (x : key), 

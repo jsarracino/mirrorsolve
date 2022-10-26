@@ -63,6 +63,7 @@ Require Import MirrorSolve.UF.
 Require Import MirrorSolve.Reflection.Core.
 Require Import MirrorSolve.Reflection.FM.
 Require Import MirrorSolve.Reflection.Tactics.
+Require Import MirrorSolve.Automation.Equations.
 From Hammer Require Import Hammer.
 
 Require Import MirrorSolve.Crush.
@@ -238,6 +239,8 @@ Section PTree.
     | Empty, None, Empty => False
     | _, _, _ => True
     end.
+
+  (* MetaCoq Run (infer_equations not_trivially_empty). *)
 
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma not_trivially_empty_equation_1 : 

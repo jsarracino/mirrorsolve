@@ -42,6 +42,7 @@ Require Import MirrorSolve.UF.
 Require Import MirrorSolve.Reflection.Core.
 Require Import MirrorSolve.Reflection.FM.
 Require Import MirrorSolve.Reflection.Tactics.
+Require Import MirrorSolve.Automation.Equations.
 From Hammer Require Import Hammer.
 
 Require Import MirrorSolve.Crush.
@@ -131,21 +132,7 @@ Section IntvSets.
   }.
   (*** MS END {"type": "definition"} *)
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  (*** MS BEGIN {"type": "configuration", "config_type":"boilerplate"} *)
-  Lemma in_nil: 
-    forall z, 
-      In z Nil <-> False.
-  Proof. 
-    intros; simpl; intuition. 
-  Qed.
-
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma in_cons: 
-    forall x l h t, 
-      (l <= x < h \/ In x t) <->
-      In x (Cons l h t).
-  Proof. intros; simpl; intuition. Qed.
+  MetaCoq Run (infer_equations In).
 
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma ok_nil': 
@@ -321,8 +308,8 @@ Section IntvSets.
   Hint Immediate mem_equation_1 : intvsets_eqns.
   Hint Immediate mem_equation_2 : intvsets_eqns.
 
-  Hint Immediate in_nil : intvsets_eqns.
-  Hint Immediate in_cons : intvsets_eqns.
+  Hint Immediate in_equation_1 : intvsets_eqns.
+  Hint Immediate in_equation_2 : intvsets_eqns.
 
   Hint Immediate ok_nil' : intvsets_eqns.
   Hint Immediate ok_cons': intvsets_eqns.

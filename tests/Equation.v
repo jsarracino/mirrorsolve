@@ -80,6 +80,9 @@ Fixpoint dummy_args (count: nat) (offset: nat) :=
 MetaCoq Quote Definition eq_quoted := @eq.
 MetaCoq Quote Definition eq_refl_quoted := @eq_refl.
 
+MetaCoq Quote Definition iff_quoted := @iff.
+MetaCoq Quote Definition iff_refl_quoted := @iff_refl.
+
 (* Custom version of MetaCoq's subst function. Theirs assumes that bound terms
    within the arguments will need to be shifted within the produced term, but
    in our case we do not want this to happen.
@@ -122,6 +125,7 @@ Fixpoint subst_nolift (s : list term) (k : nat) (u : term) : term :=
 
 Definition infer_equation
   (arg_type_quoted: term)
+  (ret_type_quoted: term)
   (func_quoted: term)
   (info: case_info)
   (body: term)
@@ -139,11 +143,18 @@ Definition infer_equation
     let args := (args_pre ++ [construct] ++ args_post)%list in
     let claim_lhs := tApp func_quoted args in
     let claim_rhs := subst_nolift [construct] (offset+arg_count) body in
-    let claim_eq := tApp eq_quoted [hole; claim_lhs; claim_rhs] in
+    let (claim_prefix, proof_prefix) :=
+      match ret_type_quoted with
+      | tSort Universe.lProp =>
+        (iff_quoted, iff_refl_quoted)
+      | _ =>
+        (tApp eq_quoted [hole], tApp eq_refl_quoted [hole])
+      end in
+    let claim_eq := tApp claim_prefix [claim_lhs; claim_rhs] in
     let claim_quoted := wrap_type (arg_count+depth-1) claim_eq in
     claim <- tmUnquoteTyped Type claim_quoted ;;
     let proof_quoted :=
-      wrap_body (arg_count+depth-1) (tApp eq_refl_quoted [hole; claim_rhs]) in
+      wrap_body (arg_count+depth-1) (tApp proof_prefix [claim_rhs]) in
     proof <- tmUnquoteTyped claim proof_quoted ;;
     let eqn_base := func_name ++ "_equation_" ++ string_of_nat (index+1) in
     eqn_name <- tmFreshName eqn_base ;;
@@ -155,6 +166,7 @@ Definition infer_equation
 
 Fixpoint infer_equations_walk_cases
   (arg_type_quoted: term)
+  (ret_type_quoted: term)
   (func_quoted: term)
   (info: case_info)
   (bodies: list (branch term))
@@ -165,8 +177,8 @@ Fixpoint infer_equations_walk_cases
   match bodies with
   | nil => tmReturn 0
   | body :: bodies =>
-    infer_equation arg_type_quoted func_quoted info body.(bbody) depth offset index ;;
-    infer_equations_walk_cases arg_type_quoted func_quoted info bodies depth offset (S index)
+    infer_equation arg_type_quoted ret_type_quoted func_quoted info body.(bbody) depth offset index ;;
+    infer_equations_walk_cases arg_type_quoted ret_type_quoted func_quoted info bodies depth offset (S index)
   end
 .
 
@@ -178,10 +190,10 @@ Fixpoint infer_equations_inner
   match body with
   | tLambda _ arg_type_quoted body =>
     infer_equations_inner body top_quoted (arg_type_quoted :: context)
-  | tCase info _ (tRel offset) bodies =>
+  | tCase info pred (tRel offset) bodies =>
     match nth_error context offset with
     | Some arg_type_quoted =>
-      infer_equations_walk_cases arg_type_quoted top_quoted info bodies (List.length context) offset 0
+      infer_equations_walk_cases arg_type_quoted pred.(preturn) top_quoted info bodies (List.length context) offset 0
     | None =>
       tmFail "Term contains match on something that is not an argument."
     end
@@ -225,7 +237,6 @@ Section Tests.
     | S n => n
     end
   .
-
   MetaCoq Run (infer_equations decr).
   Check decr_equation_1.
   Check decr_equation_2.
@@ -286,4 +297,14 @@ Section Tests.
   MetaCoq Run (infer_equations app_nat).
   Check app_nat_equation_1.
   Check app_nat_equation_2.
+
+  Fixpoint NoDup_nat (xs: list nat) :=
+    match xs with
+    | [] => True
+    | x' :: xs' =>
+      ~ In x' xs' /\ NoDup_nat xs'
+    end.
+  MetaCoq Run (infer_equations NoDup_nat).
+  Check NoDup_nat_equation_1.
+  Check NoDup_nat_equation_2.
 End Tests.

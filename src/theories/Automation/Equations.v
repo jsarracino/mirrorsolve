@@ -613,4 +613,15 @@ Section Tests.
   MetaCoq Run (infer_equations List.rev).
   Check rev_equation_1.
   Check rev_equation_2.
+
+  Definition In_A := Eval compute in @In nat.
+
+  MetaCoq Run (infer_equations In_A).
+  Check In_A_equation_1.
+  (* forall x_0b0 : nat, In_A x_0b0 [] <-> False *)
+
+  Lemma in_In_A : forall x xs, In_A x xs <-> In x xs.
+  Proof.
+    intros; eapply iff_refl.
+  Qed.
 End Tests.

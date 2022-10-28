@@ -68,6 +68,10 @@ Section SearchTree.
   Variable (V: Type).
   Notation key := Z.
 
+  Definition app_key := Eval compute in @List.app key.
+  Definition In_key := Eval compute in  @List.In key.
+  Definition In_key_V := Eval compute in @List.In (key * V).
+
 (** [E] represents the empty map.  [T l k v r] represents the
     map that binds [k] to [v], along with all the bindings in [l] and
     [r].  No key may be bound more than once in the map. *)
@@ -296,6 +300,7 @@ Section SearchTree.
     ; pack fast_elements
     ; pack fast_elements_tr
     ; pack kvs_insert
+    ; pack app_key
   ])%type.
 
   Unset Universe Polymorphism.
@@ -317,6 +322,8 @@ Section SearchTree.
       ; pack (Z.le)
       ; pack NoDup_Z
       ; pack disjoint
+      ; pack In_key
+      ; pack In_key_V
   ])%type.
 
 
@@ -871,28 +878,20 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Hint Immediate elements_equation_1 : tree_eqns.
   Hint Immediate elements_equation_2 : tree_eqns.
 
-  (* MetaCoq Run (infer_equations (@In (key * V))). *)
+  MetaCoq Run (infer_equations In_key_V).
+
+  Hint Immediate In_key_V_equation_1 : tree_eqns.
+  Hint Immediate In_key_V_equation_2 : tree_eqns.
 
   (*** MS EFFORT {"type": "lemma"} *)
-  Lemma In_nil : 
-    forall (x : key * V), 
-      In x [] <-> False.
+  Lemma In_key_V_spec : 
+    forall x xs, 
+      In_key_V x xs <-> In x xs.
   Proof.
-    intuition eauto.
+    intros; eapply iff_refl.
   Qed.
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma In_cons : 
-    forall (x : key * V) x' xs, 
-      In x (x' :: xs) <-> (x = x' \/ In x xs).
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
-
-  Hint Immediate In_cons : tree_eqns.
-  Hint Immediate In_nil : tree_eqns.
+  Hint Immediate In_key_V_spec : tree_eqns.
 
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma in_app_iff' :  
@@ -1221,25 +1220,20 @@ Hint Transparent uncurry.
   Hint Immediate lt_list_s_equation_1 : tree_eqns.
   Hint Immediate lt_list_s_equation_2 : tree_eqns.
 
-  (* MetaCoq Run (infer_equations (@List.app key)). *)
+  MetaCoq Run (infer_equations app_key).
+
+  Hint Immediate app_key_equation_1 : tree_eqns.
+  Hint Immediate app_key_equation_2 : tree_eqns.
   
   (*** MS EFFORT {"type": "lemma"} *)
-  Lemma app_nil_l_Z : 
-    forall (x: list key), ([] ++ x = x)%list.
+  Lemma app_key_spec : 
+    forall x y, (x ++ y = app_key x ++ y)%list.
   Proof.
-    eapply app_nil_l.
+    intros; eapply eq_refl.
   Qed.
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma app_cons_l_Z : 
-    forall (x: key) y z, ((x :: y) ++ z = x :: (y ++ z))%list.
-  Proof.
-    intros;
-    intuition eauto.
-  Qed.
 
-  Hint Immediate app_nil_l_Z : tree_eqns.
-  Hint Immediate app_cons_l_Z : tree_eqns.
+  Hint Immediate app_key_spec : tree_eqns.
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Lemma sorted_lt_end : 
@@ -1367,25 +1361,20 @@ Hint Transparent uncurry.
   Hint Immediate map_fst_lts : tree_eqns.
   Hint Immediate map_fst_gts : tree_eqns.
 
-  MetaCoq Run (infer_equations (@List.app (key * V)))
+  MetaCoq Run (infer_equations app_key_V).
+
+  Hint Immediate app_key_V_equation_1 : tree_eqns.
+  Hint Immediate app_key_V_equation_2 : tree_eqns.
 
   (*** MS EFFORT {"type": "lemma"} *)
-  Lemma app_nil_l_Z_V : 
-    forall (x: list (key * V)), ([] ++ x = x)%list.
+  Lemma app_key_V_spec : 
+    forall x y, (x ++ y = app_key_V x ++ y)%list.
   Proof.
-    eapply app_nil_l.
+    intros; eapply eq_refl.
   Qed.
 
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma app_cons_l_Z_V : 
-    forall (x: (key * V)) y z, ((x :: y) ++ z = x :: (y ++ z))%list.
-  Proof.
-    intros;
-    intuition eauto.
-  Qed.
 
-  Hint Immediate app_nil_l_Z_V : tree_eqns.
-  Hint Immediate app_cons_l_Z_V : tree_eqns.
+  Hint Immediate app_key_V_spec : tree_eqns.
 
   Set MirrorSolve Solver "cvc5".
 
@@ -1442,29 +1431,21 @@ Hint Transparent uncurry.
   Hint Immediate nd_z_equation_1 : tree_eqns.
   Hint Immediate nd_z_equation_2 : tree_eqns.
 
-  (* MetaCoq Run (infer_equations (@In Z)). *)
-  (*** MS EFFORT {"type": "lemma"} *)
-  Lemma In_nil_Z : 
-    forall (x : key), 
-      In x [] <-> False.
-  Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
-  Qed.
+  MetaCoq Run (infer_equations In_key).
+
+  Hint Immediate In_key_equation_1 : tree_eqns.
+  Hint Immediate In_key_equation_2 : tree_eqns.
 
   (*** MS EFFORT {"type": "lemma"} *)
-  Lemma In_cons_Z : 
-    forall (x : key) x' xs, 
-      In x (x' :: xs) <-> (x = x' \/ In x xs).
+  Lemma In_key_spec : 
+    forall x xs, 
+      In_key x xs <-> In x xs.
   Proof.
-    intros;
-    simpl in *;
-    intuition eauto.
+    intros; eapply iff_refl.
   Qed.
 
-  Hint Immediate In_cons_Z : tree_eqns.
-  Hint Immediate In_nil_Z : tree_eqns.
+  Hint Immediate In_key_spec : tree_eqns.
+
 
 (** **** Exercise: 3 stars, advanced, optional (NoDup_append) *)
 

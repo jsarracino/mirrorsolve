@@ -308,8 +308,8 @@ Section IntvSets.
   Hint Immediate mem_equation_1 : intvsets_eqns.
   Hint Immediate mem_equation_2 : intvsets_eqns.
 
-  Hint Immediate in_equation_1 : intvsets_eqns.
-  Hint Immediate in_equation_2 : intvsets_eqns.
+  Hint Immediate In_equation_1 : intvsets_eqns.
+  Hint Immediate In_equation_2 : intvsets_eqns.
 
   Hint Immediate ok_nil' : intvsets_eqns.
   Hint Immediate ok_cons': intvsets_eqns.
@@ -327,14 +327,17 @@ Section IntvSets.
     induction s;
     try hammer'.
     Restart.
-    induction s;
-    try crush'.
+    induction s.
+    - try crush'.
+    - crush';
+      admit.
     Restart.
     induction s;
     mirrorsolve.
   Qed.
 
   Hint Immediate mem_In : intvsets_eqns.
+  Hint Resolve mem_In.
 
   Hint Immediate contains_equation_1 : intvsets_eqns.
   Hint Immediate contains_equation_2 : intvsets_eqns.
@@ -363,6 +366,7 @@ Section IntvSets.
   Qed.
 
   Hint Immediate contains_In : intvsets_eqns.
+  Hint Resolve contains_In.
   Hint Immediate add_equation_1 : intvsets_eqns.
   Hint Immediate add_equation_2 : intvsets_eqns.
 
@@ -389,6 +393,7 @@ Section IntvSets.
   Qed.
 
   Hint Immediate In_add : intvsets_eqns.
+  Hint Resolve In_add.
 
 
 
@@ -417,6 +422,7 @@ Section IntvSets.
   Qed.
 
   Hint Immediate add_ok : intvsets_eqns.
+  Hint Resolve add_ok.
 
   Hint Immediate remove_equation_1 : intvsets_eqns.
   Hint Immediate remove_equation_2 : intvsets_eqns.
@@ -443,6 +449,7 @@ Section IntvSets.
   Qed.
 
   Hint Immediate In_remove : intvsets_eqns.
+  Hint Resolve In_remove.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   (*** MS BEGIN {"type": "proof_definition"} *)
@@ -509,6 +516,7 @@ Section IntvSets.
   Admitted.
 
   Hint Immediate In_inter : intvsets_eqns.
+  Hint Resolve In_inter.
 
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 4, "ms": 3, "hammer": 3, "crush": 3} *)
@@ -533,6 +541,7 @@ Section IntvSets.
   Admitted.
 
   Hint Immediate inter_ok : intvsets_eqns.
+  Hint Resolve inter_ok.
 
   Hint Immediate union_equation_1 : intvsets_eqns.
   Hint Immediate union_equation_2 : intvsets_eqns.
@@ -573,6 +582,7 @@ Section IntvSets.
 
 
   Hint Immediate In_ok_union : intvsets_eqns.
+  Hint Resolve In_ok_union.
   Hint Immediate beq_equation_1 : intvsets_eqns.
   Hint Immediate beq_equation_2 : intvsets_eqns.
   Hint Immediate beq_equation_3 : intvsets_eqns.
@@ -601,6 +611,7 @@ Section IntvSets.
   Qed.
 
   Hint Immediate beq_eq : intvsets_eqns.
+  Hint Resolve beq_eq.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 4, "ms": 3, "hammer": 1, "crush": 3} *)
     

@@ -778,6 +778,7 @@ Section PTree.
   Qed.
 
   Hint Immediate gss0 : eqns.
+  Hint Resolve gss0.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":6, "crush":4} *)
@@ -797,6 +798,7 @@ Section PTree.
   Qed.
 
   Hint Immediate gso0 : eqns.
+  Hint Resolve gso0.
 
   Hint Immediate set'_equation_1 : eqns.
   Hint Immediate set'_equation_2 : eqns.
@@ -842,6 +844,7 @@ Section PTree.
   Qed.
 
   Hint Immediate gss' : eqns.
+  Hint Resolve gss'.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":2, "crush":1} *)
@@ -859,6 +862,7 @@ Section PTree.
   Qed.
 
   Hint Immediate gss : eqns.
+  Hint Resolve gss.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":63, "ms":63, "hammer":63, "crush":49} *)
   Theorem gso':
@@ -884,6 +888,7 @@ Section PTree.
   Qed.
 
   Hint Immediate gso': eqns.
+  Hint Resolve gso'.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":2, "crush":1} *)
@@ -902,6 +907,7 @@ Section PTree.
      solve [apply IHi; congruence | apply gso0; congruence | congruence].
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":1, "ms":0, "hammer":2, "crush":1} *)
   Theorem gsspec:
     forall (A: Type) (i j: positive) (x: A) (m: t A),
     get i (set j x m) = if peq i j then Some x else get i m.

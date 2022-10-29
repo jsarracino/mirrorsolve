@@ -69,6 +69,7 @@ Section SearchTree.
   Notation key := Z.
 
   Definition app_key := Eval compute in @List.app key.
+  Definition app_key_V := Eval compute in @List.app (key * V).
   Definition In_key := Eval compute in  @List.In key.
   Definition In_key_V := Eval compute in @List.In (key * V).
 
@@ -301,6 +302,7 @@ Section SearchTree.
     ; pack fast_elements_tr
     ; pack kvs_insert
     ; pack app_key
+    ; pack app_key_V
   ])%type.
 
   Unset Universe Polymorphism.
@@ -490,7 +492,9 @@ Section SearchTree.
   Qed.
 
   Hint Immediate lt_t_trans : tree_eqns.
+  Hint Resolve lt_t_trans.
   Hint Immediate gt_t_trans : tree_eqns.
+  Hint Resolve gt_t_trans.
 
   Hint Immediate Z.ltb_lt : tree_eqns.
 
@@ -513,6 +517,7 @@ Section SearchTree.
   Qed.
 
   Hint Immediate lt_t_insert : tree_eqns.
+  Hint Resolve lt_t_insert.
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 0} *)
   Lemma gt_t_insert : 
@@ -532,6 +537,7 @@ Section SearchTree.
     mirrorsolve.
   Qed.
   Hint Immediate gt_t_insert : tree_eqns.
+  Hint Resolve gt_t_insert.
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 0} *)
   Lemma ordered_insert : 
@@ -548,6 +554,7 @@ Section SearchTree.
     mirrorsolve.
   Qed.
   Hint Immediate ordered_insert : tree_eqns.
+  Hint Resolve ordered_insert.
 
 
 (** Now prove the main theorem. Proceed by induction on the evidence
@@ -567,6 +574,7 @@ Section SearchTree.
     mirrorsolve.
   Qed.
   Hint Immediate insert_BST : tree_eqns.
+  Hint Resolve insert_BST.
 
 (** [] *)
 
@@ -657,6 +665,8 @@ Section SearchTree.
 
   Hint Immediate lookup_insert_eq : tree_eqns.
   Hint Immediate lookup_empty : tree_eqns.
+  Hint Resolve lookup_insert_eq.
+  Hint Resolve lookup_empty.
 
 
 (** The basic method of that proof is to repeatedly [bdestruct]
@@ -683,6 +693,7 @@ Section SearchTree.
   Qed.
 
   Hint Immediate lookup_insert_neq : tree_eqns.
+  Hint Resolve lookup_insert_neq.
 
 (** Perhaps surprisingly, the proofs of these results do not
     depend on whether [t] satisfies the BST invariant.  That's because
@@ -728,6 +739,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Qed.
 
   Hint Immediate bound_default : tree_eqns.
+  Hint Resolve bound_default.
 
 (** [] *)
 
@@ -781,6 +793,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Qed.
 
   Hint Immediate lookup_insert_same : tree_eqns.
+  Hint Resolve lookup_insert_same.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (lookup_insert_permute) *)
@@ -803,6 +816,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Qed.
 
   Hint Immediate lookup_insert_permute : tree_eqns.
+  Hint Resolve lookup_insert_permute.
 (** [] *)
 
 (** Our ability to prove these lemmas without reference to the
@@ -832,6 +846,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Qed.
 
   Hint Immediate insert_shadow_equality : tree_eqns.
+  Hint Resolve insert_shadow_equality.
 
 (* ################################################################# *)
 (** * Converting a BST to a List *)
@@ -892,6 +907,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Qed.
 
   Hint Immediate In_key_V_spec : tree_eqns.
+  Hint Resolve In_key_V_spec.
 
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma in_app_iff' :  
@@ -901,6 +917,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Qed.
 
   Hint Immediate in_app_iff' : tree_eqns.
+  Hint Resolve in_app_iff'.
 
   
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
@@ -921,6 +938,7 @@ Definition manual_grade_for_bound_correct : option (nat*string) := None.
   Qed.
 
   Hint Immediate elements_complete : tree_eqns.
+  Hint Resolve elements_complete.
 
 (** [] *)
 
@@ -964,8 +982,24 @@ Hint Transparent uncurry.
     to use [elements_preserves_forall] and library theorem
     [Forall_forall]. *)
 
-  MetaCoq Run (infer_equations lt_list).
-  MetaCoq Run (infer_equations gt_list).
+  (* MetaCoq Run (infer_equations lt_list). *)
+  (* MetaCoq Run (infer_equations gt_list). *)
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma lt_list_equation_1 : forall k, lt_list k [] <-> True. 
+  Proof. intros; eapply iff_refl. Qed.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma lt_list_equation_2 : forall k k' x t', lt_list k ((k', x) :: t') <-> k' < k /\ lt_list k t'. 
+  Proof. intros. eapply iff_refl. Qed.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma gt_list_equation_1 : forall k, gt_list k [] <-> True. 
+  Proof. intros; eapply iff_refl. Qed.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma gt_list_equation_2 : forall k k' x t', gt_list k ((k', x) :: t') <-> k' > k /\ gt_list k t'. 
+  Proof. intros. eapply iff_refl. Qed.
 
   Hint Immediate lt_list_equation_1 : tree_eqns.
   Hint Immediate lt_list_equation_2 : tree_eqns.
@@ -1010,6 +1044,8 @@ Hint Transparent uncurry.
 
   Hint Immediate lt_list_trans : tree_eqns.
   Hint Immediate gt_list_trans : tree_eqns.
+  Hint Resolve lt_list_trans.
+  Hint Resolve gt_list_trans.
 
   Set MirrorSolve Solver "z3".
 
@@ -1046,6 +1082,9 @@ Hint Transparent uncurry.
   Hint Immediate lt_list_In : tree_eqns.
   Hint Immediate gt_list_In : tree_eqns.
 
+  Hint Resolve lt_list_In.
+  Hint Resolve gt_list_In.
+
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 0} *)
   Lemma lt_t_elements : 
@@ -1080,6 +1119,9 @@ Hint Transparent uncurry.
   Hint Immediate lt_t_elements : tree_eqns.
   Hint Immediate gt_t_elements : tree_eqns.
 
+  Hint Resolve lt_t_elements.
+  Hint Resolve gt_t_elements.
+
 
 (** [] *)
 
@@ -1088,7 +1130,7 @@ Hint Transparent uncurry.
 (** Prove that [elements] is correct. Proceed by induction on the
     evidence that [t] is a BST. *)
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 0} *)
   Theorem elements_correct : 
     forall (t : tree) (k : key) (v d : V),
       BST t ->
@@ -1106,6 +1148,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate elements_correct : tree_eqns.
+  Hint Resolve elements_correct.
 
 (** [] *)
 
@@ -1142,6 +1185,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate elements_complete_inverse : tree_eqns.
+  Hint Resolve elements_complete_inverse.
 
 (** [] *)
 
@@ -1164,6 +1208,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate elements_correct_inverse : tree_eqns.
+  Hint Resolve elements_correct_inverse.
 
   
 (* ================================================================= *)
@@ -1227,11 +1272,10 @@ Hint Transparent uncurry.
   
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma app_key_spec : 
-    forall x y, (x ++ y = app_key x ++ y)%list.
+    forall x y, (x ++ y = app_key x y)%list.
   Proof.
     intros; eapply eq_refl.
   Qed.
-
 
   Hint Immediate app_key_spec : tree_eqns.
 
@@ -1253,6 +1297,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate sorted_lt_end : tree_eqns.
+  Hint Resolve sorted_lt_end.
 
   MetaCoq Run (infer_equations gt_list_s).
 
@@ -1277,6 +1322,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate sorted_gt_beginning : tree_eqns.
+  Hint Resolve sorted_gt_beginning.
 
 (** Prove that inserting an intermediate value between two lists
     maintains sortedness. Proceed by induction on the evidence
@@ -1285,7 +1331,7 @@ Hint Transparent uncurry.
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals": 4, "ms": 4, "hammer": 2, "crush": 2} *)
   Lemma sorted_app': forall l1 l2 x,
-   sorted l1 ->sorted l2 ->
+    sorted l1 -> sorted l2 ->
     lt_list_s x l1 -> gt_list_s x l2 ->
    sorted (l1 ++ x :: l2).
   Proof.
@@ -1310,6 +1356,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate sorted_app' : tree_eqns.
+  Hint Resolve sorted_app'.
 
 (** [] *)
 
@@ -1360,6 +1407,8 @@ Hint Transparent uncurry.
 
   Hint Immediate map_fst_lts : tree_eqns.
   Hint Immediate map_fst_gts : tree_eqns.
+  Hint Resolve map_fst_lts.
+  Hint Resolve map_fst_gts.
 
   MetaCoq Run (infer_equations app_key_V).
 
@@ -1368,11 +1417,10 @@ Hint Transparent uncurry.
 
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma app_key_V_spec : 
-    forall x y, (x ++ y = app_key_V x ++ y)%list.
+    forall x y, (x ++ y = app_key_V x y)%list.
   Proof.
     intros; eapply eq_refl.
   Qed.
-
 
   Hint Immediate app_key_V_spec : tree_eqns.
 
@@ -1394,6 +1442,7 @@ Hint Transparent uncurry.
   Qed. 
 
   Hint Immediate map_fst_app : tree_eqns.
+  Hint Resolve map_fst_app.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
@@ -1411,6 +1460,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Resolve sorted_elements' : tree_eqns.
+  Hint Resolve sorted_elements'.
 
 (** [] *)
 
@@ -1428,8 +1478,8 @@ Hint Transparent uncurry.
     for two lists to be disjoint: *)
 
   Hint Immediate disjoint_spec : tree_eqns.
-  Hint Immediate nd_z_equation_1 : tree_eqns.
-  Hint Immediate nd_z_equation_2 : tree_eqns.
+  Hint Immediate NoDup_Z_equation_1 : tree_eqns.
+  Hint Immediate NoDup_Z_equation_2 : tree_eqns.
 
   MetaCoq Run (infer_equations In_key).
 
@@ -1469,6 +1519,7 @@ Hint Transparent uncurry.
   Qed.
   
   Hint Immediate disjoint_cons : tree_eqns.
+  Hint Resolve disjoint_cons.
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Lemma neg_In_app : 
@@ -1486,6 +1537,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate neg_In_app : tree_eqns.
+  Hint Resolve neg_In_app.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
@@ -1504,6 +1556,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate NoDup_append : tree_eqns.
+  Hint Resolve NoDup_append.
 
   (*** MS LEMMA {"original": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 1} *)
   Lemma Not_In_nil : 
@@ -1533,6 +1586,8 @@ Hint Transparent uncurry.
 
   Hint Immediate Not_In_nil : tree_eqns.
   Hint Immediate Not_In_cons : tree_eqns.
+  Hint Resolve Not_In_nil.
+  Hint Resolve Not_In_cons.
 
   (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 2} *)
   Lemma gt_t_notin : 
@@ -1566,6 +1621,8 @@ Hint Transparent uncurry.
 
   Hint Immediate gt_t_notin : tree_eqns.
   Hint Immediate lt_t_notin : tree_eqns.
+  Hint Resolve gt_t_notin.
+  Hint Resolve lt_t_notin.
 
   (*** MS LEMMA {"original": False, "goals": 1, "ms": 1, "hammer": 1, "crush": 0} *)
   Lemma gt_t_disjoint : 
@@ -1597,6 +1654,8 @@ Hint Transparent uncurry.
   
   Hint Immediate lt_t_disjoint : tree_eqns.
   Hint Immediate gt_t_disjoint : tree_eqns.
+  Hint Resolve lt_t_disjoint.
+  Hint Resolve gt_t_disjoint.
 
 (** [] *)
 
@@ -1623,6 +1682,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate elements_nodup_keys' : tree_eqns.
+  Hint Resolve elements_nodup_keys'.
 
 (** [] *)
 
@@ -1663,6 +1723,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate app_comm_K_Z : tree_eqns.
+  Hint Resolve app_comm_K_Z.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 2, "ms": 2, "hammer": 1, "crush": 1} *)
   Lemma fast_elements_tr_helper :
@@ -1680,6 +1741,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate fast_elements_tr_helper : tree_eqns.
+  Hint Resolve fast_elements_tr_helper.
 
    (*** MS LEMMA {"original": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 2} *)
   Lemma app_nil_r_K_V:
@@ -1696,6 +1758,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate app_nil_r_K_V : tree_eqns.
+  Hint Resolve app_nil_r_K_V.
 
   Hint Immediate fast_elements_equation_1 : tree_eqns.
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 1, "ms": 1, "hammer": 0, "crush": 0} *)
@@ -1710,6 +1773,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate fast_elements_eq_elements : tree_eqns.
+  Hint Resolve fast_elements_eq_elements.
 
 
 (** [] *)
@@ -1815,6 +1879,7 @@ Hint Transparent uncurry.
   Qed.
 
   Hint Immediate kvs_insert_split' : tree_eqns.
+  Hint Resolve kvs_insert_split'.
   (** **** Exercise: 3 stars, standard, optional (kvs_insert_elements) *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals": 2, "ms": 2, "hammer": 2, "crush": 1} *)
   Lemma kvs_insert_elements : forall (t : tree),

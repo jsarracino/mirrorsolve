@@ -267,7 +267,6 @@ Section ListFuncs.
     so the SMT solver doesn't have any knowledge about their implementations.
     To recover this information we strengthen the proof goal with
     *equations* about the functional behavior of Coq functions.
-    Fortunately the Equations plugin autogenerates exactly these equations. 
   *)
 
   Hint Resolve app_equation_1 : list_eqns.

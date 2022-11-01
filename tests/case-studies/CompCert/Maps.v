@@ -355,6 +355,15 @@ Section PTree.
   }.
    (* Note, there are 4 equations for beq_optA *)
 
+   Equations Pos_eqb (p1 : positive) (p2: positive) : bool := {
+    Pos_eqb (xI l) (xI r) := Pos_eqb l r ;
+    Pos_eqb (xO l) (xO r) := Pos_eqb l r ;
+    Pos_eqb xH xH := true;
+    Pos_eqb _ _ := false;
+   }.
+
+  (* Note, there are 9 equations for Pos_eqb *)
+
   Local Declare ML Module "mirrorsolve".
 
   From MetaCoq.Template Require Import All Loader.
@@ -368,7 +377,6 @@ Section PTree.
   Universe foo.
   MetaCoq Quote Definition typ_term := Type@{foo}.
 
-  
   Notation pack x := (existT _ _ x).
 
   Definition fun_syms : list Config.packed := ([
@@ -386,6 +394,8 @@ Section PTree.
     ; pack PTree.remove
     ; pack (option A)
     ; pack positive
+    ; pack Pos_eqb
+    ; pack (@ite (option A))
     ; pack node'
     ; pack tree_case
     ; pack empty'
@@ -402,8 +412,9 @@ Section PTree.
     pack not_trivially_empty
   ])%type.
 
-  Definition prim_syms : list (Config.packed * String.string) := [
-  ].
+  Definition prim_syms : list (Config.packed * String.string) := ([
+    (pack (@ite (option A)), "ite")
+  ])%string.
 
   MetaCoq Run (
     xs <- add_funs typ_term fun_syms rel_syms ;;
@@ -872,45 +883,60 @@ Section PTree.
     induction i;
     induction j;
     induction m;
-    hammer'.
+    try hammer'.
     Restart.
     induction i;
     induction j;
     induction m;
-    crush'.
+    try crush'.
     Restart.
 
     Set MirrorSolve Solver "z3".
     induction i;
     induction j;
     induction m;
-    mirrorsolve.
+    try mirrorsolve.
   Qed.
 
   Hint Immediate gso': eqns.
   Hint Resolve gso'.
 
   (*** MS EFFORT {"type": "edit"} *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":2, "crush":1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":18, "ms":18, "hammer":13, "crush":8} *)
   Theorem gso:
     forall (i j: positive) (x: A) (m: tree A),
     i <> j -> get i (set j x m) = get i m.
   Proof.
     induction i;
     induction j;
-    induction m.
-    mirrorsolve.
-    mirrorsolve.
-   intros. destruct m as [|m]; simpl.
-   - apply gso0; auto.
-   - revert m j H; induction i; destruct j,m; simpl; intros; auto;
-     solve [apply IHi; congruence | apply gso0; congruence | congruence].
+    induction m;
+    try hammer'.
+    Restart.
+    induction i;
+    induction j;
+    induction m;
+    try (now crush').
+    Restart.
+    induction i;
+    induction j;
+    induction m;
+    try mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":1, "ms":0, "hammer":2, "crush":1} *)
+  (* MS TODO *)
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":9, "ms":9, "hammer":9, "crush":9} *)
+  Lemma Pos_eqb_spec : 
+    forall l r,
+      Pos_eqb l r = true <-> l = r.
+  Proof.
+    induction l;
+    induction r;
+    mirrorsolve.
+  Qed.
+
   Theorem gsspec:
-    forall (A: Type) (i j: positive) (x: A) (m: t A),
-    get i (set j x m) = if peq i j then Some x else get i m.
+    forall (i j: positive) (x: A) (m: tree A),
+    get i (set j x m) = ite (elt_eq i j) (Some x) (get i m).
   Proof.
     intros.
     destruct (peq i j); [ rewrite e; apply gss | apply gso; auto ].
@@ -1117,7 +1143,6 @@ Section PTree.
 
 (** ** Extensionality property *)
 
-(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Lemma tree'_not_empty:
     forall {A} (m: tree' A), exists i, get' i m <> None.
   Proof.
@@ -1131,7 +1156,6 @@ Section PTree.
    - exists xH; simpl; congruence.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Corollary extensionality_empty:
     forall {A} (m: tree A),
     (forall i, get i m = None) -> m = Empty.
@@ -1140,7 +1164,6 @@ Section PTree.
     elim GET. apply H.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Theorem extensionality:
     forall (A: Type) (m1 m2: tree A),
     (forall i, get i m1 = get i m2) -> m1 = m2.
@@ -1157,7 +1180,6 @@ Section PTree.
 
   (** Some consequences of extensionality *)
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Theorem gsident:
     forall {A} (i: positive) (m: t A) (v: A),
     get i m = Some v -> set i v m = m.
@@ -1166,7 +1188,6 @@ Section PTree.
     rewrite gsspec. destruct (peq j i); congruence.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Theorem set2:
     forall {A} (i: elt) (m: t A) (v1 v2: A),
     set i v2 (set i v1 m) = set i v2 m.
@@ -1176,7 +1197,6 @@ Section PTree.
   Qed.
 
 (** ** Boolean equality *)
-(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 4, "ms": 3, "hammer": 3, "crush": 3} *)
   
     Lemma beq_correct_bool:
       forall m1 m2,
@@ -1213,8 +1233,6 @@ Section PTree.
         * apply IHm0. intros. specialize (H1 (xI x)); rewrite ! gNode in H1; auto.
     Qed.
 
-    (** MS EFFORT {"type": "edit"} *)
-    (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
     Theorem beq_correct:
       forall m1 m2,
       beq m1 m2 = true <->
@@ -1231,8 +1249,6 @@ Section PTree.
     Qed.
 
 (** ** Collective operations *)
-
-(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
     
   Lemma prev_append_prev i j:
     prev (prev_append i j) = prev_append j i.

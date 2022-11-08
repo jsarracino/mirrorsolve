@@ -9,3 +9,5 @@ val lookup_tbl : string -> hint_db
 
 val apply_hints : Ltac_plugin.Tacinterp.value -> hint_db -> unit Proofview.tactic
 
+val pretty_hints : (Constr.t -> string) -> hint_db -> string
+

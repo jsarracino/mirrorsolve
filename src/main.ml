@@ -1197,12 +1197,25 @@ let order_inds (inds: ind_decl StringMap.t) (names: string list) : string list =
   let with_edges = List.fold_left (fun g x -> add_dependent_edges g x inds) with_nodes names in
     Ms_graph.topo_sort with_edges
 
+let hint_tbl_name =
+  Goptions.declare_stringopt_option_and_ref
+    ~depr:false
+    ~key:["MirrorSolve";"Hints"]
+  
 let build_query (ctx: printing_ctx) (opts: query_opts) (e: C.t)  : string = 
   let ind_sorts, us_sorts = List.partition (in_map ctx.ctx_inds) @@ custom_sorts ctx.ctx_sorts in 
   let us_decls = List.map (fun s -> Format.sprintf "(declare-sort %s 0)" s) us_sorts in 
   let ind_decls = List.map (fun s -> pretty_ind_decl s (StringMap.find s ctx.ctx_inds)) (order_inds ctx.ctx_inds ind_sorts) in 
   let fun_decls = List.map pretty_func_decl @@ List.map snd @@ List.of_seq @@ StringMap.to_seq @@ ctx.ctx_fun_decls in 
-  let prefix = String.concat "\n" @@ us_decls @ ind_decls @ fun_decls in 
+  let assumpts = begin match hint_tbl_name () with 
+    | Some x -> 
+      Hint.pretty_hints (fun fm -> 
+        let (_, es) = C.destApp fm in 
+        Format.sprintf "(assert %s)" (pretty_fm ctx (a_last es))
+      ) (Hint.lookup_tbl x)
+    | None -> ""
+    end in
+  let prefix = String.concat "\n" @@ us_decls @ ind_decls @ fun_decls @ [assumpts] in 
   let q_str = if opts.refute_query then 
     Format.sprintf "(assert (not %s))" (pretty_fm ctx e) 
   else

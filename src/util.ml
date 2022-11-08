@@ -36,3 +36,11 @@ let fetch_const (x: Constr.t) =
     end
   else 
     None
+
+let fetch_const_type (x: Constr.t) = 
+  if Constr.isConst x then 
+    let v, _ = Constr.destConst x in 
+    let x' = Global.lookup_constant v in
+    Some x'.const_type 
+  else
+    None

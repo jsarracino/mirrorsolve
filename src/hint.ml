@@ -49,6 +49,36 @@ let apply_hints f tbl : unit Proofview.tactic =
 
 let lookup_tbl (name: string) : hint_db = Hints.searchtable_map name
 
+let pretty_hints (f: Constr.t -> string) (tbl: hint_db) : string = 
+  let pretty_full_hint (x: FullHint.t) = 
+    begin match FullHint.repr x with
+      | Res_pf x
+      | ERes_pf x
+      | Give_exact x
+      | Res_pf_THEN_trivial_fail x -> 
+        let (_, hint_eterm) = Hints.hint_as_term x in 
+        let env = Global.env () in
+        let sigma = Evd.from_env env in
+        let e = Util.fetch_const_type (EConstr.to_constr sigma hint_eterm) in 
+        begin match e with 
+        | Some e -> 
+          let _ = Feedback.msg_debug (Pp.str "adding as an assumption: ") in 
+          let _ = Feedback.msg_debug @@ Constr.debug_print e in 
+            f e
+        | None -> 
+          let _ = Feedback.msg_warning @@ Pp.str "unrecognized hint type:" in
+          let _ = Feedback.msg_debug @@ Constr.debug_print (EConstr.to_constr sigma hint_eterm) in 
+          ""
+        end
+      | _ -> 
+        let _ = Feedback.msg_warning @@ Pp.str "unrecognized hint" in ""
+      end in
+  let worker _ _ fhs acc = 
+    let prefix = acc ^ "\n" in 
+    prefix ^ String.concat "\n" (List.map pretty_full_hint fhs)
+  in 
+  Hint_db.fold worker tbl ""
+
 
 (* let debug_hint_tbl name = 
   searchtable_map *)

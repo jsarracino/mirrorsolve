@@ -68,8 +68,13 @@ From Hammer Require Import Hammer.
 
 Require Import MirrorSolve.Crush.
 
-Ltac hammer' := timeout 60 hammer.
-Ltac crush' := timeout 60 crush.
+Ltac hammer' := 
+  (* try now (timeout 60 hammer). *)
+  idtac.
+Ltac crush' := 
+  (* try now (timeout 60 crush). *)
+  idtac.
+
 
 (** * An implementation of trees over type [positive] *)
 
@@ -355,6 +360,7 @@ Section PTree.
   }.
    (* Note, there are 4 equations for beq_optA *)
 
+   (*** MS EFFORT {"type": "definition"} *)
    Equations Pos_eqb (p1 : positive) (p2: positive) : bool := {
     Pos_eqb (xI l) (xI r) := Pos_eqb l r ;
     Pos_eqb (xO l) (xO r) := Pos_eqb l r ;
@@ -363,6 +369,16 @@ Section PTree.
    }.
 
   (* Note, there are 9 equations for Pos_eqb *)
+
+
+  (*** MS EFFORT {"type": "definition"} *)
+  Definition get_pos_default (i: positive) (x: option A) (l r: tree A) : option A := 
+    match i with 
+    | xH => x 
+    | xO j => get j l
+    | xI j => get j r
+    end.
+    
 
   Local Declare ML Module "mirrorsolve".
 
@@ -407,6 +423,8 @@ Section PTree.
     ; pack beq'
     ; pack beq_optA
     ; pack andb
+    ; pack orb
+    ; pack get_pos_default
   ])%type.
   Definition rel_syms : list Config.packed := ([ 
     pack not_trivially_empty
@@ -414,6 +432,8 @@ Section PTree.
 
   Definition prim_syms : list (Config.packed * String.string) := ([
     (pack (@ite (option A)), "ite")
+    ; (pack andb, "and")
+    ; (pack orb, "or")
   ])%string.
 
   MetaCoq Run (
@@ -468,172 +488,220 @@ Section PTree.
     | |- ?G => check_unsat_neg_func fol_theory G; eapply UnsoundAxioms.interp_true
     end.
 
-  Create HintDb eqns.
+  Create HintDb eqns_implicit.
+  Create HintDb eqns_explicit.
+
+  Set MirrorSolve Hints "eqns_implicit".
 
   Ltac prep_proof := 
-    hints_foreach (fun x => pose proof x) "eqns";
+    hints_foreach (fun x => pose proof x) "eqns_explicit";
     Utils.revert_all;
     unfold "<->" in *.
 
   Scheme Equality for sorts.
 
   Ltac mirrorsolve :=
-    timeout 60 (prep_proof;
+    try now (timeout 60 (prep_proof;
     quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts;
-    check_goal_unsat).
+    check_goal_unsat)).
+
+  Definition denote := denote_t2fm sig fm_model sorts_eq_dec (denote_tm _ fm_model sorts_eq_dec match_tacs) (denote_t2rel _ fm_model sorts_eq_dec match_tacs) (i2srt _ match_sorts) (VEmp _ _).
+
+  Check denote.
 
 (** ** Good variable properties for the basic operations *)
 
+  MetaCoq Quote Definition get'_equation_2_quoted := (forall (q : positive) (a : A), get' q~1 (Node010 a) = None).
+
+  Eval vm_compute in denote get'_equation_2_quoted.
+
+  Lemma get'_equation_2_compiled : 
+  interp_fm (sig := sig) (m := fm_model) (VEmp _ _) (FForall (sig := sig) sort_positive
+     (FForall (sig := sig) sort_A
+        (FEq
+           (TFun {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |} get'_f
+              (TFun {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |} xI_f
+                 (TVar
+                    (VThere {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}
+                       (Snoc
+                          (sig_sorts {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |})
+                          (SLNil
+                             (sig_sorts
+                                {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}))
+                          sort_positive) sort_A sort_positive
+                       (VHere {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}
+                          (SLNil
+                             (sig_sorts
+                                {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}))
+                          sort_positive)) ::: hnil)
+               ::: TFun {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |} Node010_A_f
+                     (TVar
+                        (VHere {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}
+                           (Snoc
+                              (sig_sorts
+                                 {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |})
+                              (SLNil
+                                 (sig_sorts
+                                    {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}))
+                              sort_positive) sort_A) ::: hnil) ::: hnil))
+           (TFun {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |} None_A_f hnil)))).
+  Proof.
+    vm_compute.
+    intros.
+    eapply eq_refl.
+  Qed.
+
   (* MirrorSolve hints *)
-  Hint Immediate get'_equation_1 : eqns.
-  Hint Immediate get'_equation_2 : eqns.
-  Hint Immediate get'_equation_3 : eqns.
-  Hint Immediate get'_equation_4 : eqns.
-  Hint Immediate get'_equation_5 : eqns.
-  Hint Immediate get'_equation_6 : eqns.
-  Hint Immediate get'_equation_7 : eqns.
-  Hint Immediate get'_equation_8 : eqns.
-  Hint Immediate get'_equation_9 : eqns.
-  Hint Immediate get'_equation_10 : eqns.
-  Hint Immediate get'_equation_11 : eqns.
-  Hint Immediate get'_equation_12 : eqns.
-  Hint Immediate get'_equation_13 : eqns.
-  Hint Immediate get'_equation_14 : eqns.
-  Hint Immediate get'_equation_15 : eqns.
-  Hint Immediate get'_equation_16 : eqns.
-  Hint Immediate get'_equation_17 : eqns.
-  Hint Immediate get'_equation_18 : eqns.
-  Hint Immediate get'_equation_19 : eqns.
-  Hint Immediate get'_equation_20 : eqns.
-  Hint Immediate get'_equation_21 : eqns.
+  Hint Immediate get'_equation_1 : eqns_explicit.
+  Hint Immediate get'_equation_2_compiled : eqns_implicit.
+  Hint Immediate get'_equation_2 : eqns_explicit.
+  Hint Immediate get'_equation_3 : eqns_explicit.
+  Hint Immediate get'_equation_4 : eqns_explicit.
+  Hint Immediate get'_equation_5 : eqns_explicit.
+  Hint Immediate get'_equation_6 : eqns_explicit.
+  Hint Immediate get'_equation_7 : eqns_explicit.
+  Hint Immediate get'_equation_8 : eqns_explicit.
+  Hint Immediate get'_equation_9 : eqns_explicit.
+  Hint Immediate get'_equation_10 : eqns_explicit.
+  Hint Immediate get'_equation_11 : eqns_explicit.
+  Hint Immediate get'_equation_12 : eqns_explicit.
+  Hint Immediate get'_equation_13 : eqns_explicit.
+  Hint Immediate get'_equation_14 : eqns_explicit.
+  Hint Immediate get'_equation_15 : eqns_explicit.
+  Hint Immediate get'_equation_16 : eqns_explicit.
+  Hint Immediate get'_equation_17 : eqns_explicit.
+  Hint Immediate get'_equation_18 : eqns_explicit.
+  Hint Immediate get'_equation_19 : eqns_explicit.
+  Hint Immediate get'_equation_20 : eqns_explicit.
+  Hint Immediate get'_equation_21 : eqns_explicit.
 
-  Hint Immediate get'_equation_1 : eqns.
-  Hint Immediate get'_equation_2 : eqns.
-  Hint Immediate get'_equation_3 : eqns.
-  Hint Immediate get'_equation_4 : eqns.
-  Hint Immediate get'_equation_5 : eqns.
-  Hint Immediate get'_equation_6 : eqns.
-  Hint Immediate get'_equation_7 : eqns.
-  Hint Immediate get'_equation_8 : eqns.
-  Hint Immediate get'_equation_9 : eqns.
-  Hint Immediate get'_equation_10 : eqns.
-  Hint Immediate get'_equation_11 : eqns.
-  Hint Immediate get'_equation_12 : eqns.
-  Hint Immediate get'_equation_13 : eqns.
-  Hint Immediate get'_equation_14 : eqns.
-  Hint Immediate get'_equation_15 : eqns.
-  Hint Immediate get'_equation_16 : eqns.
-  Hint Immediate get'_equation_17 : eqns.
-  Hint Immediate get'_equation_18 : eqns.
-  Hint Immediate get'_equation_19 : eqns.
-  Hint Immediate get'_equation_20 : eqns.
-  Hint Immediate get'_equation_21 : eqns.
+  Hint Immediate get'_equation_1 : eqns_explicit.
+  Hint Immediate get'_equation_2 : eqns_explicit.
+  Hint Immediate get'_equation_3 : eqns_explicit.
+  Hint Immediate get'_equation_4 : eqns_explicit.
+  Hint Immediate get'_equation_5 : eqns_explicit.
+  Hint Immediate get'_equation_6 : eqns_explicit.
+  Hint Immediate get'_equation_7 : eqns_explicit.
+  Hint Immediate get'_equation_8 : eqns_explicit.
+  Hint Immediate get'_equation_9 : eqns_explicit.
+  Hint Immediate get'_equation_10 : eqns_explicit.
+  Hint Immediate get'_equation_11 : eqns_explicit.
+  Hint Immediate get'_equation_12 : eqns_explicit.
+  Hint Immediate get'_equation_13 : eqns_explicit.
+  Hint Immediate get'_equation_14 : eqns_explicit.
+  Hint Immediate get'_equation_15 : eqns_explicit.
+  Hint Immediate get'_equation_16 : eqns_explicit.
+  Hint Immediate get'_equation_17 : eqns_explicit.
+  Hint Immediate get'_equation_18 : eqns_explicit.
+  Hint Immediate get'_equation_19 : eqns_explicit.
+  Hint Immediate get'_equation_20 : eqns_explicit.
+  Hint Immediate get'_equation_21 : eqns_explicit.
 
-  Hint Immediate tree_case_equation_1 : eqns.
-  Hint Immediate tree_case_equation_2 : eqns.
-  Hint Immediate tree_case_equation_3 : eqns.
-  Hint Immediate tree_case_equation_4 : eqns.
-  Hint Immediate tree_case_equation_5 : eqns.
-  Hint Immediate tree_case_equation_6 : eqns.
-  Hint Immediate tree_case_equation_7 : eqns.
-  Hint Immediate tree_case_equation_8 : eqns.
+  Hint Immediate tree_case_equation_1 : eqns_explicit.
+  Hint Immediate tree_case_equation_2 : eqns_explicit.
+  Hint Immediate tree_case_equation_3 : eqns_explicit.
+  Hint Immediate tree_case_equation_4 : eqns_explicit.
+  Hint Immediate tree_case_equation_5 : eqns_explicit.
+  Hint Immediate tree_case_equation_6 : eqns_explicit.
+  Hint Immediate tree_case_equation_7 : eqns_explicit.
+  Hint Immediate tree_case_equation_8 : eqns_explicit.
 
-  Hint Immediate tree'_rec'_equation_1 : eqns.
-  Hint Immediate tree'_rec'_equation_2 : eqns.
-  Hint Immediate tree'_rec'_equation_3 : eqns.
-  Hint Immediate tree'_rec'_equation_4 : eqns.
-  Hint Immediate tree'_rec'_equation_5 : eqns.
-  Hint Immediate tree'_rec'_equation_6 : eqns.
-  Hint Immediate tree'_rec'_equation_7 : eqns.
+  Hint Immediate tree'_rec'_equation_1 : eqns_explicit.
+  Hint Immediate tree'_rec'_equation_2 : eqns_explicit.
+  Hint Immediate tree'_rec'_equation_3 : eqns_explicit.
+  Hint Immediate tree'_rec'_equation_4 : eqns_explicit.
+  Hint Immediate tree'_rec'_equation_5 : eqns_explicit.
+  Hint Immediate tree'_rec'_equation_6 : eqns_explicit.
+  Hint Immediate tree'_rec'_equation_7 : eqns_explicit.
 
-  Hint Immediate get_equation_1 : eqns.
-  Hint Immediate get_equation_2 : eqns.
+  Hint Immediate get_equation_1 : eqns_explicit.
+  Hint Immediate get_equation_2 : eqns_explicit.
 
-  Hint Immediate empty_equation_1 : eqns.
+  Hint Immediate empty_equation_1 : eqns_explicit.
 
-  Hint Immediate beq'_equation_1 : eqns.
-  Hint Immediate beq'_equation_2 : eqns.
-  Hint Immediate beq'_equation_3 : eqns.
-  Hint Immediate beq'_equation_4 : eqns.
-  Hint Immediate beq'_equation_5 : eqns.
-  Hint Immediate beq'_equation_6 : eqns.
-  Hint Immediate beq'_equation_7 : eqns.
-  Hint Immediate beq'_equation_8 : eqns.
-  Hint Immediate beq'_equation_9 : eqns. 
-  Hint Immediate beq'_equation_10 : eqns.
+  Hint Immediate beq'_equation_1 : eqns_explicit.
+  Hint Immediate beq'_equation_2 : eqns_explicit.
+  Hint Immediate beq'_equation_3 : eqns_explicit.
+  Hint Immediate beq'_equation_4 : eqns_explicit.
+  Hint Immediate beq'_equation_5 : eqns_explicit.
+  Hint Immediate beq'_equation_6 : eqns_explicit.
+  Hint Immediate beq'_equation_7 : eqns_explicit.
+  Hint Immediate beq'_equation_8 : eqns_explicit.
+  Hint Immediate beq'_equation_9 : eqns_explicit. 
+  Hint Immediate beq'_equation_10 : eqns_explicit.
   
-  Hint Immediate beq'_equation_11 : eqns.
-  Hint Immediate beq'_equation_12 : eqns.
-  Hint Immediate beq'_equation_13 : eqns.
-  Hint Immediate beq'_equation_14 : eqns.
-  Hint Immediate beq'_equation_15 : eqns.
-  Hint Immediate beq'_equation_16 : eqns.
-  Hint Immediate beq'_equation_17 : eqns.
-  Hint Immediate beq'_equation_18 : eqns.
-  Hint Immediate beq'_equation_19 : eqns.
-  Hint Immediate beq'_equation_20 : eqns.
-  Hint Immediate beq'_equation_21 : eqns.
-  Hint Immediate beq'_equation_22 : eqns.
-  Hint Immediate beq'_equation_23 : eqns.
-  Hint Immediate beq'_equation_24 : eqns.
-  Hint Immediate beq'_equation_25 : eqns.
-  Hint Immediate beq'_equation_26 : eqns.
-  Hint Immediate beq'_equation_27 : eqns.
-  Hint Immediate beq'_equation_28 : eqns.
-  Hint Immediate beq'_equation_29 : eqns.
-  Hint Immediate beq'_equation_30 : eqns.
-  Hint Immediate beq'_equation_31 : eqns.
-  Hint Immediate beq'_equation_32 : eqns.
-  Hint Immediate beq'_equation_33 : eqns.
-  Hint Immediate beq'_equation_34 : eqns.
-  Hint Immediate beq'_equation_35 : eqns.
-  Hint Immediate beq'_equation_36 : eqns.
-  Hint Immediate beq'_equation_37 : eqns.
-  Hint Immediate beq'_equation_38 : eqns.
-  Hint Immediate beq'_equation_39 : eqns.
-  Hint Immediate beq'_equation_40 : eqns.
-  Hint Immediate beq'_equation_41 : eqns.
-  Hint Immediate beq'_equation_42 : eqns.
-  Hint Immediate beq'_equation_43 : eqns.
-  Hint Immediate beq'_equation_44 : eqns.
-  Hint Immediate beq'_equation_45 : eqns.
-  Hint Immediate beq'_equation_46 : eqns.
-  Hint Immediate beq'_equation_47 : eqns.
-  Hint Immediate beq'_equation_48 : eqns. 
-  Hint Immediate beq'_equation_49 : eqns.
+  Hint Immediate beq'_equation_11 : eqns_explicit.
+  Hint Immediate beq'_equation_12 : eqns_explicit.
+  Hint Immediate beq'_equation_13 : eqns_explicit.
+  Hint Immediate beq'_equation_14 : eqns_explicit.
+  Hint Immediate beq'_equation_15 : eqns_explicit.
+  Hint Immediate beq'_equation_16 : eqns_explicit.
+  Hint Immediate beq'_equation_17 : eqns_explicit.
+  Hint Immediate beq'_equation_18 : eqns_explicit.
+  Hint Immediate beq'_equation_19 : eqns_explicit.
+  Hint Immediate beq'_equation_20 : eqns_explicit.
+  Hint Immediate beq'_equation_21 : eqns_explicit.
+  Hint Immediate beq'_equation_22 : eqns_explicit.
+  Hint Immediate beq'_equation_23 : eqns_explicit.
+  Hint Immediate beq'_equation_24 : eqns_explicit.
+  Hint Immediate beq'_equation_25 : eqns_explicit.
+  Hint Immediate beq'_equation_26 : eqns_explicit.
+  Hint Immediate beq'_equation_27 : eqns_explicit.
+  Hint Immediate beq'_equation_28 : eqns_explicit.
+  Hint Immediate beq'_equation_29 : eqns_explicit.
+  Hint Immediate beq'_equation_30 : eqns_explicit.
+  Hint Immediate beq'_equation_31 : eqns_explicit.
+  Hint Immediate beq'_equation_32 : eqns_explicit.
+  Hint Immediate beq'_equation_33 : eqns_explicit.
+  Hint Immediate beq'_equation_34 : eqns_explicit.
+  Hint Immediate beq'_equation_35 : eqns_explicit.
+  Hint Immediate beq'_equation_36 : eqns_explicit.
+  Hint Immediate beq'_equation_37 : eqns_explicit.
+  Hint Immediate beq'_equation_38 : eqns_explicit.
+  Hint Immediate beq'_equation_39 : eqns_explicit.
+  Hint Immediate beq'_equation_40 : eqns_explicit.
+  Hint Immediate beq'_equation_41 : eqns_explicit.
+  Hint Immediate beq'_equation_42 : eqns_explicit.
+  Hint Immediate beq'_equation_43 : eqns_explicit.
+  Hint Immediate beq'_equation_44 : eqns_explicit.
+  Hint Immediate beq'_equation_45 : eqns_explicit.
+  Hint Immediate beq'_equation_46 : eqns_explicit.
+  Hint Immediate beq'_equation_47 : eqns_explicit.
+  Hint Immediate beq'_equation_48 : eqns_explicit. 
+  Hint Immediate beq'_equation_49 : eqns_explicit.
 
-  Hint Immediate beq_equation_1 : eqns.
-  Hint Immediate beq_equation_2 : eqns.
-  Hint Immediate beq_equation_3 : eqns.
-  Hint Immediate beq_equation_4 : eqns. 
+  Hint Immediate beq_equation_1 : eqns_explicit.
+  Hint Immediate beq_equation_2 : eqns_explicit.
+  Hint Immediate beq_equation_3 : eqns_explicit.
+  Hint Immediate beq_equation_4 : eqns_explicit. 
 
-  Hint Immediate beq_optA_equation_1 : eqns.
-  Hint Immediate beq_optA_equation_2 : eqns.
-  Hint Immediate beq_optA_equation_3 : eqns.
-  Hint Immediate beq_optA_equation_4 : eqns. 
+  Hint Immediate beq_optA_equation_1 : eqns_explicit.
+  Hint Immediate beq_optA_equation_2 : eqns_explicit.
+  Hint Immediate beq_optA_equation_3 : eqns_explicit.
+  Hint Immediate beq_optA_equation_4 : eqns_explicit. 
 
 
-  Hint Immediate get'_equation_1 : eqns.
-  Hint Immediate get'_equation_2 : eqns.
-  Hint Immediate get'_equation_3 : eqns.
-  Hint Immediate get'_equation_4 : eqns.
-  Hint Immediate get'_equation_5 : eqns.
-  Hint Immediate get'_equation_6 : eqns.
-  Hint Immediate get'_equation_7 : eqns.
-  Hint Immediate get'_equation_8 : eqns.
-  Hint Immediate get'_equation_9 : eqns.
-  Hint Immediate get'_equation_10 : eqns.
-  Hint Immediate get'_equation_11 : eqns.
-  Hint Immediate get'_equation_12 : eqns.
-  Hint Immediate get'_equation_13 : eqns.
-  Hint Immediate get'_equation_14 : eqns.
-  Hint Immediate get'_equation_15 : eqns.
-  Hint Immediate get'_equation_16 : eqns.
-  Hint Immediate get'_equation_17 : eqns.
-  Hint Immediate get'_equation_18 : eqns.
-  Hint Immediate get'_equation_19 : eqns.
-  Hint Immediate get'_equation_20 : eqns.
-  Hint Immediate get'_equation_21 : eqns.
+  Hint Immediate get'_equation_1 : eqns_explicit.
+  Hint Immediate get'_equation_2 : eqns_explicit.
+  Hint Immediate get'_equation_3 : eqns_explicit.
+  Hint Immediate get'_equation_4 : eqns_explicit.
+  Hint Immediate get'_equation_5 : eqns_explicit.
+  Hint Immediate get'_equation_6 : eqns_explicit.
+  Hint Immediate get'_equation_7 : eqns_explicit.
+  Hint Immediate get'_equation_8 : eqns_explicit.
+  Hint Immediate get'_equation_9 : eqns_explicit.
+  Hint Immediate get'_equation_10 : eqns_explicit.
+  Hint Immediate get'_equation_11 : eqns_explicit.
+  Hint Immediate get'_equation_12 : eqns_explicit.
+  Hint Immediate get'_equation_13 : eqns_explicit.
+  Hint Immediate get'_equation_14 : eqns_explicit.
+  Hint Immediate get'_equation_15 : eqns_explicit.
+  Hint Immediate get'_equation_16 : eqns_explicit.
+  Hint Immediate get'_equation_17 : eqns_explicit.
+  Hint Immediate get'_equation_18 : eqns_explicit.
+  Hint Immediate get'_equation_19 : eqns_explicit.
+  Hint Immediate get'_equation_20 : eqns_explicit.
+  Hint Immediate get'_equation_21 : eqns_explicit.
 
   (* crush hints *)
   Hint Resolve get'_equation_1.
@@ -779,13 +847,13 @@ Section PTree.
   Lemma gss0: forall p (x: A), get' p (set0 p x) = Some x.
   Proof. 
     induction p;
-    try hammer'.
+    hammer'.
     Restart.
     induction p;
-    try crush'.
+    crush'.
     Restart.
     induction p;
-    try mirrorsolve.
+    mirrorsolve.
   Qed.
 
   Hint Immediate gss0 : eqns.
@@ -797,15 +865,15 @@ Section PTree.
   Proof.
     induction p;
     induction q;
-    try hammer'.
+    hammer'.
     Restart.
     induction p;
     induction q;
-    try crush'.
+    crush'.
     Restart.
     induction p;
     induction q;
-    try mirrorsolve.
+    mirrorsolve.
   Qed.
 
   Hint Immediate gso0 : eqns.
@@ -843,15 +911,15 @@ Section PTree.
   Proof.
     induction i;
     induction m;
-    try hammer'.
+    hammer'.
     Restart.
     induction i;
     induction m;
-    try crush'.
+    crush'.
     Restart.
     induction i;
     induction m;
-    try mirrorsolve.
+    mirrorsolve.
   Qed.
 
   Hint Immediate gss' : eqns.
@@ -863,13 +931,13 @@ Section PTree.
     forall (i: positive) (x: A) (m: tree A), get i (set i x m) = Some x.
   Proof.
     induction m;
-    try hammer'.
+    hammer'.
     Restart.
     induction m;
-    try crush'.
+    crush'.
     Restart.
     induction m;
-    try mirrorsolve.
+    mirrorsolve.
   Qed.
 
   Hint Immediate gss : eqns.
@@ -883,26 +951,74 @@ Section PTree.
     induction i;
     induction j;
     induction m;
-    try hammer'.
+    hammer'.
     Restart.
     induction i;
     induction j;
     induction m;
-    try crush'.
+    crush'.
     Restart.
 
     Set MirrorSolve Solver "z3".
     induction i;
     induction j;
     induction m;
-    try mirrorsolve.
+    mirrorsolve.
   Qed.
 
   Hint Immediate gso': eqns.
   Hint Resolve gso'.
 
+  Hint Immediate Pos_eqb_equation_1 : eqns.
+  Hint Immediate Pos_eqb_equation_2 : eqns.
+  Hint Immediate Pos_eqb_equation_3 : eqns.
+  Hint Immediate Pos_eqb_equation_4 : eqns.
+  Hint Immediate Pos_eqb_equation_5 : eqns.
+  Hint Immediate Pos_eqb_equation_6 : eqns.
+  Hint Immediate Pos_eqb_equation_7 : eqns.
+  Hint Immediate Pos_eqb_equation_8 : eqns.
+  Hint Immediate Pos_eqb_equation_9 : eqns.
+
+  Hint Resolve Pos_eqb_equation_1.
+  Hint Resolve Pos_eqb_equation_2.
+  Hint Resolve Pos_eqb_equation_3.
+  Hint Resolve Pos_eqb_equation_4.
+  Hint Resolve Pos_eqb_equation_5.
+  Hint Resolve Pos_eqb_equation_6.
+  Hint Resolve Pos_eqb_equation_7.
+  Hint Resolve Pos_eqb_equation_8.
+  Hint Resolve Pos_eqb_equation_9.
+
+  (* MS TODO *)
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":9, "ms":9, "hammer":9, "crush":7} *)
+  Lemma Pos_eqb_spec : 
+    forall l r,
+      Pos_eqb l r = true <-> l = r.
+  Proof.
+
+   
+    induction l;
+    induction r;
+    hammer'.
+    Restart.
+
+    induction l;
+    induction r;
+    crush'.
+    Restart.
+
+    induction l;
+    induction r;
+    mirrorsolve.
+
+
+  Qed.
+
+  Hint Immediate Pos_eqb_spec : eqns.
+  Hint Resolve Pos_eqb_spec.
+
   (*** MS EFFORT {"type": "edit"} *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":18, "ms":18, "hammer":13, "crush":8} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":18, "ms":18, "hammer":14, "crush":8} *)
   Theorem gso:
     forall (i j: positive) (x: A) (m: tree A),
     i <> j -> get i (set j x m) = get i m.
@@ -910,93 +1026,56 @@ Section PTree.
     induction i;
     induction j;
     induction m;
-    try hammer'.
+    hammer'.
     Restart.
     induction i;
     induction j;
     induction m;
-    try (now crush').
+    crush'.
     Restart.
     induction i;
     induction j;
     induction m;
-    try mirrorsolve.
-  Qed.
-
-  (* MS TODO *)
-  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":9, "ms":9, "hammer":9, "crush":9} *)
-  Lemma Pos_eqb_spec : 
-    forall l r,
-      Pos_eqb l r = true <-> l = r.
-  Proof.
-    induction l;
-    induction r;
     mirrorsolve.
   Qed.
 
+  Hint Resolve gso : eqns.
+  Hint Immediate gso.
+
+  
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
   Theorem gsspec:
     forall (i j: positive) (x: A) (m: tree A),
-    get i (set j x m) = ite (elt_eq i j) (Some x) (get i m).
+    get i (set j x m) = ite (Pos_eqb i j) (Some x) (get i m).
   Proof.
-    intros.
-    destruct (peq i j); [ rewrite e; apply gss | apply gso; auto ].
+    hammer'.
+    Restart.
+    crush'.
+    Restart.
+    mirrorsolve.
   Qed.
 
-  Lemma gNode:
-    forall {A} (i: positive) (l: tree A) (x: option A) (r: tree A),
-    get i (Node l x r) = match i with xH => x | xO j => get j l | xI j => get j r end.
-  Proof.
-    intros. destruct l, x, r; simpl; auto; destruct i; auto.
-  Qed.
+  (* 3 equations *)
+  MetaCoq Run (infer_equations get_pos_default).
 
-  Theorem grs:
-    forall (A: Type) (i: positive) (m: tree A), get i (remove i m) = None.
-  Proof.
-    Local Opaque Node.
-    destruct m as [ |m]; simpl. auto.
-    change (remove' i m) with (rem' i m).
-    revert m. induction i; destruct m; simpl; auto; rewrite gNode; auto.
-  Qed.
+  (* TODO: trim t hese *)
 
-  Theorem gro:
-    forall (A: Type) (i j: positive) (m: tree A),
-    i <> j -> get i (remove j m) = get i m.
-  Proof.
-    Local Opaque Node.
-    destruct m as [ |m]; simpl. auto.
-    change (remove' j m) with (rem' j m).
-    revert j m. induction i; destruct j, m; simpl; intros; auto;
-    solve [ congruence
-          | rewrite gNode; auto; apply IHi; congruence ].
-  Qed.
+  Hint Immediate get_pos_default_equation_1 : eqns.
+  Hint Immediate get_pos_default_equation_2 : eqns.
+  Hint Immediate get_pos_default_equation_3 : eqns.
 
-  Theorem grspec:
-    forall (A: Type) (i j: elt) (m: t A),
-    get i (remove j m) = if elt_eq i j then None else get i m.
-  Proof.
-    intros. destruct (elt_eq i j). subst j. apply grs. apply gro; auto.
-  Qed.
-
-(** ** Custom case analysis principles and induction principles *)
-
-(** We can view trees as being of one of two (non-exclusive)
-    cases: either [Empty] for an empty tree, or [Node l o r] for a
-    nonempty tree, with [l] and [r] the left and right subtrees
-    and [o] an optional value.  The [Empty] constructor and the [Node]
-    smart function defined above provide one half of the view: the one
-    that lets us construct values of type [tree A].
-
-    We now define the other half of the view: the one that lets us
-    inspect and recurse over values of type [tree A].  This is achieved
-    by defining appropriate principles for case analysis and induction. *)
-
-  (** A case analysis principle *)
+  Hint Resolve get_pos_default_equation_1.
+  Hint Resolve get_pos_default_equation_2.
+  Hint Resolve get_pos_default_equation_3.
 
   Hint Immediate not_trivially_empty_equation_1 : eqns.
   Hint Immediate not_trivially_empty_equation_2 : eqns.
   Hint Immediate not_trivially_empty_equation_3 : eqns.
   Hint Immediate not_trivially_empty_equation_4 : eqns.
 
+  (* DELETE  *)
   Hint Immediate tree_case_equation_1 : eqns.
   Hint Immediate tree_case_equation_2 : eqns.
   Hint Immediate tree_case_equation_3 : eqns.
@@ -1015,6 +1094,241 @@ Section PTree.
   Hint Immediate Node_equation_7 : eqns.
   Hint Immediate Node_equation_8 : eqns.
 
+  Hint Resolve not_trivially_empty_equation_1.
+  Hint Resolve not_trivially_empty_equation_2.
+  Hint Resolve not_trivially_empty_equation_3.
+  Hint Resolve not_trivially_empty_equation_4.
+
+  Hint Resolve tree_case_equation_1.
+  Hint Resolve tree_case_equation_2.
+  Hint Resolve tree_case_equation_3.
+  Hint Resolve tree_case_equation_4.
+  Hint Resolve tree_case_equation_5.
+  Hint Resolve tree_case_equation_6.
+  Hint Resolve tree_case_equation_7.
+  Hint Resolve tree_case_equation_8.
+
+  Hint Resolve Node_equation_1.
+  Hint Resolve Node_equation_2.
+  Hint Resolve Node_equation_3.
+  Hint Resolve Node_equation_4.
+  Hint Resolve Node_equation_5.
+  Hint Resolve Node_equation_6.
+  Hint Resolve Node_equation_7.
+  Hint Resolve Node_equation_8.
+
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (* MS TODO tactics *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":24, "ms":24, "hammer":0, "crush":0} *)
+  Lemma gNode:
+    forall (i: positive) (l: tree A) (x: option A) (r: tree A),
+    get i (Node l x r) = get_pos_default i x l r.
+  Proof.
+    Set MirrorSolve Solver "cvc5".
+    
+    induction i;
+    induction l;
+    induction x;
+    induction r;
+    mirrorsolve.
+
+  Qed.
+
+  Hint Immediate gNode : eqns.
+  Hint Resolve gNode.
+
+  Hint Immediate rem'_equation_1 : eqns.
+  Hint Immediate rem'_equation_2 : eqns.
+  Hint Immediate rem'_equation_3 : eqns.
+  Hint Immediate rem'_equation_4 : eqns.
+  Hint Immediate rem'_equation_5 : eqns.
+  Hint Immediate rem'_equation_6 : eqns.
+  Hint Immediate rem'_equation_7 : eqns.
+  Hint Immediate rem'_equation_8 : eqns.
+  Hint Immediate rem'_equation_9 : eqns.
+  Hint Immediate rem'_equation_10 : eqns.
+  Hint Immediate rem'_equation_11 : eqns.
+  Hint Immediate rem'_equation_12 : eqns.
+  Hint Immediate rem'_equation_13 : eqns.
+  Hint Immediate rem'_equation_14 : eqns.
+  Hint Immediate rem'_equation_15 : eqns.
+  Hint Immediate rem'_equation_16 : eqns.
+  Hint Immediate rem'_equation_17 : eqns.
+  Hint Immediate rem'_equation_18 : eqns.
+  Hint Immediate rem'_equation_19 : eqns.
+  Hint Immediate rem'_equation_20 : eqns.
+  Hint Immediate rem'_equation_21 : eqns.
+
+  Set MirrorSolve Solver "z3".
+
+
+  (* MS TODO tactics *)
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":0, "crush":0} *)
+  Lemma get_Node_1 : 
+    forall l x r, get xH (Node l x r) = x.
+  Proof.
+    induction l;
+    induction x;
+    induction r;
+    mirrorsolve.
+  Qed.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":0, "crush":0} *)
+  
+  Lemma get_Node_l : 
+    forall l x r i, get i~0 (Node l x r) = get i l.
+  Proof.
+    induction l;
+    induction x;
+    induction r;
+    mirrorsolve.
+  Qed.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":0, "crush":0} *)
+  
+  Lemma get_Node_r : 
+    forall l x r i, get i~1 (Node l x r) = get i r.
+  Proof.
+    induction l;
+    induction x;
+    induction r;
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate get_Node_1 : eqns.
+  Hint Immediate get_Node_l : eqns.
+  Hint Immediate get_Node_r : eqns.
+  
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":21, "ms":21, "hammer":0, "crush":0} *)
+  Lemma get_rem' : 
+    forall i t, 
+      get i (rem' i t) = None.
+  Proof.
+    induction i;
+    induction t;
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate get_rem' : eqns.
+
+  (* Hint Immediate remove'_equation_1: eqns. *)
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma remove'_equation_ext: 
+    forall p t, remove' p t = rem' p t.
+  Proof.
+    intros;
+    eapply eq_refl.
+  Qed.
+
+  Hint Immediate remove'_equation_ext : eqns.
+
+  Hint Immediate remove_equation_1: eqns.
+  Hint Immediate remove_equation_2: eqns.
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (* MS TODO tactics *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":0, "crush":0} *)
+  Theorem grs:
+    forall (m: tree A) (i: positive), get i (remove i m) = None.
+  Proof.
+    induction i;
+    induction m;
+    mirrorsolve.
+  Qed.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":21, "ms":21, "hammer":0, "crush":0} *)
+  (* Lemma get_rem'_o : 
+    forall i j t, 
+      i <> j ->
+      get i (rem' j t) = get i t.
+  Proof.
+    induction i;
+    induction t;
+    mirrorsolve.
+  Qed. *)
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":0, "crush":0} *)
+  Lemma remove_Node_1 : 
+    forall l x r, remove xH (Node l x r) = Node l None r.
+  Proof.
+    induction l;
+    induction x;
+    induction r;
+    mirrorsolve.
+  Qed.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":0, "crush":0} *)
+  Lemma remove_Node_l : 
+    forall l x r i, remove i~0 (Node l x r) = Node (remove i l) x r.
+  Proof.
+    induction l;
+    induction x;
+    induction r;
+    mirrorsolve.
+  Qed.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":0, "crush":0} *)
+  Lemma remove_Node_r : 
+    forall l x r i, remove i~1 (Node l x r) = Node l x (remove i r).
+  Proof.
+    induction l;
+    induction x;
+    induction r;
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate remove_Node_1 : eqns.
+  Hint Immediate remove_Node_l : eqns.
+  Hint Immediate remove_Node_r : eqns.
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (* MS TODO tactics *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":72, "ms":72, "hammer":0, "crush":0} *)
+  
+  Theorem gro:
+    forall (i j: positive) (m: tree A),
+    i <> j -> get i (remove j m) = get i m.
+  Proof.
+    induction i;
+    induction j;
+    induction m;
+    (try induction t);
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate grs : eqns.
+  Hint Immediate gro : eqns.
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (* MS TODO tactics *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
+  Theorem grspec:
+    forall i j (m: tree A),
+    get i (remove j m) = ite (Pos_eqb i j) None (get i m).
+  Proof.
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate grspec : eqns.
+
+(** ** Custom case analysis principles and induction principles *)
+
+(** We can view trees as being of one of two (non-exclusive)
+    cases: either [Empty] for an empty tree, or [Node l o r] for a
+    nonempty tree, with [l] and [r] the left and right subtrees
+    and [o] an optional value.  The [Empty] constructor and the [Node]
+    smart function defined above provide one half of the view: the one
+    that lets us construct values of type [tree A].
+
+    We now define the other half of the view: the one that lets us
+    inspect and recurse over values of type [tree A].  This is achieved
+    by defining appropriate principles for case analysis and induction. *)
+
+  (** A case analysis principle *)
+
+
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":8, "crush":8} *)
   Lemma unroll_tree_case: forall l o r,
@@ -1024,27 +1338,36 @@ Section PTree.
     induction l;
     induction o;
     induction r;
-    try hammer'.
+    hammer'.
     Restart.
     induction l;
     induction o;
     induction r;
-    try crush'.
+    crush'.
     Restart.
     induction l;
     induction o;
     induction r;
-    try mirrorsolve.
+    mirrorsolve.
   Qed.
 
   Hint Immediate unroll_tree_case : eqns.
+
   (** A recursion principle *)
 
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":8, "crush":8} *)
+  
+  Hint Immediate tree_rec'_equation_1 : eqns.
+  Hint Immediate tree_rec'_equation_2 : eqns.
   Lemma unroll_tree_rec: forall l o r,
     not_trivially_empty l o r ->
-    tree'_rec' (Node l o r) = node' l (tree'_rec' l) o r (tree'_rec' r).
+    tree_rec' (Node l o r) = node_rec' l (tree_rec' l) o r (tree_rec' r).
   Proof.
-    destruct l, o, r; simpl; intros; auto. contradiction.
+    induction l;
+    induction o;
+    induction r;
+    mirrorsolve.
   Qed.
 
   (** A double recursion principle *)
@@ -1143,76 +1466,108 @@ Section PTree.
 
 (** ** Extensionality property *)
 
+  (*** MS EFFORT {"type": "edit"} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":5, "hammer":0, "crush":0} *)
   Lemma tree'_not_empty:
-    forall {A} (m: tree' A), exists i, get' i m <> None.
+    forall (m: tree' A), 
+      ~ (forall i, get' i m = None).
   Proof.
-   induction m; simpl; try destruct IHm as [p H].
-   - exists (xI p); auto.
-   - exists xH; simpl; congruence.
-   - exists xH; simpl; congruence.
-   - exists (xO p); auto.
-   - destruct IHm1 as [p H]; exists (xO p); auto.
-   - exists xH; simpl; congruence.
-   - exists xH; simpl; congruence.
-  Qed.
+    Set MirrorSolve Solver "cvc5".
+    induction m;
+    mirrorsolve.
+  Admitted.
 
+  Hint Immediate tree'_not_empty : eqns.
+
+  (*** MS EFFORT {"type": "edit"} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":1, "hammer":0, "crush":0} *)
   Corollary extensionality_empty:
-    forall {A} (m: tree A),
+    forall (m: tree A),
     (forall i, get i m = None) -> m = Empty.
   Proof.
-    intros. destruct m as [ | m]; auto. destruct (tree'_not_empty m) as [i GET].
-    elim GET. apply H.
-  Qed.
+    induction m;
+    mirrorsolve.
+  Admitted.
 
+  Hint Immediate extensionality_empty : eqns.
+
+  (*** MS EFFORT {"type": "edit"} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":4, "ms":1, "hammer":0, "crush":0} *)
   Theorem extensionality:
-    forall (A: Type) (m1 m2: tree A),
+    forall (m1 m2: tree A),
     (forall i, get i m1 = get i m2) -> m1 = m2.
   Proof.
-    intros A. induction m1 using tree_ind; induction m2 using tree_ind; intros.
-  - auto.
-  - symmetry. apply extensionality_empty. intros; symmetry; apply H0.
-  - apply extensionality_empty. apply H0.
-  - f_equal.
-    + apply IHm1_1. intros. specialize (H1 (xO i)); rewrite ! gNode in H1. auto.
-    + specialize (H1 xH); rewrite ! gNode in H1. auto.
-    + apply IHm1_2. intros. specialize (H1 (xI i)); rewrite ! gNode in H1. auto.
-  Qed.
+    induction m1; 
+    induction m2;
+    mirrorsolve.
+  Admitted.
 
+  Hint Immediate extensionality : eqns.
   (** Some consequences of extensionality *)
 
+  (*** MS EFFORT {"type": "edit"} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
   Theorem gsident:
-    forall {A} (i: positive) (m: t A) (v: A),
+    forall (i: positive) (m: tree A) (v: A),
     get i m = Some v -> set i v m = m.
   Proof.
-    intros; apply extensionality; intros j.
-    rewrite gsspec. destruct (peq j i); congruence.
+    intros.
+    eapply extensionality.
+    mirrorsolve.
   Qed.
 
+  Hint Immediate gsident : eqns.
+
+  (*** MS EFFORT {"type": "edit"} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
   Theorem set2:
-    forall {A} (i: elt) (m: t A) (v1 v2: A),
-    set i v2 (set i v1 m) = set i v2 m.
+    forall i (m: tree A) (v1 v2: A),
+      set i v2 (set i v1 m) = set i v2 m.
   Proof.
-    intros; apply extensionality; intros j.
-    rewrite ! gsspec. destruct (peq j i); auto.
+    intros; 
+    eapply extensionality.
+    mirrorsolve.
   Qed.
+
+  Hint Immediate set2 : eqns.
 
 (** ** Boolean equality *)
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":64, "ms":64, "hammer":0, "crush":0} *)
+  Lemma beq_NN: 
+    forall l1 o1 r1 l2 o2 r2,
+      not_trivially_empty l1 o1 r1 ->
+      not_trivially_empty l2 o2 r2 ->
+      beq (Node l1 o1 r1) (Node l2 o2 r2) =
+      (beq l1 l2 && beq_optA o1 o2 && beq r1 r2)%bool.
+  Proof.
+    induction l1; 
+    induction o1;
+    induction r1;
+    induction l2;
+    induction o2;
+    induction r2.
+    mirrorsolve.
+
+  Qed.
+
+  Hint Immediate beq_NN : eqns.
+
+(*** MS EFFORT {"type": "edit"} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
   
     Lemma beq_correct_bool:
       forall m1 m2,
       beq m1 m2 = true <-> (forall x, beq_optA (get x m1) (get x m2) = true).
     Proof.
-      Local Transparent Node.
-      assert (beq_NN: forall l1 o1 r1 l2 o2 r2,
-              not_trivially_empty l1 o1 r1 ->
-              not_trivially_empty l2 o2 r2 ->
-              beq (Node l1 o1 r1) (Node l2 o2 r2) =
-              beq l1 l2 && beq_optA o1 o2 && beq r1 r2).
-      { intros.
-        destruct l1, o1, r1; try contradiction; destruct l2, o2, r2; try contradiction;
-        simpl; rewrite ? andb_true_r, ? andb_false_r; auto.
-        rewrite andb_comm; auto.
-        f_equal; rewrite andb_comm; auto. }
+      induction m1;
+      induction m2;
+      split;
+      intros;
+      (try induction x);
+      mirrorsolve.
+      
       induction m1 using tree_ind; [|induction m2 using tree_ind].
     - intros. simpl; split; intros.
       + destruct m2; try discriminate. simpl; auto.

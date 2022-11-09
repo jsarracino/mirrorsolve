@@ -48,6 +48,12 @@ let c_tt () = get_coq "ms.core.tt"
 let c_ff () = get_coq "ms.core.ff"
 let c_fun () = get_coq "ms.core.fun"
 
+let c_interp_fm () = get_coq "ms.core.interp_fm"
+
+let c_wrap_hyps () = get_coq "ms.hyps.wrap_hyps"
+(* let c_interp_hyps () = get_coq "ms.hyps.interp_hyps" *)
+let c_interp_wh () = get_coq "ms.hyps.interp_wh"
+
 
 (* Register nil as core.list.nil.
 Register cons as core.list.cons. *)
@@ -135,6 +141,13 @@ let c_smt_psl () = get_coq "ms.smt.psl"
 
 let c_smt_fprim () = get_coq "ms.core.fprim"
 let c_smt_funinterp () = get_coq "ms.core.funinterp"
+
+let equal_const (l: C.t) (r: C.t) : bool = 
+  if C.isConst l && C.isConst r then 
+    let (l', _) = C.destConst l in 
+    let (r', _) = C.destConst r in 
+      l' = r'
+  else false
 
 let equal_ctor (l: C.t) (r: unit -> C.t) : bool = 
   try 
@@ -1177,6 +1190,7 @@ let debug_lib_refs _ =
 type query_opts = 
   { refute_query : bool ;
     negate_toplevel : bool ;
+    hyps :  C.t list ;
   }
 
 let in_map k mp = 
@@ -1197,39 +1211,39 @@ let order_inds (inds: ind_decl StringMap.t) (names: string list) : string list =
   let with_edges = List.fold_left (fun g x -> add_dependent_edges g x inds) with_nodes names in
     Ms_graph.topo_sort with_edges
 
-let hint_tbl_name =
-  Goptions.declare_stringopt_option_and_ref
-    ~depr:false
-    ~key:["MirrorSolve";"Hints"]
+let extract_interp_fm (e: C.t) : C.t option  = 
+  let _ = debug_pp @@ Pp.str "Extracting interp_fm from:" in 
+  let _ = debug_pp @@ Constr.debug_print e in 
+  if C.isApp e then 
+    let (f, es) = C.destApp e in 
+    let _ = debug_pp @@ Pp.str "Inspecting f for interp_fm?" in 
+    let _ = debug_pp @@ Constr.debug_print f in 
+    if equal_const f (c_interp_fm ()) then 
+      Some (a_last es)
+    else raise bedef
+  else raise bedef
   
 let build_query (ctx: printing_ctx) (opts: query_opts) (e: C.t)  : string = 
   let ind_sorts, us_sorts = List.partition (in_map ctx.ctx_inds) @@ custom_sorts ctx.ctx_sorts in 
   let us_decls = List.map (fun s -> Format.sprintf "(declare-sort %s 0)" s) us_sorts in 
   let ind_decls = List.map (fun s -> pretty_ind_decl s (StringMap.find s ctx.ctx_inds)) (order_inds ctx.ctx_inds ind_sorts) in 
   let fun_decls = List.map pretty_func_decl @@ List.map snd @@ List.of_seq @@ StringMap.to_seq @@ ctx.ctx_fun_decls in 
-  let assumpts = begin match hint_tbl_name () with 
-    | Some x -> 
-      Hint.pretty_hints (fun fm -> 
-        let (_, es) = C.destApp fm in 
-        Format.sprintf "(assert %s)" (pretty_fm ctx (a_last es))
-      ) (Hint.lookup_tbl x)
-    | None -> ""
-    end in
-  let prefix = String.concat "\n" @@ us_decls @ ind_decls @ fun_decls @ [assumpts] in 
+  let assumpts = List.map (fun x -> Format.sprintf "(assert %s)" (pretty_fm ctx x)) opts.hyps in
+  let prefix = String.concat "\n" @@ us_decls @ ind_decls @ fun_decls @ assumpts in 
   let q_str = if opts.refute_query then 
     Format.sprintf "(assert (not %s))" (pretty_fm ctx e) 
   else
     Format.sprintf "(assert %s)" (pretty_fm ctx e) in 
   Smt.gen_bv_query (String.concat "\n" [prefix; q_str])
 
-let dump_query (ctx: printing_ctx) (e: EConstr.t) : unit = 
+let dump_query ?(hyps: C.t list = []) (ctx: printing_ctx) (e: EConstr.t) : unit = 
   let env = Global.env () in
   let sigma = Evd.from_env env in
-  let opts = { refute_query = true; negate_toplevel = false; } in
+  let opts = { refute_query = true; negate_toplevel = false; hyps = hyps} in
   let query = build_query ctx opts (EConstr.to_constr sigma e) in
     Feedback.msg_info (Pp.str query)
 
-let rec check_interp ?(ctx_e  = None) (e: C.t) (negate_toplevel: bool) : string = 
+let rec check_interp ?(ctx_e  = None) ?(hyps: C.t list = []) (e: C.t) (negate_toplevel: bool) : string = 
   let ctx = 
     begin match ctx_e with 
     | Some ctx_e -> load_ctx ctx_e
@@ -1243,7 +1257,7 @@ let rec check_interp ?(ctx_e  = None) (e: C.t) (negate_toplevel: bool) : string 
       let (n, _) = C.destConst f in 
       let name = Names.Constant.to_string n in 
       if name = "MirrorSolve.FirstOrder.interp_fm" then
-        let opts = { refute_query = negate_toplevel; negate_toplevel = negate_toplevel; } in
+        let opts = { refute_query = negate_toplevel; negate_toplevel = negate_toplevel; hyps = hyps } in
         let bod' = a_last es in
           build_query ctx opts bod'
       else
@@ -1254,15 +1268,38 @@ let rec check_interp ?(ctx_e  = None) (e: C.t) (negate_toplevel: bool) : string 
     raise bedef
 
 
+let extract_hyps (e: C.t) : (C.t list * C.t) option = 
+  let _ = debug_pp @@ Pp.str "Extracting hyps from:" in 
+  let _ = debug_pp @@ Constr.debug_print e in 
+  let (f, es) = C.destApp e in 
+  let _ = debug_pp @@ Pp.str "Symb is:" in 
+  let _ = debug_pp @@ Constr.debug_print f in 
+  if f = c_wrap_hyps () then 
+    begin match Util.opt_sequence (extract_list extract_interp_fm es.(Array.length es - 2)) with 
+    | Some hyp_es -> Some (hyp_es, a_last es)
+    | None -> 
+      let _ = debug_pp @@ Pp.str "Interior of hyps did not parse as list of interp_fm?" in 
+      let _ = debug_pp @@ Constr.debug_print es.(Array.length es - 2) in 
+      None
+    end
+  else
+    None
 
-let set_smt_language lang_s = 
-  let open Smt in 
-  begin match Smt.str_to_language lang_s with 
-  | Some l -> set_language l
-  | None -> 
-    let _ = Feedback.msg_warning (Pp.str ("Unrecognized smt language: " ^ lang_s)) in
-      Feedback.msg_warning (Pp.str "Expected BV/ALL")
-  end
+let check_interp_wrapped_hyps ?(ctx_e = None) (e: C.t) : string = 
+  let (f, es) = C.destApp e in 
+  if f = c_interp_wh () then 
+    begin match extract_hyps (a_last es) with 
+    | Some (hyps, goal) -> 
+      check_interp ~ctx_e ~hyps goal true
+    | None -> 
+      let _ = Feedback.msg_debug (Pp.str "couldn't extract hyps: ") in 
+      let _ = Feedback.msg_debug @@ C.debug_print (a_last es) in 
+      raise @@ BadExpr "couldn't extract hyps in check_interp_hyps"
+    end
+  else
+    raise bedef
+
+
 
 let reg_sym (e: EConstr.t) (sym: string) (ar: int) : unit = 
   let env = Global.env () in 

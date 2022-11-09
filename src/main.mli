@@ -88,11 +88,13 @@ val debug_lib_refs : unit -> Pp.t
 type query_opts = 
   { refute_query : bool ;
     negate_toplevel : bool ;
+    hyps : Constr.t list;
   }
 
 val build_query : printing_ctx -> query_opts -> Constr.t -> string
-val dump_query : printing_ctx -> EConstr.t -> unit
-val check_interp : ?ctx_e: Constr.t option -> Constr.t -> bool -> string
+val dump_query : ?hyps: Constr.t list -> printing_ctx -> EConstr.t -> unit
+val check_interp : ?ctx_e: Constr.t option -> ?hyps: Constr.t list -> Constr.t -> bool -> string
+val check_interp_wrapped_hyps : ?ctx_e: Constr.t option -> Constr.t -> string
 val extract_ctx : Constr.t -> Constr.t list
 
 val pretty_func_decl : func_decl -> string
@@ -100,8 +102,6 @@ val pretty_func_decl : func_decl -> string
 val print_bools : bool list -> Pp.t
 val c_n_tuple_to_bools : Constr.t -> bool list
 val format_args : Constr.t array -> Pp.t
-
-val set_smt_language : string -> unit
 
 val reg_ind_decl : string -> EConstr.t -> EConstr.t -> unit
 

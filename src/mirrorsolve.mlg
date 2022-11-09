@@ -235,9 +235,19 @@ TACTIC EXTEND CheckUnsatNegF
   }
 END
 
-VERNAC COMMAND EXTEND SetLanguage CLASSIFIED AS QUERY
-| [ "SetSMTLang" string(s) ] -> { 
-    Main.set_smt_language s
+TACTIC EXTEND CheckUnsatHyps 
+| [ "check_unsat_hyps" constr(ctx_e) constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let fail s = tcl_fail (Pp.str s) in
+    let ctx_e = Some (EConstr.to_constr sigma ctx_e) in 
+    let query = Main.check_interp_wrapped_hyps ~ctx_e (EConstr.to_constr sigma e) in
+
+    begin match Smt.run_smt query with 
+    | SAT -> fail "SAT smt query"
+    | UNSAT -> Proofview.tclUNIT ()
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
   }
 END
 

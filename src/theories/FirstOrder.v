@@ -617,6 +617,8 @@ Register TFun as ms.core.fun.
 Register VHere as ms.core.vhere.
 Register VThere as ms.core.vthere.
 
+Register interp_fm as ms.core.interp_fm.
+
 
 Register FEq as ms.core.eq.
 Register FTrue as ms.core.tt.

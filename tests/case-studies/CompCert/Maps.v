@@ -68,6 +68,8 @@ From Hammer Require Import Hammer.
 
 Require Import MirrorSolve.Crush.
 
+Require Import MirrorSolve.Hyps.
+
 Ltac hammer' := 
   (* try now (timeout 60 hammer). *)
   idtac.
@@ -490,70 +492,70 @@ Section PTree.
 
   Create HintDb eqns_implicit.
   Create HintDb eqns_explicit.
-
-  Set MirrorSolve Hints "eqns_implicit".
+  Create HintDb eqns_small.
 
   Ltac prep_proof := 
+    hints_foreach (fun x => pose proof x) "eqns_small";
+    Utils.revert_all;
+    unfold "<->" in *.
+
+  Ltac prep_proof_explicit := 
     hints_foreach (fun x => pose proof x) "eqns_explicit";
     Utils.revert_all;
     unfold "<->" in *.
 
   Scheme Equality for sorts.
 
-  Ltac mirrorsolve :=
-    try now (timeout 60 (prep_proof;
+  Ltac mirrorsolve_explicit :=
+    try now (timeout 60 (prep_proof_explicit;
     quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts;
     check_goal_unsat)).
 
-  Definition denote := denote_t2fm sig fm_model sorts_eq_dec (denote_tm _ fm_model sorts_eq_dec match_tacs) (denote_t2rel _ fm_model sorts_eq_dec match_tacs) (i2srt _ match_sorts) (VEmp _ _).
+  Definition extract := extract_t2fm sig (fun c => @extract_t2tm sig fm_model sorts_eq_dec c match_tacs) (fun c => @extract_t2rel sig fm_model sorts_eq_dec c match_tacs) (i2srt _ match_sorts) sorts_eq_dec.
 
-  Check denote.
+  Ltac runner := (
+    prep_proof;
+    quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts;
+    eapply interp_hyps_sound;
+    let g := fresh "G" in 
+    match goal with 
+    | |- interp_wh {| hyps := _ ; p := ?P |} => 
+      set (g := P) at 1
+    end;
+    hints_foreach (fun x => 
+      let H := type of x in
+      quote_term H (fun y => 
+      let v := fresh "v" in 
+      set (v := (@extract (SLNil _) y));
+      vm_compute in v;
+      match goal with 
+      | v' := Some ?X |- interp_wh {| hyps := ?L; p := _ |} => 
+        let t := fresh "t" in 
+        set (t := L) at 1;
+        clear v';
+        erewrite (@add_hyp _ (interp_fm (sig := sig) (m := fm_model) (VEmp sig fm_model) X) _ ltac:(eapply UnsoundAxioms.interp_true))
+      end
+      
+    )) "eqns_explicit";
+    repeat match goal with 
+    | x := _ |- _ => 
+      subst x
+    end;
+
+    match goal with 
+    | |- ?G => check_unsat_hyps fol_theory G; eapply weaken_hyps; eapply UnsoundAxioms.interp_true
+    end
+  ).
+  Ltac mirrorsolve := try now ( timeout 60 runner).
+
+  Definition denote := denote_t2fm sig fm_model sorts_eq_dec (denote_tm _ fm_model sorts_eq_dec match_tacs) (denote_t2rel _ fm_model sorts_eq_dec match_tacs) (i2srt _ match_sorts) (VEmp _ _).
 
 (** ** Good variable properties for the basic operations *)
 
-  MetaCoq Quote Definition get'_equation_2_quoted := (forall (q : positive) (a : A), get' q~1 (Node010 a) = None).
-
-  Eval vm_compute in denote get'_equation_2_quoted.
-
-  Lemma get'_equation_2_compiled : 
-  interp_fm (sig := sig) (m := fm_model) (VEmp _ _) (FForall (sig := sig) sort_positive
-     (FForall (sig := sig) sort_A
-        (FEq
-           (TFun {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |} get'_f
-              (TFun {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |} xI_f
-                 (TVar
-                    (VThere {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}
-                       (Snoc
-                          (sig_sorts {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |})
-                          (SLNil
-                             (sig_sorts
-                                {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}))
-                          sort_positive) sort_A sort_positive
-                       (VHere {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}
-                          (SLNil
-                             (sig_sorts
-                                {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}))
-                          sort_positive)) ::: hnil)
-               ::: TFun {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |} Node010_A_f
-                     (TVar
-                        (VHere {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}
-                           (Snoc
-                              (sig_sorts
-                                 {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |})
-                              (SLNil
-                                 (sig_sorts
-                                    {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |}))
-                              sort_positive) sort_A) ::: hnil) ::: hnil))
-           (TFun {| sig_sorts := sorts; sig_funs := fol_funs; sig_rels := fol_rels |} None_A_f hnil)))).
-  Proof.
-    vm_compute.
-    intros.
-    eapply eq_refl.
-  Qed.
-
   (* MirrorSolve hints *)
+  Hint Immediate get'_equation_1 : eqns_small.
   Hint Immediate get'_equation_1 : eqns_explicit.
-  Hint Immediate get'_equation_2_compiled : eqns_implicit.
+  Hint Immediate get'_equation_2 : eqns_explicit.
   Hint Immediate get'_equation_2 : eqns_explicit.
   Hint Immediate get'_equation_3 : eqns_explicit.
   Hint Immediate get'_equation_4 : eqns_explicit.
@@ -575,28 +577,7 @@ Section PTree.
   Hint Immediate get'_equation_20 : eqns_explicit.
   Hint Immediate get'_equation_21 : eqns_explicit.
 
-  Hint Immediate get'_equation_1 : eqns_explicit.
-  Hint Immediate get'_equation_2 : eqns_explicit.
-  Hint Immediate get'_equation_3 : eqns_explicit.
-  Hint Immediate get'_equation_4 : eqns_explicit.
-  Hint Immediate get'_equation_5 : eqns_explicit.
-  Hint Immediate get'_equation_6 : eqns_explicit.
-  Hint Immediate get'_equation_7 : eqns_explicit.
-  Hint Immediate get'_equation_8 : eqns_explicit.
-  Hint Immediate get'_equation_9 : eqns_explicit.
-  Hint Immediate get'_equation_10 : eqns_explicit.
-  Hint Immediate get'_equation_11 : eqns_explicit.
-  Hint Immediate get'_equation_12 : eqns_explicit.
-  Hint Immediate get'_equation_13 : eqns_explicit.
-  Hint Immediate get'_equation_14 : eqns_explicit.
-  Hint Immediate get'_equation_15 : eqns_explicit.
-  Hint Immediate get'_equation_16 : eqns_explicit.
-  Hint Immediate get'_equation_17 : eqns_explicit.
-  Hint Immediate get'_equation_18 : eqns_explicit.
-  Hint Immediate get'_equation_19 : eqns_explicit.
-  Hint Immediate get'_equation_20 : eqns_explicit.
-  Hint Immediate get'_equation_21 : eqns_explicit.
-
+  Hint Immediate tree_case_equation_1 : eqns_small.
   Hint Immediate tree_case_equation_1 : eqns_explicit.
   Hint Immediate tree_case_equation_2 : eqns_explicit.
   Hint Immediate tree_case_equation_3 : eqns_explicit.
@@ -606,6 +587,7 @@ Section PTree.
   Hint Immediate tree_case_equation_7 : eqns_explicit.
   Hint Immediate tree_case_equation_8 : eqns_explicit.
 
+  Hint Immediate tree'_rec'_equation_1 : eqns_small.
   Hint Immediate tree'_rec'_equation_1 : eqns_explicit.
   Hint Immediate tree'_rec'_equation_2 : eqns_explicit.
   Hint Immediate tree'_rec'_equation_3 : eqns_explicit.
@@ -614,11 +596,14 @@ Section PTree.
   Hint Immediate tree'_rec'_equation_6 : eqns_explicit.
   Hint Immediate tree'_rec'_equation_7 : eqns_explicit.
 
+  Hint Immediate get_equation_1 : eqns_small.
   Hint Immediate get_equation_1 : eqns_explicit.
   Hint Immediate get_equation_2 : eqns_explicit.
 
+  Hint Immediate empty_equation_1 : eqns_small.
   Hint Immediate empty_equation_1 : eqns_explicit.
 
+  Hint Immediate beq'_equation_1 : eqns_small.
   Hint Immediate beq'_equation_1 : eqns_explicit.
   Hint Immediate beq'_equation_2 : eqns_explicit.
   Hint Immediate beq'_equation_3 : eqns_explicit.
@@ -670,38 +655,17 @@ Section PTree.
   Hint Immediate beq'_equation_48 : eqns_explicit. 
   Hint Immediate beq'_equation_49 : eqns_explicit.
 
+  Hint Immediate beq_equation_1 : eqns_small.
   Hint Immediate beq_equation_1 : eqns_explicit.
   Hint Immediate beq_equation_2 : eqns_explicit.
   Hint Immediate beq_equation_3 : eqns_explicit.
   Hint Immediate beq_equation_4 : eqns_explicit. 
 
+  Hint Immediate beq_optA_equation_1 : eqns_small.
   Hint Immediate beq_optA_equation_1 : eqns_explicit.
   Hint Immediate beq_optA_equation_2 : eqns_explicit.
   Hint Immediate beq_optA_equation_3 : eqns_explicit.
   Hint Immediate beq_optA_equation_4 : eqns_explicit. 
-
-
-  Hint Immediate get'_equation_1 : eqns_explicit.
-  Hint Immediate get'_equation_2 : eqns_explicit.
-  Hint Immediate get'_equation_3 : eqns_explicit.
-  Hint Immediate get'_equation_4 : eqns_explicit.
-  Hint Immediate get'_equation_5 : eqns_explicit.
-  Hint Immediate get'_equation_6 : eqns_explicit.
-  Hint Immediate get'_equation_7 : eqns_explicit.
-  Hint Immediate get'_equation_8 : eqns_explicit.
-  Hint Immediate get'_equation_9 : eqns_explicit.
-  Hint Immediate get'_equation_10 : eqns_explicit.
-  Hint Immediate get'_equation_11 : eqns_explicit.
-  Hint Immediate get'_equation_12 : eqns_explicit.
-  Hint Immediate get'_equation_13 : eqns_explicit.
-  Hint Immediate get'_equation_14 : eqns_explicit.
-  Hint Immediate get'_equation_15 : eqns_explicit.
-  Hint Immediate get'_equation_16 : eqns_explicit.
-  Hint Immediate get'_equation_17 : eqns_explicit.
-  Hint Immediate get'_equation_18 : eqns_explicit.
-  Hint Immediate get'_equation_19 : eqns_explicit.
-  Hint Immediate get'_equation_20 : eqns_explicit.
-  Hint Immediate get'_equation_21 : eqns_explicit.
 
   (* crush hints *)
   Hint Resolve get'_equation_1.
@@ -819,11 +783,10 @@ Section PTree.
     induction i;
     crush'.
     Restart.
-    induction i;
     mirrorsolve.
   Qed.
 
-  Hint Immediate gempty : eqns.
+  Hint Immediate gempty : eqns_explicit.
   Hint Resolve gempty.
 
   (*** MS EFFORT {"type": "edit"} *)
@@ -838,9 +801,9 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate set0_equation_1 : eqns.
-  Hint Immediate set0_equation_2 : eqns.
-  Hint Immediate set0_equation_3 : eqns.
+  Hint Immediate set0_equation_1 : eqns_explicit.
+  Hint Immediate set0_equation_2 : eqns_explicit.
+  Hint Immediate set0_equation_3 : eqns_explicit.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":3, "ms":3, "hammer":3, "crush":3} *)
@@ -856,7 +819,7 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate gss0 : eqns.
+  Hint Immediate gss0 : eqns_explicit.
   Hint Resolve gss0.
 
   (*** MS EFFORT {"type": "edit"} *)
@@ -874,35 +837,89 @@ Section PTree.
     induction p;
     induction q;
     mirrorsolve.
-  Qed.
 
-  Hint Immediate gso0 : eqns.
+  Time Qed.
+
+  Hint Immediate gso0 : eqns_explicit.
   Hint Resolve gso0.
 
-  Hint Immediate set'_equation_1 : eqns.
-  Hint Immediate set'_equation_2 : eqns.
-  Hint Immediate set'_equation_3 : eqns.
-  Hint Immediate set'_equation_4 : eqns.
-  Hint Immediate set'_equation_5 : eqns.
-  Hint Immediate set'_equation_6 : eqns.
-  Hint Immediate set'_equation_7 : eqns.
-  Hint Immediate set'_equation_8 : eqns.
-  Hint Immediate set'_equation_9 : eqns.
-  Hint Immediate set'_equation_10 : eqns.
-  Hint Immediate set'_equation_11 : eqns.
-  Hint Immediate set'_equation_12 : eqns.
-  Hint Immediate set'_equation_13 : eqns.
-  Hint Immediate set'_equation_14 : eqns.
-  Hint Immediate set'_equation_15 : eqns.
-  Hint Immediate set'_equation_16 : eqns.
-  Hint Immediate set'_equation_17 : eqns.
-  Hint Immediate set'_equation_18 : eqns.
-  Hint Immediate set'_equation_19 : eqns.
-  Hint Immediate set'_equation_20 : eqns.
-  Hint Immediate set'_equation_21 : eqns.
+  Hint Immediate set'_equation_1 : eqns_explicit.
+  Hint Immediate set'_equation_2 : eqns_explicit.
+  Hint Immediate set'_equation_3 : eqns_explicit.
+  Hint Immediate set'_equation_4 : eqns_explicit.
+  Hint Immediate set'_equation_5 : eqns_explicit.
+  Hint Immediate set'_equation_6 : eqns_explicit.
+  Hint Immediate set'_equation_7 : eqns_explicit.
+  Hint Immediate set'_equation_8 : eqns_explicit.
+  Hint Immediate set'_equation_9 : eqns_explicit.
+  Hint Immediate set'_equation_10 : eqns_explicit.
+  Hint Immediate set'_equation_11 : eqns_explicit.
+  Hint Immediate set'_equation_12 : eqns_explicit.
+  Hint Immediate set'_equation_13 : eqns_explicit.
+  Hint Immediate set'_equation_14 : eqns_explicit.
+  Hint Immediate set'_equation_15 : eqns_explicit.
+  Hint Immediate set'_equation_16 : eqns_explicit.
+  Hint Immediate set'_equation_17 : eqns_explicit.
+  Hint Immediate set'_equation_18 : eqns_explicit.
+  Hint Immediate set'_equation_19 : eqns_explicit.
+  Hint Immediate set'_equation_20 : eqns_explicit.
+  Hint Immediate set'_equation_21 : eqns_explicit.
 
-  Hint Immediate set_equation_1 : eqns.
-  Hint Immediate set_equation_2 : eqns.
+  Hint Immediate set_equation_1 : eqns_explicit.
+  Hint Immediate set_equation_2 : eqns_explicit.
+
+  Eval vm_compute in extract (SLNil _) (tProd {| binder_name := nNamed "p"; binder_relevance := Relevant |}
+  (tInd
+   {|
+       inductive_mind := (MPfile ["BinNums"; "Numbers"; "Coq"], "positive");
+       inductive_ind := 0
+     |} [])
+  (tProd {| binder_name := nNamed "q"; binder_relevance := Relevant |}
+     (tInd
+        {|
+          inductive_mind :=
+            (MPfile ["BinNums"; "Numbers"; "Coq"], "positive");
+          inductive_ind := 0
+        |} [])
+     (tProd {| binder_name := nNamed "x"; binder_relevance := Relevant |}
+        (tVar "A")
+        (tProd {| binder_name := nAnon; binder_relevance := Relevant |}
+           (tApp
+                 (tInd
+                    {|
+                      inductive_mind :=
+                        (MPfile ["Logic"; "Init"; "Coq"], "eq");
+                      inductive_ind := 0
+                    |} [])
+                 [tInd
+                    {|
+                      inductive_mind :=
+                        (MPfile ["BinNums"; "Numbers"; "Coq"], "positive");
+                      inductive_ind := 0
+                    |} []; tRel 2; tRel 1])
+           (tApp
+              (tInd
+                 {|
+                   inductive_mind := (MPfile ["Logic"; "Init"; "Coq"], "eq");
+                   inductive_ind := 0
+                 |} [])
+              [tApp
+                 (tInd
+                    {|
+                      inductive_mind :=
+                        (MPfile ["Datatypes"; "Init"; "Coq"], "option");
+                      inductive_ind := 0
+                    |} []) [tVar "A"];
+              tApp (tConst (MPfile ["Maps"], "get'") [])
+                [tRel 3;
+                tApp (tConst (MPfile ["Maps"], "set0") []) [tRel 2; tRel 1]];
+              tApp
+                (tConstruct
+                   {|
+                     inductive_mind :=
+                       (MPfile ["Datatypes"; "Init"; "Coq"], "option");
+                     inductive_ind := 0
+                   |} 1 []) [tVar "A"]]))))).
 
   (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":21, "ms":21, "hammer":21, "crush":7} *)
   Lemma gss':
@@ -918,11 +935,63 @@ Section PTree.
     crush'.
     Restart.
     induction i;
-    induction m;
-    mirrorsolve.
-  Qed.
+    induction m.
 
-  Hint Immediate gss' : eqns.
+    idtac "again".
+    prep_proof;
+    quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts;
+    eapply interp_hyps_sound;
+    let g := fresh "G" in 
+    match goal with 
+    | |- interp_wh {| hyps := _ ; p := ?P |} => 
+      set (g := P) at 1
+    end;
+    hints_foreach (fun x => 
+      let H := type of x in
+      repeat progress (
+        unfold "<->" in H
+      );
+      quote_term H (fun y => 
+      let v := fresh "v" in 
+      set (v := (@extract (SLNil _) y));
+      vm_compute in v;
+      match goal with 
+      | v' := Some ?X |- interp_wh {| hyps := ?L; p := _ |} => 
+        let t := fresh "t" in 
+        set (t := L) at 1;
+        clear v';
+        erewrite (@add_hyp _ (interp_fm (sig := sig) (m := fm_model) (VEmp sig fm_model) X) _ ltac:(eapply UnsoundAxioms.interp_true))
+      | v' := None |- _ => 
+        idtac "couldn't extract??";
+        idtac x;
+        idtac H;
+        idtac y;
+        clear v'
+      end
+      
+    )) "eqns_explicit";
+    repeat match goal with 
+    | x := _ |- _ => 
+      subst x
+    end;
+
+    match goal with 
+    | |- ?G => check_unsat_hyps fol_theory G; eapply weaken_hyps; eapply UnsoundAxioms.interp_true
+    end.
+    pose proof gso0.
+    Set Printing All.
+
+    assert (forall p x, get' p x <> get' p x) by admit.
+    let H' := type of H0 in
+    quote_term H' (fun y => 
+    let v := fresh "v" in 
+    idtac y;
+    set (v := (@extract (SLNil _) y));
+    vm_compute in v).
+  mirrorsolve_explicit.
+  Time Qed.
+
+  Hint Immediate gss' : eqns_explicit.
   Hint Resolve gss'.
 
   (*** MS EFFORT {"type": "edit"} *)
@@ -940,7 +1009,7 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate gss : eqns.
+  Hint Immediate gss : eqns_explicit.
   Hint Resolve gss.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":63, "ms":63, "hammer":63, "crush":49} *)
@@ -966,18 +1035,18 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate gso': eqns.
+  Hint Immediate gso': eqns_explicit.
   Hint Resolve gso'.
 
-  Hint Immediate Pos_eqb_equation_1 : eqns.
-  Hint Immediate Pos_eqb_equation_2 : eqns.
-  Hint Immediate Pos_eqb_equation_3 : eqns.
-  Hint Immediate Pos_eqb_equation_4 : eqns.
-  Hint Immediate Pos_eqb_equation_5 : eqns.
-  Hint Immediate Pos_eqb_equation_6 : eqns.
-  Hint Immediate Pos_eqb_equation_7 : eqns.
-  Hint Immediate Pos_eqb_equation_8 : eqns.
-  Hint Immediate Pos_eqb_equation_9 : eqns.
+  Hint Immediate Pos_eqb_equation_1 : eqns_explicit.
+  Hint Immediate Pos_eqb_equation_2 : eqns_explicit.
+  Hint Immediate Pos_eqb_equation_3 : eqns_explicit.
+  Hint Immediate Pos_eqb_equation_4 : eqns_explicit.
+  Hint Immediate Pos_eqb_equation_5 : eqns_explicit.
+  Hint Immediate Pos_eqb_equation_6 : eqns_explicit.
+  Hint Immediate Pos_eqb_equation_7 : eqns_explicit.
+  Hint Immediate Pos_eqb_equation_8 : eqns_explicit.
+  Hint Immediate Pos_eqb_equation_9 : eqns_explicit.
 
   Hint Resolve Pos_eqb_equation_1.
   Hint Resolve Pos_eqb_equation_2.
@@ -1014,7 +1083,7 @@ Section PTree.
 
   Qed.
 
-  Hint Immediate Pos_eqb_spec : eqns.
+  Hint Immediate Pos_eqb_spec : eqns_explicit.
   Hint Resolve Pos_eqb_spec.
 
   (*** MS EFFORT {"type": "edit"} *)
@@ -1039,7 +1108,7 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Resolve gso : eqns.
+  Hint Resolve gso : eqns_explicit.
   Hint Immediate gso.
 
   
@@ -1062,37 +1131,37 @@ Section PTree.
 
   (* TODO: trim t hese *)
 
-  Hint Immediate get_pos_default_equation_1 : eqns.
-  Hint Immediate get_pos_default_equation_2 : eqns.
-  Hint Immediate get_pos_default_equation_3 : eqns.
+  Hint Immediate get_pos_default_equation_1 : eqns_explicit.
+  Hint Immediate get_pos_default_equation_2 : eqns_explicit.
+  Hint Immediate get_pos_default_equation_3 : eqns_explicit.
 
   Hint Resolve get_pos_default_equation_1.
   Hint Resolve get_pos_default_equation_2.
   Hint Resolve get_pos_default_equation_3.
 
-  Hint Immediate not_trivially_empty_equation_1 : eqns.
-  Hint Immediate not_trivially_empty_equation_2 : eqns.
-  Hint Immediate not_trivially_empty_equation_3 : eqns.
-  Hint Immediate not_trivially_empty_equation_4 : eqns.
+  Hint Immediate not_trivially_empty_equation_1 : eqns_explicit.
+  Hint Immediate not_trivially_empty_equation_2 : eqns_explicit.
+  Hint Immediate not_trivially_empty_equation_3 : eqns_explicit.
+  Hint Immediate not_trivially_empty_equation_4 : eqns_explicit.
 
   (* DELETE  *)
-  Hint Immediate tree_case_equation_1 : eqns.
-  Hint Immediate tree_case_equation_2 : eqns.
-  Hint Immediate tree_case_equation_3 : eqns.
-  Hint Immediate tree_case_equation_4 : eqns.
-  Hint Immediate tree_case_equation_5 : eqns.
-  Hint Immediate tree_case_equation_6 : eqns.
-  Hint Immediate tree_case_equation_7 : eqns.
-  Hint Immediate tree_case_equation_8 : eqns.
+  Hint Immediate tree_case_equation_1 : eqns_explicit.
+  Hint Immediate tree_case_equation_2 : eqns_explicit.
+  Hint Immediate tree_case_equation_3 : eqns_explicit.
+  Hint Immediate tree_case_equation_4 : eqns_explicit.
+  Hint Immediate tree_case_equation_5 : eqns_explicit.
+  Hint Immediate tree_case_equation_6 : eqns_explicit.
+  Hint Immediate tree_case_equation_7 : eqns_explicit.
+  Hint Immediate tree_case_equation_8 : eqns_explicit.
 
-  Hint Immediate Node_equation_1 : eqns.
-  Hint Immediate Node_equation_2 : eqns.
-  Hint Immediate Node_equation_3 : eqns.
-  Hint Immediate Node_equation_4 : eqns.
-  Hint Immediate Node_equation_5 : eqns.
-  Hint Immediate Node_equation_6 : eqns.
-  Hint Immediate Node_equation_7 : eqns.
-  Hint Immediate Node_equation_8 : eqns.
+  Hint Immediate Node_equation_1 : eqns_explicit.
+  Hint Immediate Node_equation_2 : eqns_explicit.
+  Hint Immediate Node_equation_3 : eqns_explicit.
+  Hint Immediate Node_equation_4 : eqns_explicit.
+  Hint Immediate Node_equation_5 : eqns_explicit.
+  Hint Immediate Node_equation_6 : eqns_explicit.
+  Hint Immediate Node_equation_7 : eqns_explicit.
+  Hint Immediate Node_equation_8 : eqns_explicit.
 
   Hint Resolve not_trivially_empty_equation_1.
   Hint Resolve not_trivially_empty_equation_2.
@@ -1135,30 +1204,30 @@ Section PTree.
 
   Qed.
 
-  Hint Immediate gNode : eqns.
+  Hint Immediate gNode : eqns_explicit.
   Hint Resolve gNode.
 
-  Hint Immediate rem'_equation_1 : eqns.
-  Hint Immediate rem'_equation_2 : eqns.
-  Hint Immediate rem'_equation_3 : eqns.
-  Hint Immediate rem'_equation_4 : eqns.
-  Hint Immediate rem'_equation_5 : eqns.
-  Hint Immediate rem'_equation_6 : eqns.
-  Hint Immediate rem'_equation_7 : eqns.
-  Hint Immediate rem'_equation_8 : eqns.
-  Hint Immediate rem'_equation_9 : eqns.
-  Hint Immediate rem'_equation_10 : eqns.
-  Hint Immediate rem'_equation_11 : eqns.
-  Hint Immediate rem'_equation_12 : eqns.
-  Hint Immediate rem'_equation_13 : eqns.
-  Hint Immediate rem'_equation_14 : eqns.
-  Hint Immediate rem'_equation_15 : eqns.
-  Hint Immediate rem'_equation_16 : eqns.
-  Hint Immediate rem'_equation_17 : eqns.
-  Hint Immediate rem'_equation_18 : eqns.
-  Hint Immediate rem'_equation_19 : eqns.
-  Hint Immediate rem'_equation_20 : eqns.
-  Hint Immediate rem'_equation_21 : eqns.
+  Hint Immediate rem'_equation_1 : eqns_explicit.
+  Hint Immediate rem'_equation_2 : eqns_explicit.
+  Hint Immediate rem'_equation_3 : eqns_explicit.
+  Hint Immediate rem'_equation_4 : eqns_explicit.
+  Hint Immediate rem'_equation_5 : eqns_explicit.
+  Hint Immediate rem'_equation_6 : eqns_explicit.
+  Hint Immediate rem'_equation_7 : eqns_explicit.
+  Hint Immediate rem'_equation_8 : eqns_explicit.
+  Hint Immediate rem'_equation_9 : eqns_explicit.
+  Hint Immediate rem'_equation_10 : eqns_explicit.
+  Hint Immediate rem'_equation_11 : eqns_explicit.
+  Hint Immediate rem'_equation_12 : eqns_explicit.
+  Hint Immediate rem'_equation_13 : eqns_explicit.
+  Hint Immediate rem'_equation_14 : eqns_explicit.
+  Hint Immediate rem'_equation_15 : eqns_explicit.
+  Hint Immediate rem'_equation_16 : eqns_explicit.
+  Hint Immediate rem'_equation_17 : eqns_explicit.
+  Hint Immediate rem'_equation_18 : eqns_explicit.
+  Hint Immediate rem'_equation_19 : eqns_explicit.
+  Hint Immediate rem'_equation_20 : eqns_explicit.
+  Hint Immediate rem'_equation_21 : eqns_explicit.
 
   Set MirrorSolve Solver "z3".
 
@@ -1196,9 +1265,9 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate get_Node_1 : eqns.
-  Hint Immediate get_Node_l : eqns.
-  Hint Immediate get_Node_r : eqns.
+  Hint Immediate get_Node_1 : eqns_explicit.
+  Hint Immediate get_Node_l : eqns_explicit.
+  Hint Immediate get_Node_r : eqns_explicit.
   
   (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":21, "ms":21, "hammer":0, "crush":0} *)
   Lemma get_rem' : 
@@ -1210,9 +1279,9 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate get_rem' : eqns.
+  Hint Immediate get_rem' : eqns_explicit.
 
-  (* Hint Immediate remove'_equation_1: eqns. *)
+  (* Hint Immediate remove'_equation_1: eqns_explicit. *)
 
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma remove'_equation_ext: 
@@ -1222,10 +1291,10 @@ Section PTree.
     eapply eq_refl.
   Qed.
 
-  Hint Immediate remove'_equation_ext : eqns.
+  Hint Immediate remove'_equation_ext : eqns_explicit.
 
-  Hint Immediate remove_equation_1: eqns.
-  Hint Immediate remove_equation_2: eqns.
+  Hint Immediate remove_equation_1: eqns_explicit.
+  Hint Immediate remove_equation_2: eqns_explicit.
 
   (*** MS EFFORT {"type": "edit"} *)
   (* MS TODO tactics *)
@@ -1279,9 +1348,9 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate remove_Node_1 : eqns.
-  Hint Immediate remove_Node_l : eqns.
-  Hint Immediate remove_Node_r : eqns.
+  Hint Immediate remove_Node_1 : eqns_explicit.
+  Hint Immediate remove_Node_l : eqns_explicit.
+  Hint Immediate remove_Node_r : eqns_explicit.
 
   (*** MS EFFORT {"type": "edit"} *)
   (* MS TODO tactics *)
@@ -1298,8 +1367,8 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate grs : eqns.
-  Hint Immediate gro : eqns.
+  Hint Immediate grs : eqns_explicit.
+  Hint Immediate gro : eqns_explicit.
 
   (*** MS EFFORT {"type": "edit"} *)
   (* MS TODO tactics *)
@@ -1311,7 +1380,7 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate grspec : eqns.
+  Hint Immediate grspec : eqns_explicit.
 
 (** ** Custom case analysis principles and induction principles *)
 
@@ -1351,15 +1420,15 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate unroll_tree_case : eqns.
+  Hint Immediate unroll_tree_case : eqns_explicit.
 
   (** A recursion principle *)
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":8, "crush":8} *)
   
-  Hint Immediate tree_rec'_equation_1 : eqns.
-  Hint Immediate tree_rec'_equation_2 : eqns.
+  Hint Immediate tree_rec'_equation_1 : eqns_explicit.
+  Hint Immediate tree_rec'_equation_2 : eqns_explicit.
   Lemma unroll_tree_rec: forall l o r,
     not_trivially_empty l o r ->
     tree_rec' (Node l o r) = node_rec' l (tree_rec' l) o r (tree_rec' r).
@@ -1477,7 +1546,7 @@ Section PTree.
     mirrorsolve.
   Admitted.
 
-  Hint Immediate tree'_not_empty : eqns.
+  Hint Immediate tree'_not_empty : eqns_explicit.
 
   (*** MS EFFORT {"type": "edit"} *)
  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":1, "hammer":0, "crush":0} *)
@@ -1489,7 +1558,7 @@ Section PTree.
     mirrorsolve.
   Admitted.
 
-  Hint Immediate extensionality_empty : eqns.
+  Hint Immediate extensionality_empty : eqns_explicit.
 
   (*** MS EFFORT {"type": "edit"} *)
  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":4, "ms":1, "hammer":0, "crush":0} *)
@@ -1502,7 +1571,7 @@ Section PTree.
     mirrorsolve.
   Admitted.
 
-  Hint Immediate extensionality : eqns.
+  Hint Immediate extensionality : eqns_explicit.
   (** Some consequences of extensionality *)
 
   (*** MS EFFORT {"type": "edit"} *)
@@ -1516,7 +1585,7 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate gsident : eqns.
+  Hint Immediate gsident : eqns_explicit.
 
   (*** MS EFFORT {"type": "edit"} *)
  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
@@ -1529,7 +1598,7 @@ Section PTree.
     mirrorsolve.
   Qed.
 
-  Hint Immediate set2 : eqns.
+  Hint Immediate set2 : eqns_explicit.
 
 (** ** Boolean equality *)
 
@@ -1552,7 +1621,7 @@ Section PTree.
 
   Qed.
 
-  Hint Immediate beq_NN : eqns.
+  Hint Immediate beq_NN : eqns_explicit.
 
 (*** MS EFFORT {"type": "edit"} *)
  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)

@@ -44,3 +44,11 @@ let fetch_const_type (x: Constr.t) =
     Some x'.const_type 
   else
     None
+
+let rec opt_sequence xs = 
+  begin match xs with 
+  | Some x :: xs' -> 
+    Option.map (fun xs' -> (x :: xs')) (opt_sequence xs')
+  | [] -> Some []
+  | _ -> None
+  end 

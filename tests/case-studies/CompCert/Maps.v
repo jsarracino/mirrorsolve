@@ -380,6 +380,13 @@ Section PTree.
     | xO j => get j l
     | xI j => get j r
     end.
+
+  Definition get_eq_bool x m1 m2 := 
+    match get x m1, get x m2 with
+    | None, None => True
+    | Some y1, Some y2 =>  beqA' y1 y2 = true
+    | _, _ => False
+    end.
     
 
   Local Declare ML Module "mirrorsolve".
@@ -429,7 +436,8 @@ Section PTree.
     ; pack get_pos_default
   ])%type.
   Definition rel_syms : list Config.packed := ([ 
-    pack not_trivially_empty
+      pack not_trivially_empty
+    ; pack get_eq_bool
   ])%type.
 
   Definition prim_syms : list (Config.packed * String.string) := ([
@@ -522,27 +530,61 @@ Section PTree.
     | |- interp_wh {| hyps := _ ; p := ?P |} => 
       set (g := P) at 1
     end;
-    hints_foreach (fun x => 
+    idtac "starting";
+    time "building query" (hints_foreach (fun x => 
+      try (unfold "<->" in x);
       let H := type of x in
       quote_term H (fun y => 
       let v := fresh "v" in 
-      set (v := (@extract (SLNil _) y));
+      set (v := (@extract (SLNil _) (reindex_vars y)));
       vm_compute in v;
       match goal with 
       | v' := Some ?X |- interp_wh {| hyps := ?L; p := _ |} => 
-        let t := fresh "t" in 
-        set (t := L) at 1;
-        clear v';
-        erewrite (@add_hyp _ (interp_fm (sig := sig) (m := fm_model) (VEmp sig fm_model) X) _ ltac:(eapply UnsoundAxioms.interp_true))
+        let h := fresh "hyps" in 
+        set (h := L) in |- *;
+        eapply add_hyp;
+        match goal with 
+        | |- interp_wh _ => idtac
+        | |- _ => 
+          eapply denote_extract_specialized_forward with (t := y) (sorts_eq_dec := sorts_eq_dec) (match_tacs := match_tacs) (match_inds := match_sorts);
+          [
+            match goal with 
+            | |- ?T = _ => 
+              let t' := fresh "t" in 
+              set (t' := T);
+              vm_compute in t';
+              subst t';
+              exact eq_refl
+            end
+            |
+            vm_compute;
+            eapply x
+          ]
+        end;
+        clear v
+        
+      | v' := None |- _ => 
+        idtac "couldn't extract??";
+        idtac x;
+        idtac H;
+        idtac y;
+        clear v'
+      | _ => 
+        idtac "unhandled case??";
+        idtac y;
+        idtac x
       end
       
     )) "eqns_explicit";
     repeat match goal with 
     | x := _ |- _ => 
       subst x
-    end;
+    | H: interp_fm _ _ -> _ |- _ => clear H
+    | H: _ = Some _  |- _ => clear H
+    | H: denote_t2fm _ _ _ _ _ _ _ _ = _ |- _ => clear H
+    end);
 
-    match goal with 
+    time "query" match goal with 
     | |- ?G => check_unsat_hyps fol_theory G; eapply weaken_hyps; eapply UnsoundAxioms.interp_true
     end
   ).
@@ -777,14 +819,17 @@ Section PTree.
   Theorem gempty:
     forall (i: positive), get i (empty) = None.
   Proof.
+
     induction i;
     hammer'.
     Restart.
     induction i;
     crush'.
     Restart.
+    induction i;
     mirrorsolve.
-  Qed.
+
+  Time Qed.
 
   Hint Immediate gempty : eqns_explicit.
   Hint Resolve gempty.
@@ -868,59 +913,6 @@ Section PTree.
   Hint Immediate set_equation_1 : eqns_explicit.
   Hint Immediate set_equation_2 : eqns_explicit.
 
-  Eval vm_compute in extract (SLNil _) (tProd {| binder_name := nNamed "p"; binder_relevance := Relevant |}
-  (tInd
-   {|
-       inductive_mind := (MPfile ["BinNums"; "Numbers"; "Coq"], "positive");
-       inductive_ind := 0
-     |} [])
-  (tProd {| binder_name := nNamed "q"; binder_relevance := Relevant |}
-     (tInd
-        {|
-          inductive_mind :=
-            (MPfile ["BinNums"; "Numbers"; "Coq"], "positive");
-          inductive_ind := 0
-        |} [])
-     (tProd {| binder_name := nNamed "x"; binder_relevance := Relevant |}
-        (tVar "A")
-        (tProd {| binder_name := nAnon; binder_relevance := Relevant |}
-           (tApp
-                 (tInd
-                    {|
-                      inductive_mind :=
-                        (MPfile ["Logic"; "Init"; "Coq"], "eq");
-                      inductive_ind := 0
-                    |} [])
-                 [tInd
-                    {|
-                      inductive_mind :=
-                        (MPfile ["BinNums"; "Numbers"; "Coq"], "positive");
-                      inductive_ind := 0
-                    |} []; tRel 2; tRel 1])
-           (tApp
-              (tInd
-                 {|
-                   inductive_mind := (MPfile ["Logic"; "Init"; "Coq"], "eq");
-                   inductive_ind := 0
-                 |} [])
-              [tApp
-                 (tInd
-                    {|
-                      inductive_mind :=
-                        (MPfile ["Datatypes"; "Init"; "Coq"], "option");
-                      inductive_ind := 0
-                    |} []) [tVar "A"];
-              tApp (tConst (MPfile ["Maps"], "get'") [])
-                [tRel 3;
-                tApp (tConst (MPfile ["Maps"], "set0") []) [tRel 2; tRel 1]];
-              tApp
-                (tConstruct
-                   {|
-                     inductive_mind :=
-                       (MPfile ["Datatypes"; "Init"; "Coq"], "option");
-                     inductive_ind := 0
-                   |} 1 []) [tVar "A"]]))))).
-
   (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":21, "ms":21, "hammer":21, "crush":7} *)
   Lemma gss':
     forall i x m, 
@@ -935,60 +927,8 @@ Section PTree.
     crush'.
     Restart.
     induction i;
-    induction m.
-
-    idtac "again".
-    prep_proof;
-    quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts;
-    eapply interp_hyps_sound;
-    let g := fresh "G" in 
-    match goal with 
-    | |- interp_wh {| hyps := _ ; p := ?P |} => 
-      set (g := P) at 1
-    end;
-    hints_foreach (fun x => 
-      let H := type of x in
-      repeat progress (
-        unfold "<->" in H
-      );
-      quote_term H (fun y => 
-      let v := fresh "v" in 
-      set (v := (@extract (SLNil _) y));
-      vm_compute in v;
-      match goal with 
-      | v' := Some ?X |- interp_wh {| hyps := ?L; p := _ |} => 
-        let t := fresh "t" in 
-        set (t := L) at 1;
-        clear v';
-        erewrite (@add_hyp _ (interp_fm (sig := sig) (m := fm_model) (VEmp sig fm_model) X) _ ltac:(eapply UnsoundAxioms.interp_true))
-      | v' := None |- _ => 
-        idtac "couldn't extract??";
-        idtac x;
-        idtac H;
-        idtac y;
-        clear v'
-      end
-      
-    )) "eqns_explicit";
-    repeat match goal with 
-    | x := _ |- _ => 
-      subst x
-    end;
-
-    match goal with 
-    | |- ?G => check_unsat_hyps fol_theory G; eapply weaken_hyps; eapply UnsoundAxioms.interp_true
-    end.
-    pose proof gso0.
-    Set Printing All.
-
-    assert (forall p x, get' p x <> get' p x) by admit.
-    let H' := type of H0 in
-    quote_term H' (fun y => 
-    let v := fresh "v" in 
-    idtac y;
-    set (v := (@extract (SLNil _) y));
-    vm_compute in v).
-  mirrorsolve_explicit.
+    induction m;
+    mirrorsolve.
   Time Qed.
 
   Hint Immediate gss' : eqns_explicit.
@@ -1011,6 +951,9 @@ Section PTree.
 
   Hint Immediate gss : eqns_explicit.
   Hint Resolve gss.
+
+  Hint Immediate gso0 : eqns_small.
+  Hint Immediate gso0 : eqns_explicit.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":63, "ms":63, "hammer":63, "crush":49} *)
   Theorem gso':
@@ -1064,8 +1007,6 @@ Section PTree.
     forall l r,
       Pos_eqb l r = true <-> l = r.
   Proof.
-
-   
     induction l;
     induction r;
     hammer'.
@@ -1080,11 +1021,17 @@ Section PTree.
     induction r;
     mirrorsolve.
 
-
   Qed.
 
   Hint Immediate Pos_eqb_spec : eqns_explicit.
+  Hint Immediate Pos_eqb_spec : eqns_small.
   Hint Resolve Pos_eqb_spec.
+
+  Hint Immediate not_trivially_empty_equation_2 : eqns_small.
+  Hint Immediate not_trivially_empty_equation_3 : eqns_small.
+  Hint Immediate not_trivially_empty_equation_4 : eqns_small.
+
+  Hint Immediate gso' : eqns_small.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":18, "ms":18, "hammer":14, "crush":8} *)
@@ -1106,9 +1053,10 @@ Section PTree.
     induction j;
     induction m;
     mirrorsolve.
-  Qed.
+  Time Qed.
 
   Hint Resolve gso : eqns_explicit.
+  Hint Resolve gso : eqns_small.
   Hint Immediate gso.
 
   
@@ -1129,8 +1077,6 @@ Section PTree.
   (* 3 equations *)
   MetaCoq Run (infer_equations get_pos_default).
 
-  (* TODO: trim t hese *)
-
   Hint Immediate get_pos_default_equation_1 : eqns_explicit.
   Hint Immediate get_pos_default_equation_2 : eqns_explicit.
   Hint Immediate get_pos_default_equation_3 : eqns_explicit.
@@ -1143,16 +1089,6 @@ Section PTree.
   Hint Immediate not_trivially_empty_equation_2 : eqns_explicit.
   Hint Immediate not_trivially_empty_equation_3 : eqns_explicit.
   Hint Immediate not_trivially_empty_equation_4 : eqns_explicit.
-
-  (* DELETE  *)
-  Hint Immediate tree_case_equation_1 : eqns_explicit.
-  Hint Immediate tree_case_equation_2 : eqns_explicit.
-  Hint Immediate tree_case_equation_3 : eqns_explicit.
-  Hint Immediate tree_case_equation_4 : eqns_explicit.
-  Hint Immediate tree_case_equation_5 : eqns_explicit.
-  Hint Immediate tree_case_equation_6 : eqns_explicit.
-  Hint Immediate tree_case_equation_7 : eqns_explicit.
-  Hint Immediate tree_case_equation_8 : eqns_explicit.
 
   Hint Immediate Node_equation_1 : eqns_explicit.
   Hint Immediate Node_equation_2 : eqns_explicit.
@@ -1167,15 +1103,6 @@ Section PTree.
   Hint Resolve not_trivially_empty_equation_2.
   Hint Resolve not_trivially_empty_equation_3.
   Hint Resolve not_trivially_empty_equation_4.
-
-  Hint Resolve tree_case_equation_1.
-  Hint Resolve tree_case_equation_2.
-  Hint Resolve tree_case_equation_3.
-  Hint Resolve tree_case_equation_4.
-  Hint Resolve tree_case_equation_5.
-  Hint Resolve tree_case_equation_6.
-  Hint Resolve tree_case_equation_7.
-  Hint Resolve tree_case_equation_8.
 
   Hint Resolve Node_equation_1.
   Hint Resolve Node_equation_2.
@@ -1370,6 +1297,9 @@ Section PTree.
   Hint Immediate grs : eqns_explicit.
   Hint Immediate gro : eqns_explicit.
 
+  Hint Immediate gro : eqns_small.
+  Hint Immediate not_trivially_empty_equation_1 : eqns_small.
+
   (*** MS EFFORT {"type": "edit"} *)
   (* MS TODO tactics *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
@@ -1421,6 +1351,7 @@ Section PTree.
   Qed.
 
   Hint Immediate unroll_tree_case : eqns_explicit.
+  Hint Immediate unroll_tree_case : eqns_small.
 
   (** A recursion principle *)
 
@@ -1429,6 +1360,7 @@ Section PTree.
   
   Hint Immediate tree_rec'_equation_1 : eqns_explicit.
   Hint Immediate tree_rec'_equation_2 : eqns_explicit.
+  
   Lemma unroll_tree_rec: forall l o r,
     not_trivially_empty l o r ->
     tree_rec' (Node l o r) = node_rec' l (tree_rec' l) o r (tree_rec' r).
@@ -1476,6 +1408,8 @@ Section PTree.
     | _, Empty => base2 a
     | Nodes a', Nodes b' => tree_rec2' a' b'
     end. *)
+
+    (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
 (* 
   Lemma unroll_tree_rec2_NE:
     forall l1 o1 r1,
@@ -1483,17 +1417,20 @@ Section PTree.
     tree_rec2 (Node l1 o1 r1) Empty = base2 (Node l1 o1 r1).
   Proof.
     intros. destruct l1, o1, r1; try contradiction; reflexivity.
-  Qed.
+  Qed. *)
 
-  Lemma unroll_tree_rec2_EN:
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
+
+  (* Lemma unroll_tree_rec2_EN:
     forall l2 o2 r2,
     not_trivially_empty l2 o2 r2 ->
     tree_rec2 Empty (Node l2 o2 r2) = base1 (Node l2 o2 r2).
   Proof.
     intros. destruct l2, o2, r2; try contradiction; reflexivity.
-  Qed.
+  Qed. *)
 
-  Lemma unroll_tree_rec2_NN:
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
+  (* Lemma unroll_tree_rec2_NN:
     forall l1 o1 r1 l2 o2 r2,
     not_trivially_empty l1 o1 r1 -> not_trivially_empty l2 o2 r2 ->
     tree_rec2 (Node l1 o1 r1) (Node l2 o2 r2) =
@@ -1501,9 +1438,9 @@ Section PTree.
   Proof.
     intros.
     destruct l1, o1, r1; try contradiction; destruct l2, o2, r2; try contradiction; reflexivity.
-  Qed.
+  Qed. *)
 
-  End TREE_REC2. *)
+  (* End TREE_REC2.  *)
 
 (** An induction principle *)
 
@@ -1534,6 +1471,8 @@ Section PTree.
   End TREE_IND. *)
 
 (** ** Extensionality property *)
+  Set MirrorSolve Solver "cvc5".
+  Set MirrorSolve Solver Flags "-tlimit=5000".
 
   (*** MS EFFORT {"type": "edit"} *)
  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":5, "hammer":0, "crush":0} *)
@@ -1541,7 +1480,6 @@ Section PTree.
     forall (m: tree' A), 
       ~ (forall i, get' i m = None).
   Proof.
-    Set MirrorSolve Solver "cvc5".
     induction m;
     mirrorsolve.
   Admitted.
@@ -1558,6 +1496,7 @@ Section PTree.
     mirrorsolve.
   Admitted.
 
+  Hint Immediate extensionality_empty : eqns_small.
   Hint Immediate extensionality_empty : eqns_explicit.
 
   (*** MS EFFORT {"type": "edit"} *)
@@ -1572,10 +1511,14 @@ Section PTree.
   Admitted.
 
   Hint Immediate extensionality : eqns_explicit.
+  Hint Immediate extensionality : eqns_small.
   (** Some consequences of extensionality *)
 
+  Set MirrorSolve Solver "z3".
+  Set MirrorSolve Solver Flags "-T:10".
+
   (*** MS EFFORT {"type": "edit"} *)
- (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
   Theorem gsident:
     forall (i: positive) (m: tree A) (v: A),
     get i m = Some v -> set i v m = m.
@@ -1586,9 +1529,13 @@ Section PTree.
   Qed.
 
   Hint Immediate gsident : eqns_explicit.
+  Hint Immediate gsident : eqns_small.
+
+  Set MirrorSolve Solver "cvc5".
+  Set MirrorSolve Solver Flags "--tlimit=5000".
 
   (*** MS EFFORT {"type": "edit"} *)
- (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
   Theorem set2:
     forall i (m: tree A) (v1 v2: A),
       set i v2 (set i v1 m) = set i v2 m.
@@ -1611,20 +1558,24 @@ Section PTree.
       beq (Node l1 o1 r1) (Node l2 o2 r2) =
       (beq l1 l2 && beq_optA o1 o2 && beq r1 r2)%bool.
   Proof.
+
+    
+    time "boolean queries" (
     induction l1; 
     induction o1;
     induction r1;
     induction l2;
     induction o2;
-    induction r2.
-    mirrorsolve.
+    induction r2;
+    mirrorsolve).
 
-  Qed.
+  Time Qed.
 
   Hint Immediate beq_NN : eqns_explicit.
+  Hint Immediate beq_NN : eqns_small.
 
 (*** MS EFFORT {"type": "edit"} *)
- (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":16, "ms":10, "hammer":0, "crush":0} *)
   
     Lemma beq_correct_bool:
       forall m1 m2,
@@ -1636,28 +1587,76 @@ Section PTree.
       intros;
       (try induction x);
       mirrorsolve.
-      
-      induction m1 using tree_ind; [|induction m2 using tree_ind].
-    - intros. simpl; split; intros.
-      + destruct m2; try discriminate. simpl; auto.
-      + replace m2 with (@Empty A); auto. apply extensionality; intros x.
-        specialize (H x). destruct (get x m2); simpl; congruence.
-    - split; intros.
-      + destruct (Node l o r); try discriminate. simpl; auto.
-      + replace (Node l o r) with (@Empty A); auto. apply extensionality; intros x.
-        specialize (H0 x). destruct (get x (Node l o r)); simpl in *; congruence.
-    - rewrite beq_NN by auto. split; intros.
-      + InvBooleans. rewrite ! gNode. destruct x.
-        * apply IHm0; auto.
-        * apply IHm1; auto.
-        * auto.
-      + apply andb_true_intro; split; [apply andb_true_intro; split|].
-        * apply IHm1. intros. specialize (H1 (xO x)); rewrite ! gNode in H1; auto.
-        * specialize (H1 xH); rewrite ! gNode in H1; auto.
-        * apply IHm0. intros. specialize (H1 (xI x)); rewrite ! gNode in H1; auto.
-    Qed.
+    Admitted.
 
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma get_eq_booL_eqn_1 : 
+    forall x m1 m2 y1 y2, 
+      get x m1 = Some y1 -> 
+      get x m2 = Some y2 -> 
+      get_eq_bool x m1 m2 <-> beqA y1 y2 = true.
+  Proof.
+    intros.
+    unfold get_eq_bool.
+    erewrite H.
+    erewrite H0.
+    eapply iff_refl.
+  Qed.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma get_eq_booL_eqn_2 : 
+    forall x m1 m2 y, 
+      get x m1 = Some y -> 
+      get x m2 = None -> 
+      get_eq_bool x m1 m2 <-> False.
+  Proof.
+    intros.
+    unfold get_eq_bool.
+    erewrite H.
+    erewrite H0.
+    eapply iff_refl.
+  Qed.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma get_eq_booL_eqn_3 : 
+    forall x m1 m2 y, 
+      get x m1 = None -> 
+      get x m2 = Some y -> 
+      get_eq_bool x m1 m2 <-> False.
+  Proof.
+    intros.
+    unfold get_eq_bool.
+    erewrite H.
+    erewrite H0.
+    eapply iff_refl.
+  Qed.
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma get_eq_booL_eqn_4 : 
+    forall x m1 m2, 
+      get x m1 = None -> 
+      get x m2 = None -> 
+      get_eq_bool x m1 m2 <-> True.
+  Proof.
+    intros.
+    unfold get_eq_bool.
+    erewrite H.
+    erewrite H0.
+    eapply iff_refl.
+  Qed.
+
+  Hint Immediate get_eq_booL_eqn_1 : eqns_explicit.
+  Hint Immediate get_eq_booL_eqn_2 : eqns_explicit.
+  Hint Immediate get_eq_booL_eqn_3 : eqns_explicit.
+  Hint Immediate get_eq_booL_eqn_4 : eqns_explicit.
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
     Theorem beq_correct:
+      forall m1 m2,
+      beq m1 m2 = true <->
+      (forall x, get_eq_bool x m1 m2).
+
+    (* Theorem beq_correct:
       forall m1 m2,
       beq m1 m2 = true <->
       (forall (x: elt),
@@ -1665,7 +1664,7 @@ Section PTree.
        | None, None => True
        | Some y1, Some y2 => beqA y1 y2 = true
        | _, _ => False
-       end).
+       end). *)
     Proof.
       intros. rewrite beq_correct_bool. unfold beq_optA. split; intros.
     - specialize (H x). destruct (get x m1), (get x m2); intuition congruence.
@@ -1674,6 +1673,7 @@ Section PTree.
 
 (** ** Collective operations *)
     
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma prev_append_prev i j:
     prev (prev_append i j) = prev_append j i.
   Proof.
@@ -1683,10 +1683,12 @@ Section PTree.
     intros j. simpl. rewrite IH. reflexivity.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma prev_involutive i :
     prev (prev i) = i.
   Proof (prev_append_prev i xH).
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma prev_append_inj i j j' :
     prev_append i j = prev_append i j' -> j = j'.
   Proof.
@@ -1713,6 +1715,7 @@ Section PTree.
     | Nodes m => Nodes (map' f m xH)
     end.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma gmap':
     forall {A B} (f: positive -> A -> B) (i j : positive) (m: tree' A),
     get' i (map' f m j) = option_map (f (prev (prev_append i j))) (get' i m).
@@ -1720,6 +1723,7 @@ Section PTree.
     induction i; intros; destruct m; simpl; auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem gmap:
     forall {A B} (f: positive -> A -> B) (i: positive) (m: t A),
     get i (map f m) = option_map (f i) (get i m).
@@ -1744,6 +1748,7 @@ Section PTree.
     | Nodes m => Nodes (map1' f m)
     end.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem gmap1:
     forall {A B} (f: A -> B) (i: elt) (m: t A),
     get i (map1 f m) = option_map f (get i m).
@@ -1763,6 +1768,7 @@ Section PTree.
   Definition map_filter1 :=
     Eval cbv [map_filter1_nonopt tree_rec tree_rec' Node] in @map_filter1_nonopt.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma gmap_filter1:
     forall {A B} (f: A -> option B) (m: tree A) (i: positive),
     get i (map_filter1 f m) = match get i m with None => None | Some a => f a end.
@@ -1776,6 +1782,7 @@ Section PTree.
   Definition filter1 {A} (pred: A -> bool) (m: t A) : t A :=
     map_filter1 (fun a => if pred a then Some a else None) m.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem gfilter1:
     forall {A} (pred: A -> bool) (i: elt) (m: t A),
     get i (filter1 pred m) =
@@ -1807,16 +1814,19 @@ Section PTree.
   Definition combine :=
     Eval cbv [combine_nonopt tree_rec2 tree_rec2'] in combine_nonopt.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma gcombine_l: forall m i, get i (combine_l m) = f (get i m) None.
   Proof.
     intros; unfold combine_l; rewrite gmap_filter1. destruct (get i m); auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma gcombine_r: forall m i, get i (combine_r m) = f None (get i m).
   Proof.
     intros; unfold combine_r; rewrite gmap_filter1. destruct (get i m); auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem gcombine:
       forall (m1: t A) (m2: t B) (i: positive),
       get i (combine m1 m2) = f (get i m1) (get i m2).
@@ -1832,6 +1842,7 @@ Section PTree.
 
   End COMBINE.
 
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem combine_commut:
     forall (A B: Type) (f g: option A -> option A -> option B),
     f None None = None -> g None None = None ->
@@ -1862,6 +1873,7 @@ Section PTree.
   Definition xelements {A} (m : t A) (i: positive) : list (positive * A) := 
     match m with Empty => nil | Nodes m' => xelements' m' i nil end.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma xelements'_append:
     forall A (m: tree' A) i k1 k2,
     xelements' m i (k1 ++ k2) = xelements' m i k1 ++ k2.
@@ -1873,6 +1885,7 @@ Section PTree.
   - rewrite IHm2, <- IHm1. auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma xelements_Node:
     forall A (l: tree A) (o: option A) (r: tree A) i,
     xelements (Node l o r) i =
@@ -1884,6 +1897,7 @@ Section PTree.
     intros; destruct l, o, r; simpl; rewrite <- ? xelements'_append; auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma xelements_correct:
     forall A (m: tree A) i j v,
     get i m = Some v -> In (prev (prev_append i j), v) (xelements m j).
@@ -1896,6 +1910,7 @@ Section PTree.
     + right; left. subst o. rewrite prev_append_prev. auto with coqlib.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem elements_correct:
     forall A (m: t A) (i: positive) (v: A),
     get i m = Some v -> In (i, v) (elements m).
@@ -1904,6 +1919,7 @@ Section PTree.
     generalize (xelements_correct m i xH H). rewrite prev_append_prev. auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma in_xelements:
     forall A (m: tree A) (i k: positive) (v: A) ,
     In (k, v) (xelements m i) ->
@@ -1917,6 +1933,7 @@ Section PTree.
     + exploit IHm2; eauto. intros (j & Q & R). exists (xI j); rewrite gNode; auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem elements_complete:
     forall A (m: t A) (i: positive) (v: A),
     In (i, v) (elements m) -> get i m = Some v.
@@ -1928,6 +1945,7 @@ Section PTree.
 
   Definition xkeys {A} (m: t A) (i: positive) := List.map fst (xelements m i).
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma xkeys_Node:
     forall A (m1: t A) o (m2: t A) i,
     xkeys (Node m1 o m2) i =
@@ -1938,6 +1956,7 @@ Section PTree.
     intros. unfold xkeys. rewrite xelements_Node, ! map_app. destruct o; auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma in_xkeys:
     forall (A: Type) (m: t A) (i k: positive),
     In k (xkeys m i) ->
@@ -1948,6 +1967,7 @@ Section PTree.
     exploit in_xelements; eauto. intros (k & P & Q). exists k; auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma xelements_keys_norepet:
     forall (A: Type) (m: t A) (i: positive),
     list_norepet (xkeys m i).
@@ -1970,6 +1990,7 @@ Section PTree.
     destruct H1. subst x. tauto. eauto. eauto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem elements_keys_norepet:
     forall A (m: t A),
     list_norepet (List.map (@fst elt A) (elements m)).
@@ -1977,6 +1998,7 @@ Section PTree.
     intros. apply (xelements_keys_norepet m xH).
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Remark xelements_empty:
     forall A (m: t A) i, (forall i, get i m = None) -> xelements m i = nil.
   Proof.
@@ -1984,6 +2006,7 @@ Section PTree.
     apply extensionality; intros. symmetry; auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem elements_canonical_order':
     forall (A B: Type) (R: A -> B -> Prop) (m: t A) (n: t B),
     (forall i, option_rel R (get i m) (get i n)) ->
@@ -2005,6 +2028,7 @@ Section PTree.
     + apply IHm0. intros. specialize (REL (xI i)). rewrite ! gNode in REL; auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem elements_canonical_order:
     forall (A B: Type) (R: A -> B -> Prop) (m: t A) (n: t B),
     (forall i x, get i m = Some x -> exists y, get i n = Some y /\ R x y) ->
@@ -2021,6 +2045,7 @@ Section PTree.
     constructor.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem elements_extensional:
     forall (A: Type) (m n: t A),
     (forall i, get i m = get i n) ->
@@ -2029,6 +2054,7 @@ Section PTree.
     intros. replace n with m; auto. apply extensionality; auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma xelements_remove:
     forall A v (m: t A) i j,
     get i m = Some v ->
@@ -2066,6 +2092,7 @@ Section PTree.
       auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem elements_remove:
     forall A i v (m: t A),
     get i m = Some v ->
@@ -2092,6 +2119,7 @@ Section PTree.
   Definition fold {A B} (f: B -> positive -> A -> B) (m: t A) (v: B) :=
    match m with Empty => v | Nodes m' => fold' f xH m' v end.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma fold'_xelements':
     forall A B (f: B -> positive -> A -> B) m i v l,
     List.fold_left (fun a p => f a (fst p) (snd p)) l (fold' f i m v) =
@@ -2103,6 +2131,7 @@ Section PTree.
     rewrite <- IHm1. simpl. rewrite <- IHm2; auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem fold_spec:
     forall A B (f: B -> positive -> A -> B) (v: B) (m: t A),
     fold f m v =
@@ -2126,6 +2155,7 @@ Section PTree.
   Definition fold1 {A B} (f: B -> A -> B) (m: t A) (v: B) : B :=
     match m with Empty => v | Nodes m' => fold1' f m' v end.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma fold1'_xelements':
     forall A B (f: B -> A -> B) m i v l,
     List.fold_left (fun a p => f a (snd p)) l (fold1' f m v) =
@@ -2137,6 +2167,7 @@ Section PTree.
     rewrite <- IHm1. simpl. rewrite <- IHm2. auto.
   Qed.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Theorem fold1_spec:
     forall A B (f: B -> A -> B) (v: B) (m: t A),
     fold1 f m v =
@@ -2146,424 +2177,89 @@ Section PTree.
     apply fold1'_xelements' with (l := @nil (positive * A)).
   Qed.
 
-  Arguments empty A : simpl never.
-  Arguments get {A} p m : simpl never.
-  Arguments set {A} p x m : simpl never.
-  Arguments remove {A} p m : simpl never.
-
-End PTree.
-
-(** * An implementation of maps over type [positive] *)
-
-Module PMap <: MAP.
-  Definition elt := positive.
-  Definition elt_eq := peq.
-
-  Definition t (A : Type) : Type := (A * PTree.t A)%type.
-
-  Definition init (A : Type) (x : A) :=
-    (x, PTree.empty A).
-
-  Definition get (A : Type) (i : positive) (m : t A) :=
-    match PTree.get i (snd m) with
-    | Some x => x
-    | None => fst m
-    end.
-
-  Definition set (A : Type) (i : positive) (x : A) (m : t A) :=
-    (fst m, PTree.set i x (snd m)).
-
-  Theorem gi:
-    forall (A: Type) (i: positive) (x: A), get i (init x) = x.
-  Proof.
-    intros. reflexivity.
-  Qed.
-
-  Theorem gss:
-    forall (A: Type) (i: positive) (x: A) (m: t A), get i (set i x m) = x.
-  Proof.
-    intros. unfold get. unfold set. simpl. rewrite PTree.gss. auto.
-  Qed.
-
-  Theorem gso:
-    forall (A: Type) (i j: positive) (x: A) (m: t A),
-    i <> j -> get i (set j x m) = get i m.
-  Proof.
-    intros. unfold get. unfold set. simpl. rewrite PTree.gso; auto.
-  Qed.
-
-  Theorem gsspec:
-    forall (A: Type) (i j: positive) (x: A) (m: t A),
-    get i (set j x m) = if peq i j then x else get i m.
-  Proof.
-    intros. destruct (peq i j).
-     rewrite e. apply gss. auto.
-     apply gso. auto.
-  Qed.
-
-  Theorem gsident:
-    forall (A: Type) (i j: positive) (m: t A),
-    get j (set i (get i m) m) = get j m.
-  Proof.
-    intros. destruct (peq i j).
-     rewrite e. rewrite gss. auto.
-     rewrite gso; auto.
-  Qed.
-
-  Definition map (A B : Type) (f : A -> B) (m : t A) : t B :=
-    (f (fst m), PTree.map1 f (snd m)).
-
-  Theorem gmap:
-    forall (A B: Type) (f: A -> B) (i: positive) (m: t A),
-    get i (map f m) = f(get i m).
-  Proof.
-    intros. unfold map. unfold get. simpl. rewrite PTree.gmap1.
-    unfold option_map. destruct (PTree.get i (snd m)); auto.
-  Qed.
-
-  Theorem set2:
-    forall (A: Type) (i: elt) (x y: A) (m: t A),
-    set i y (set i x m) = set i y m.
-  Proof.
-    intros. unfold set. simpl. decEq. apply PTree.set2.
-  Qed.
-
-End PMap.
-
-(** * An implementation of maps over any type that injects into type [positive] *)
-
-Module Type INDEXED_TYPE.
-  Parameter t: Type.
-  Parameter index: t -> positive.
-  Axiom index_inj: forall (x y: t), index x = index y -> x = y.
-  Parameter eq: forall (x y: t), {x = y} + {x <> y}.
-End INDEXED_TYPE.
-
-Module IMap(X: INDEXED_TYPE).
-
-  Definition elt := X.t.
-  Definition elt_eq := X.eq.
-  Definition t : Type -> Type := PMap.t.
-  Definition init (A: Type) (x: A) := PMap.init x.
-  Definition get (A: Type) (i: X.t) (m: t A) := PMap.get (X.index i) m.
-  Definition set (A: Type) (i: X.t) (v: A) (m: t A) := PMap.set (X.index i) v m.
-  Definition map (A B: Type) (f: A -> B) (m: t A) : t B := PMap.map f m.
-
-  Lemma gi:
-    forall (A: Type) (x: A) (i: X.t), get i (init x) = x.
-  Proof.
-    intros. unfold get, init. apply PMap.gi.
-  Qed.
-
-  Lemma gss:
-    forall (A: Type) (i: X.t) (x: A) (m: t A), get i (set i x m) = x.
-  Proof.
-    intros. unfold get, set. apply PMap.gss.
-  Qed.
-
-  Lemma gso:
-    forall (A: Type) (i j: X.t) (x: A) (m: t A),
-    i <> j -> get i (set j x m) = get i m.
-  Proof.
-    intros. unfold get, set. apply PMap.gso.
-    red. intro. apply H. apply X.index_inj; auto.
-  Qed.
-
-  Lemma gsspec:
-    forall (A: Type) (i j: X.t) (x: A) (m: t A),
-    get i (set j x m) = if X.eq i j then x else get i m.
-  Proof.
-    intros. unfold get, set.
-    rewrite PMap.gsspec.
-    case (X.eq i j); intro.
-    subst j. rewrite peq_true. reflexivity.
-    rewrite peq_false. reflexivity.
-    red; intro. elim n. apply X.index_inj; auto.
-  Qed.
-
-  Lemma gmap:
-    forall (A B: Type) (f: A -> B) (i: X.t) (m: t A),
-    get i (map f m) = f(get i m).
-  Proof.
-    intros. unfold map, get. apply PMap.gmap.
-  Qed.
-
-  Lemma set2:
-    forall (A: Type) (i: elt) (x y: A) (m: t A),
-    set i y (set i x m) = set i y m.
-  Proof.
-    intros. unfold set. apply PMap.set2.
-  Qed.
-
-End IMap.
-
-Module ZIndexed.
-  Definition t := Z.
-  Definition index (z: Z): positive :=
-    match z with
-    | Z0 => xH
-    | Zpos p => xO p
-    | Zneg p => xI p
-    end.
-  Lemma index_inj: forall (x y: Z), index x = index y -> x = y.
-  Proof.
-    unfold index; destruct x; destruct y; intros;
-    try discriminate; try reflexivity.
-    congruence.
-    congruence.
-  Qed.
-  Definition eq := zeq.
-End ZIndexed.
-
-Module ZMap := IMap(ZIndexed).
-
-Module NIndexed.
-  Definition t := N.
-  Definition index (n: N): positive :=
-    match n with
-    | N0 => xH
-    | Npos p => xO p
-    end.
-  Lemma index_inj: forall (x y: N), index x = index y -> x = y.
-  Proof.
-    unfold index; destruct x; destruct y; intros;
-    try discriminate; try reflexivity.
-    congruence.
-  Qed.
-  Lemma eq: forall (x y: N), {x = y} + {x <> y}.
-  Proof.
-    decide equality. apply peq.
-  Qed.
-End NIndexed.
-
-Module NMap := IMap(NIndexed).
-
-(** * An implementation of maps over any type with decidable equality *)
-
-Module Type EQUALITY_TYPE.
-  Parameter t: Type.
-  Parameter eq: forall (x y: t), {x = y} + {x <> y}.
-End EQUALITY_TYPE.
-
-Module EMap(X: EQUALITY_TYPE) <: MAP.
-
-  Definition elt := X.t.
-  Definition elt_eq := X.eq.
-  Definition t (A: Type) := X.t -> A.
-  Definition init (A: Type) (v: A) := fun (_: X.t) => v.
-  Definition get (A: Type) (x: X.t) (m: t A) := m x.
-  Definition set (A: Type) (x: X.t) (v: A) (m: t A) :=
-    fun (y: X.t) => if X.eq y x then v else m y.
-  Lemma gi:
-    forall (A: Type) (i: elt) (x: A), init x i = x.
-  Proof.
-    intros. reflexivity.
-  Qed.
-  Lemma gss:
-    forall (A: Type) (i: elt) (x: A) (m: t A), (set i x m) i = x.
-  Proof.
-    intros. unfold set. case (X.eq i i); intro.
-    reflexivity. tauto.
-  Qed.
-  Lemma gso:
-    forall (A: Type) (i j: elt) (x: A) (m: t A),
-    i <> j -> (set j x m) i = m i.
-  Proof.
-    intros. unfold set. case (X.eq i j); intro.
-    congruence. reflexivity.
-  Qed.
-  Lemma gsspec:
-    forall (A: Type) (i j: elt) (x: A) (m: t A),
-    get i (set j x m) = if elt_eq i j then x else get i m.
-  Proof.
-    intros. unfold get, set, elt_eq. reflexivity.
-  Qed.
-  Lemma gsident:
-    forall (A: Type) (i j: elt) (m: t A), get j (set i (get i m) m) = get j m.
-  Proof.
-    intros. unfold get, set. case (X.eq j i); intro.
-    congruence. reflexivity.
-  Qed.
-  Definition map (A B: Type) (f: A -> B) (m: t A) :=
-    fun (x: X.t) => f(m x).
-  Lemma gmap:
-    forall (A B: Type) (f: A -> B) (i: elt) (m: t A),
-    get i (map f m) = f(get i m).
-  Proof.
-    intros. unfold get, map. reflexivity.
-  Qed.
-End EMap.
-
-(** * A partial implementation of trees over any type that injects into type [positive] *)
-
-Module ITree(X: INDEXED_TYPE).
-
-  Definition elt := X.t.
-  Definition elt_eq := X.eq.
-  Definition t : Type -> Type := PTree.t.
-
-  Definition empty (A: Type): t A := PTree.empty A.
-  Definition get (A: Type) (k: elt) (m: t A): option A := PTree.get (X.index k) m.
-  Definition set (A: Type) (k: elt) (v: A) (m: t A): t A := PTree.set (X.index k) v m.
-  Definition remove (A: Type) (k: elt) (m: t A): t A := PTree.remove (X.index k) m.
-
-  Theorem gempty:
-    forall (A: Type) (i: elt), get i (empty A) = None.
-  Proof.
-    intros. apply PTree.gempty.
-  Qed.
-  Theorem gss:
-    forall (A: Type) (i: elt) (x: A) (m: t A), get i (set i x m) = Some x.
-  Proof.
-    intros. apply PTree.gss.
-  Qed.
-  Theorem gso:
-    forall (A: Type) (i j: elt) (x: A) (m: t A),
-    i <> j -> get i (set j x m) = get i m.
-  Proof.
-    intros. apply PTree.gso. red; intros; elim H; apply X.index_inj; auto.
-  Qed.
-  Theorem gsspec:
-    forall (A: Type) (i j: elt) (x: A) (m: t A),
-    get i (set j x m) = if elt_eq i j then Some x else get i m.
-  Proof.
-    intros. destruct (elt_eq i j). subst j; apply gss. apply gso; auto.
-  Qed.
-  Theorem grs:
-    forall (A: Type) (i: elt) (m: t A), get i (remove i m) = None.
-  Proof.
-    intros. apply PTree.grs.
-  Qed.
-  Theorem gro:
-    forall (A: Type) (i j: elt) (m: t A),
-    i <> j -> get i (remove j m) = get i m.
-  Proof.
-    intros. apply PTree.gro. red; intros; elim H; apply X.index_inj; auto.
-  Qed.
-  Theorem grspec:
-    forall (A: Type) (i j: elt) (m: t A),
-    get i (remove j m) = if elt_eq i j then None else get i m.
-  Proof.
-    intros. destruct (elt_eq i j). subst j; apply grs. apply gro; auto.
-  Qed.
-
-  Definition beq: forall (A: Type), (A -> A -> bool) -> t A -> t A -> bool := PTree.beq.
-  Theorem beq_sound:
-    forall (A: Type) (eqA: A -> A -> bool) (t1 t2: t A),
-    beq eqA t1 t2 = true ->
-    forall (x: elt),
-     match get x t1, get x t2 with
-     | None, None => True
-     | Some y1, Some y2 => eqA y1 y2 = true
-     | _, _ => False
-    end.
-  Proof.
-    unfold beq, get. intros. rewrite PTree.beq_correct in H. apply H.
-  Qed.
-
-  Definition combine: forall (A B C: Type), (option A -> option B -> option C) -> t A -> t B -> t C := PTree.combine.
-  Theorem gcombine:
-    forall (A B C: Type) (f: option A -> option B -> option C),
-    f None None = None ->
-    forall (m1: t A) (m2: t B) (i: elt),
-    get i (combine f m1 m2) = f (get i m1) (get i m2).
-  Proof.
-    intros. apply PTree.gcombine. auto.
-  Qed.
-End ITree.
-
-Module ZTree := ITree(ZIndexed).
-
-(** * Additional properties over trees *)
-
-Require Import Equivalence EquivDec.
-
-Module Tree_Properties(T: TREE).
-
 (** Two induction principles over [fold]. *)
 
-Section TREE_FOLD_IND.
+  Variables V A: Type.
+  Variable f: A -> positive -> V -> A.
+  Variable P: tree V -> A -> Type.
+  Variable init: A.
+  Variable m_final: tree V.
 
-Variables V A: Type.
-Variable f: A -> T.elt -> V -> A.
-Variable P: T.t V -> A -> Type.
-Variable init: A.
-Variable m_final: T.t V.
+  Hypothesis H_base:
+    forall m,
+    (forall k, T.get k m = None) ->
+    P m init.
 
-Hypothesis H_base:
-  forall m,
-  (forall k, T.get k m = None) ->
-  P m init.
+  Hypothesis H_rec:
+    forall m a k v,
+    T.get k m = Some v -> T.get k m_final = Some v ->
+    P (T.remove k m) a -> P m (f a k v).
 
-Hypothesis H_rec:
-  forall m a k v,
-  T.get k m = Some v -> T.get k m_final = Some v ->
-  P (T.remove k m) a -> P m (f a k v).
+  Let f' (p : T.elt * V) (a: A) := f a (fst p) (snd p).
 
-Let f' (p : T.elt * V) (a: A) := f a (fst p) (snd p).
+  Let P' (l: list (T.elt * V)) (a: A) : Type :=
+    forall m, (forall k v, In (k, v) l <-> T.get k m = Some v) -> P m a.
 
-Let P' (l: list (T.elt * V)) (a: A) : Type :=
-  forall m, (forall k v, In (k, v) l <-> T.get k m = Some v) -> P m a.
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Let H_base':
+    P' nil init.
+  Proof.
+    intros m EQV. apply H_base.
+    intros. destruct (T.get k m) as [v|] eqn:G; auto.
+    apply EQV in G. contradiction.
+  Qed.
 
-Let H_base':
-  P' nil init.
-Proof.
-  intros m EQV. apply H_base.
-  intros. destruct (T.get k m) as [v|] eqn:G; auto.
-  apply EQV in G. contradiction.
-Qed.
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Let H_rec':
+    forall k v l a,
+    ~In k (List.map fst l) ->
+    T.get k m_final = Some v ->
+    P' l a ->
+    P' ((k, v) :: l) (f a k v).
+  Proof.
+    unfold P'; intros k v l a NOTIN FINAL HR m EQV.
+    set (m0 := T.remove k m).
+    apply H_rec.
+  - apply EQV. simpl; auto.
+  - auto.
+  - apply HR. intros k' v'. rewrite T.grspec. split; intros; destruct (T.elt_eq k' k).
+    + subst k'. elim NOTIN. change k with (fst (k, v')). apply List.in_map; auto.
+    + apply EQV. simpl; auto.
+    + congruence.
+    + apply EQV in H. simpl in H. intuition congruence.
+  Qed.
 
-Let H_rec':
-  forall k v l a,
-  ~In k (List.map fst l) ->
-  T.get k m_final = Some v ->
-  P' l a ->
-  P' ((k, v) :: l) (f a k v).
-Proof.
-  unfold P'; intros k v l a NOTIN FINAL HR m EQV.
-  set (m0 := T.remove k m).
-  apply H_rec.
-- apply EQV. simpl; auto.
-- auto.
-- apply HR. intros k' v'. rewrite T.grspec. split; intros; destruct (T.elt_eq k' k).
-  + subst k'. elim NOTIN. change k with (fst (k, v')). apply List.in_map; auto.
-  + apply EQV. simpl; auto.
-  + congruence.
-  + apply EQV in H. simpl in H. intuition congruence.
-Qed.
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Lemma fold_ind_aux:
+    forall l,
+    (forall k v, In (k, v) l -> T.get k m_final = Some v) ->
+    list_norepet (List.map fst l) ->
+    P' l (List.fold_right f' init l).
+  Proof.
+    induction l as [ | [k v] l ]; simpl; intros FINAL NOREPET.
+  - apply H_base'.
+  - apply H_rec'.
+    + inv NOREPET. auto.
+    + apply FINAL. auto.
+    + apply IHl. auto. inv NOREPET; auto.
+  Defined.
 
-Lemma fold_ind_aux:
-  forall l,
-  (forall k v, In (k, v) l -> T.get k m_final = Some v) ->
-  list_norepet (List.map fst l) ->
-  P' l (List.fold_right f' init l).
-Proof.
-  induction l as [ | [k v] l ]; simpl; intros FINAL NOREPET.
-- apply H_base'.
-- apply H_rec'.
-  + inv NOREPET. auto.
-  + apply FINAL. auto.
-  + apply IHl. auto. inv NOREPET; auto.
-Defined.
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Theorem fold_ind:
+    P m_final (T.fold f m_final init).
+  Proof.
+    intros.
+    set (l' := List.rev (T.elements m_final)).
+    assert (P' l' (List.fold_right f' init l')).
+    { apply fold_ind_aux.
+      intros. apply T.elements_complete. apply List.in_rev. auto.
+      unfold l'; rewrite List.map_rev. apply list_norepet_rev. apply T.elements_keys_norepet. }
+    unfold l', f' in X; rewrite fold_left_rev_right in X.
+    rewrite T.fold_spec. apply X.
+    intros; simpl. rewrite <- List.in_rev.
+    split. apply T.elements_complete. apply T.elements_correct.
+  Defined.
 
-Theorem fold_ind:
-  P m_final (T.fold f m_final init).
-Proof.
-  intros.
-  set (l' := List.rev (T.elements m_final)).
-  assert (P' l' (List.fold_right f' init l')).
-  { apply fold_ind_aux.
-    intros. apply T.elements_complete. apply List.in_rev. auto.
-    unfold l'; rewrite List.map_rev. apply list_norepet_rev. apply T.elements_keys_norepet. }
-  unfold l', f' in X; rewrite fold_left_rev_right in X.
-  rewrite T.fold_spec. apply X.
-  intros; simpl. rewrite <- List.in_rev.
-  split. apply T.elements_complete. apply T.elements_correct.
-Defined.
-
-End TREE_FOLD_IND.
-
-Section TREE_FOLD_REC.
 
 Variables V A: Type.
 Variable f: A -> T.elt -> V -> A.
@@ -2571,18 +2267,22 @@ Variable P: T.t V -> A -> Prop.
 Variable init: A.
 Variable m_final: T.t V.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Hypothesis P_compat:
   forall m m' a,
   (forall x, T.get x m = T.get x m') ->
   P m a -> P m' a.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Hypothesis H_base:
   P (T.empty _) init.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Hypothesis H_rec:
   forall m a k v,
   T.get k m = None -> T.get k m_final = Some v -> P m a -> P (T.set k v m) (f a k v).
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Theorem fold_rec:
   P m_final (T.fold f m_final init).
 Proof.
@@ -2604,6 +2304,7 @@ Variable V: Type.
 
 Definition cardinal (x: T.t V) : nat := List.length (T.elements x).
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Theorem cardinal_remove:
   forall x m y, T.get x m = Some y -> (cardinal (T.remove x m) < cardinal m)%nat.
 Proof.
@@ -2612,6 +2313,7 @@ Proof.
   rewrite P, Q. rewrite ! app_length. simpl. lia.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Theorem cardinal_set:
   forall x m y, T.get x m = None -> (cardinal m < cardinal (T.set x y m))%nat.
 Proof.
@@ -2634,6 +2336,7 @@ Variable A: Type.
 Definition for_all (m: T.t A) (f: T.elt -> A -> bool) : bool :=
   T.fold (fun b x a => b && f x a) m true.
 
+(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma for_all_correct:
   forall m f,
   for_all m f = true <-> (forall x a, T.get x m = Some a -> f x a = true).
@@ -2657,6 +2360,7 @@ Qed.
 Definition exists_ (m: T.t A) (f: T.elt -> A -> bool) : bool :=
   T.fold (fun b x a => b || f x a) m false.
 
+(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma exists_correct:
   forall m f,
   exists_ m f = true <-> (exists x a, T.get x m = Some a /\ f x a = true).
@@ -2679,6 +2383,7 @@ Proof.
   left. apply H1. exists x1; exists a1; auto.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Remark exists_for_all:
   forall m f,
   exists_ m f = negb (for_all m (fun x a => negb (f x a))).
@@ -2691,6 +2396,7 @@ Proof.
   destruct b; destruct (f (fst a) (snd a)); reflexivity.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Remark for_all_exists:
   forall m f,
   for_all m f = negb (exists_ m (fun x a => negb (f x a))).
@@ -2703,6 +2409,7 @@ Proof.
   destruct b; destruct (f (fst a) (snd a)); reflexivity.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma for_all_false:
   forall m f,
   for_all m f = false <-> (exists x a, T.get x m = Some a /\ f x a = false).
@@ -2714,6 +2421,7 @@ Proof.
   rewrite Q; auto.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma exists_false:
   forall m f,
   exists_ m f = false <-> (forall x a, T.get x m = Some a -> f x a = false).
@@ -2732,6 +2440,7 @@ Section BOOLEAN_EQUALITY.
 Variable A: Type.
 Variable beqA: A -> A -> bool.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Theorem beq_false:
   forall m1 m2,
   T.beq beqA m1 m2 = false <->
@@ -2780,16 +2489,19 @@ Definition Equal (m1 m2: T.t A) : Prop :=
                 | _, _ => False
             end.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma Equal_refl: forall m, Equal m m.
 Proof.
   intros; red; intros. destruct (T.get x m); auto. reflexivity.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma Equal_sym: forall m1 m2, Equal m1 m2 -> Equal m2 m1.
 Proof.
   intros; red; intros. generalize (H x). destruct (T.get x m1); destruct (T.get x m2); auto. intros; symmetry; auto.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma Equal_trans: forall m1 m2 m3, Equal m1 m2 -> Equal m2 m3 -> Equal m1 m3.
 Proof.
   intros; red; intros. generalize (H x) (H0 x).
@@ -2842,6 +2554,7 @@ Let f := fun (m: T.t A) (k_v: T.elt * A) => T.set (fst k_v) (snd k_v) m.
 Definition of_list (l: list (T.elt * A)) : T.t A :=
   List.fold_left f l (T.empty _).
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma in_of_list:
   forall l k v, T.get k (of_list l) = Some v -> In (k, v) l.
 Proof.
@@ -2856,6 +2569,7 @@ Proof.
   intros. apply REC in H. rewrite T.gempty in H. intuition congruence.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma of_list_dom:
   forall l k, In k (map fst l) -> exists v, T.get k (of_list l) = Some v.
 Proof.
@@ -2871,6 +2585,7 @@ Proof.
   intros. apply REC. auto.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Remark of_list_unchanged:
   forall k l m, ~In k (map fst l) -> T.get k (List.fold_left f l m) = T.get k m.
 Proof.
@@ -2879,6 +2594,7 @@ Proof.
 - rewrite IHl by tauto. unfold f; apply T.gso; intuition auto.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma of_list_unique:
   forall k v l1 l2,
   ~In k (map fst l2) -> T.get k (of_list (l1 ++ (k, v) :: l2)) = Some v.
@@ -2887,6 +2603,7 @@ Proof.
   rewrite of_list_unchanged by auto. unfold f; apply T.gss.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma of_list_norepet:
   forall l k v, list_norepet (map fst l) -> In (k, v) l -> T.get k (of_list l) = Some v.
 Proof.
@@ -2903,6 +2620,7 @@ Proof.
   intros; apply REC; auto.
 Qed.
 
+(*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma of_list_elements:
   forall m k, T.get k (of_list (T.elements m)) = T.get k m.
 Proof.
@@ -2914,6 +2632,7 @@ Qed.
 
 End OF_LIST.
 
+(*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
 Lemma of_list_related:
   forall (A B: Type) (R: A -> B -> Prop) k l1 l2,
   list_forall2 (fun ka kb => fst ka = fst kb /\ R (snd ka) (snd kb)) l1 l2 ->

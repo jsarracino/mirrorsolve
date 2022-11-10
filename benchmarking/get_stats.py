@@ -125,6 +125,7 @@ def read_file_goals(f_name: str, keep_field: Optional[Tuple[str, Callable[[Any],
               continue
 
             total = payload["goals"]
+            if not total: continue
             ms_res = GoalTally(completed=payload["ms"], total=total)
             crush_res = GoalTally(completed=payload["crush"], total=total)
             hammer_res = GoalTally(completed=payload["hammer"], total=total)

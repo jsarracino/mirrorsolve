@@ -7,12 +7,6 @@ let show_solver s =
   | CVC5 -> "cvc5"
   end
 
-let make_args s = 
-  begin match s with 
-  | Z3 -> ["-T:10"]
-  | _ -> []
-  end
-
 let str_to_solver s = 
   begin match s with 
   | "z3" -> Some Z3
@@ -26,6 +20,17 @@ let opt_solver_str =
   Goptions.declare_stringopt_option_and_ref
     ~depr:false
     ~key:["MirrorSolve";"Solver"]
+
+let solver_flags_str =
+  Goptions.declare_stringopt_option_and_ref
+    ~depr:false
+    ~key:["MirrorSolve";"Solver";"Flags"]
+
+let solver_query_debug =
+  Goptions.declare_bool_option_and_ref
+    ~value:false
+    ~depr:false
+    ~key:["MirrorSolve";"Query";"Debug"]
 
 let join o = 
   begin match o with 
@@ -182,6 +187,14 @@ let validate_solver (s: solver_t) =
     let _ = Feedback.msg_debug @@ Pp.(++) (Pp.str "PATH: ") (Pp.str @@ getenv "PATH") in 
     raise @@ Failure ("Bad/missing solver: " ^ show_solver s)
 
+let make_args () = 
+  begin match solver_flags_str () with 
+  | Some x -> 
+    (* Array.of_list @@ Str.split (Str.regexp "[\r\n\t ]*") x *)
+    [| x |]
+  | None -> [| |]
+  end
+
 let run_smt query = 
   let open Unix in
 
@@ -194,16 +207,24 @@ let run_smt query =
   Stdlib.output_string smt_ch rep_query ;
   Stdlib.close_out smt_ch;
 
-  Feedback.msg_debug @@ Pp.str (Format.sprintf "put smt query in %s" query_file) ;
+  
+  if solver_query_debug () 
+    then Feedback.msg_debug @@ Pp.str (Format.sprintf "put smt query in %s" query_file)
+  else ();
 
   let in_in, in_out = pipe ~cloexec:true () in
   let out_in, out_out = pipe ~cloexec:true () in 
   let err_in, err_out = pipe ~cloexec:true () in 
 
   let cmd = show_solver (get_solver ()) in
-  let s_args = make_args (get_solver()) in 
+  let s_args = make_args () in 
+  let s_args_str = String.concat " " (Array.to_list s_args) in 
 
-  let args = Array.concat [[| cmd |]; Array.of_list s_args; [| query_file |]] in
+  if solver_query_debug () 
+    then Feedback.msg_debug @@ Pp.str (Format.sprintf "query command: %s %s" cmd s_args_str)
+  else ();
+
+  let args = Array.concat [[| cmd |]; s_args; [| query_file |]] in
   let smt_pid = create_process cmd args in_in out_out err_out in
 
   let _ = waitpid [] smt_pid in 

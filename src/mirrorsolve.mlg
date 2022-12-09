@@ -251,6 +251,23 @@ TACTIC EXTEND CheckUnsatHyps
   }
 END
 
+TACTIC EXTEND CheckUnsatOpt
+| [ "check_unsat_opt" string(db_name) constr(ctx_e) constr(e) ] -> { 
+    let env = Global.env () in
+    let sigma = Evd.from_env env in
+    let fail s = tcl_fail (Pp.str s) in
+    let hyps = List.map Main.extract_interp_fm_err (Hint.gather_hints (Hint.lookup_tbl db_name)) in 
+    let ctx_e = Some (EConstr.to_constr sigma ctx_e) in 
+    let query = Main.check_interp ~hyps ~ctx_e (EConstr.to_constr sigma e) true in
+
+    begin match Smt.run_smt query with 
+    | SAT -> fail "SAT smt query"
+    | UNSAT -> Proofview.tclUNIT ()
+    | Other msg -> fail ("Broken query: " ^ msg)
+    end
+  }
+END
+
 VERNAC COMMAND EXTEND ReflectAddSort CLASSIFIED AS QUERY
 | [ "Mirror" "Reflect" "Add" "Sort" constr(e) string_opt(opt_name) ] -> { 
     let env = Global.env () in

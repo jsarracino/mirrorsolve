@@ -38,7 +38,6 @@
 
 Unset Implicit Arguments.
 
-
 Require Import MirrorSolve.FirstOrder.
 
 Require Import MirrorSolve.BV.
@@ -387,7 +386,133 @@ Section PTree.
     | Some y1, Some y2 =>  beqA' y1 y2 = true
     | _, _ => False
     end.
-    
+
+  Variable (f_pos : positive -> A -> B).
+  Definition f_pos_sym i a := f_pos i a.
+
+  Variable (f: A -> B).
+  Definition f_sym a := f a.
+
+  Fixpoint map' (m: tree' A) (i: positive)
+      {struct m} : tree' B :=
+    match m with
+    | Node001 r => Node001 (map' r (xI i))
+    | Node010 x => Node010 (f_pos_sym (prev i) x)
+    | Node011 x r => Node011 (f_pos_sym (prev i) x) (map' r (xI i))
+    | Node100 l => Node100 (map' l (xO i))
+    | Node101 l r => Node101 (map' l (xO i)) (map' r (xI i))
+    | Node110 l x => Node110 (map' l (xO i)) (f_pos_sym (prev i) x)
+    | Node111 l x r => Node111 (map' l (xO i)) (f_pos_sym (prev i) x) (map' r (xI i))
+    end.
+
+  Definition map (m: tree A) :=
+    match m with
+    | Empty => Empty
+    | Nodes m => Nodes (map' m xH)
+    end.
+
+  Fixpoint map1' (m: tree' A) {struct m} : tree' B :=
+    match m with
+    | Node001 r => Node001 (map1' r)
+    | Node010 x => Node010 (f_sym x)
+    | Node011 x r => Node011 (f_sym x) (map1' r)
+    | Node100 l => Node100 (map1' l)
+    | Node101 l r => Node101 (map1' l) (map1' r)
+    | Node110 l x => Node110 (map1' l) (f_sym x)
+    | Node111 l x r => Node111 (map1' l) (f_sym x) (map1' r)
+    end.
+
+  Definition map1 (m: tree A) : tree B :=
+    match m with
+    | Empty => Empty
+    | Nodes m => Nodes (map1' m)
+    end.
+
+  Definition option_map o := 
+    match o with 
+    | None => None
+    | Some a => Some (f_sym a)
+    end.
+
+  Fixpoint xelements' (m : tree' A) (i: positive) (k: list (positive * A)) {struct m} : list (positive * A) :=
+    match m with
+    | Node001 r => xelements' r (xI i) k
+    | Node010 x => (prev i, x) :: k
+    | Node011 x r => (prev i, x) :: xelements' r (xI i) k
+    | Node100 l => xelements' l (xO i) k
+    | Node101 l r => xelements' l (xO i) (xelements' r (xI i) k)
+    | Node110 l x => xelements' l (xO i) ((prev i, x)::k)
+    | Node111 l x r => xelements' l (xO i) ((prev i, x):: (xelements' r (xI i) k))
+    end.
+
+  Definition elements (m : tree A) : list (positive * A) := 
+    match m with 
+    | Empty => nil 
+    | Nodes m' => xelements' m' xH nil 
+    end.
+
+  Definition xelements (m : tree A) (i: positive) : list (positive * A) := 
+    match m with 
+    | Empty => nil 
+    | Nodes m' => xelements' m' i nil 
+    end.
+
+  Definition o2l i o : list (positive * A) := 
+    match o with 
+    | None => nil
+    | Some v => (prev i, v) :: nil
+    end.
+
+  Definition o2l_pos i (o : option A) : list (positive) := 
+    match o with 
+    | None => nil
+    | Some _ => prev i :: nil
+    end.
+
+  Definition fst_pos_A (x: positive * A) := 
+    match x with 
+    | (x, _) => x
+    end.
+  Definition snd_pos_A (x: positive * A) := 
+    match x with 
+    | (_, x) => x
+    end.
+
+  Fixpoint map_fst (xs: list (positive * A)) : list positive := 
+    match xs with 
+    | nil => nil
+    | x :: xs' => fst_pos_A x :: map_fst xs'
+    end.
+
+  Definition xkeys (m: tree A) (i: positive) := 
+    map_fst (xelements m i).
+
+  Fixpoint In_pos_A (a : (positive * A)) l {struct l} : Prop := 
+    match l with
+    | [] => False
+    | b :: m => b = a \/ In_pos_A a m
+    end.
+
+  Fixpoint In_A (a : A) l {struct l} : Prop := 
+    match l with
+    | [] => False
+    | b :: m => b = a \/ In_A a m
+    end.
+
+  Fixpoint NoDup_pos_A (l: list (positive * A)) {struct l} : Prop := 
+    match l with
+    | [] => True
+    | b :: m => ~ In_pos_A b m /\ NoDup_pos_A m
+    end.
+
+  Fixpoint NoDup_A (l: list A) {struct l} : Prop := 
+    match l with
+    | [] => True
+    | b :: m => ~ In_A b m /\ NoDup_A m
+    end.
+
+  Definition app_pos_A := Eval compute in @List.app (positive * A).
+  Definition app_pos := Eval compute in @List.app positive.
 
   Local Declare ML Module "mirrorsolve".
 
@@ -407,6 +532,8 @@ Section PTree.
   Definition fun_syms : list Config.packed := ([
       pack (PTree.tree' A)
     ; pack (PTree.tree A)
+    ; pack (PTree.tree B)
+    ; pack (PTree.tree' B)
     ; pack PTree.Node
     ; pack PTree.empty
     ; pack PTree.get'
@@ -418,6 +545,7 @@ Section PTree.
     ; pack PTree.remove'
     ; pack PTree.remove
     ; pack (option A)
+    ; pack (option B)
     ; pack positive
     ; pack Pos_eqb
     ; pack (@ite (option A))
@@ -434,10 +562,39 @@ Section PTree.
     ; pack andb
     ; pack orb
     ; pack get_pos_default
+    ; pack prev
+    ; pack prev_append
+    ; pack f_sym
+    ; pack f_pos_sym
+    ; pack map'
+    ; pack map
+    ; pack map1'
+    ; pack map1
+    ; pack option_map
+    ; pack elements
+    ; pack xelements
+    ; pack xelements'
+    ; pack (list (positive * A))
+    ; pack (list positive)
+    ; pack app_pos_A
+    ; pack app_pos
+    ; pack (positive * A)
+    ; pack (@fst positive A)
+    ; pack (@snd positive A)
+    ; pack o2l
+    ; pack map_fst
+    ; pack xkeys
+    ; pack o2l_pos
+    ; pack fst_pos_A
+    ; pack snd_pos_A
   ])%type.
   Definition rel_syms : list Config.packed := ([ 
       pack not_trivially_empty
     ; pack get_eq_bool
+    ; pack In_pos_A
+    ; pack In_A
+    ; pack NoDup_pos_A
+    ; pack NoDup_A
   ])%type.
 
   Definition prim_syms : list (Config.packed * String.string) := ([
@@ -484,7 +641,6 @@ Section PTree.
     tmMkDefinition "fol_theory" rhs
   ).
   
-
   Require Import MirrorSolve.Reflection.Tactics.
 
   Transparent denote_tm.
@@ -501,6 +657,8 @@ Section PTree.
   Create HintDb eqns_implicit.
   Create HintDb eqns_explicit.
   Create HintDb eqns_small.
+
+  Create HintDb eqns_empty.
 
   Ltac prep_proof := 
     hints_foreach (fun x => pose proof x) "eqns_small";
@@ -520,6 +678,24 @@ Section PTree.
     check_goal_unsat)).
 
   Definition extract := extract_t2fm sig (fun c => @extract_t2tm sig fm_model sorts_eq_dec c match_tacs) (fun c => @extract_t2rel sig fm_model sorts_eq_dec c match_tacs) (i2srt _ match_sorts) sorts_eq_dec.
+
+  Ltac conv_lemma L := 
+    set (l := L);
+    unfold "<->" in l;
+    let H := type of l in 
+    clear l;
+    quote_term H (fun x => 
+      set (v := (@extract (SLNil _) (reindex_vars x)));
+      vm_compute in v;
+      match goal with 
+      | v := Some ?X |- _ => 
+        idtac "converted";
+        refine (X)
+      | v := None |- _ => 
+        idtac "couldn't convert";
+        fail
+      end
+    ).
 
   Ltac runner := (
     prep_proof;
@@ -588,7 +764,67 @@ Section PTree.
     | |- ?G => check_unsat_hyps fol_theory G; eapply weaken_hyps; eapply UnsoundAxioms.interp_true
     end
   ).
-  Ltac mirrorsolve := try now ( timeout 60 runner).
+  Ltac runner_uncheck := (
+    prep_proof;
+    quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts;
+    eapply interp_hyps_sound;
+    let g := fresh "G" in 
+    match goal with 
+    | |- interp_wh {| hyps := _ ; p := ?P |} => 
+      set (g := P) at 1
+    end;
+    idtac "starting";
+    time "building query" (hints_foreach (fun x => 
+      try (unfold "<->" in x);
+      let H := type of x in
+      quote_term H (fun y => 
+      let v := fresh "v" in 
+      set (v := (@extract (SLNil _) (reindex_vars y)));
+      vm_compute in v;
+      match goal with 
+      | v' := Some ?X |- interp_wh {| hyps := ?L; p := _ |} => 
+        let h := fresh "hyps" in 
+        set (h := L) in |- *;
+        eapply add_hyp;
+        match goal with 
+        | |- interp_wh _ => idtac
+        | |- _ => 
+          eapply UnsoundAxioms.interp_true with (m := fm_model) (form := X)
+        end;
+        clear v
+        
+      | v' := None |- _ => 
+        (* idtac "couldn't extract??";
+        idtac x;
+        idtac H;
+        idtac y;
+        clear v' *)
+        idtac
+      end
+      
+    )) "eqns_explicit";
+    repeat match goal with 
+    | x := _ |- _ => 
+      subst x
+    | H: interp_fm _ _ -> _ |- _ => clear H
+    | H: _ = Some _  |- _ => clear H
+    | H: denote_t2fm _ _ _ _ _ _ _ _ = _ |- _ => clear H
+    end);
+
+    time "query" match goal with 
+    | |- ?G => check_unsat_hyps fol_theory G; eapply weaken_hyps; eapply UnsoundAxioms.interp_true
+    end
+  ).
+  Ltac runner_uncheck_opt := 
+    prep_proof;
+    quote_reflect sig fm_model sorts_eq_dec match_tacs match_sorts;
+
+    time "query" match goal with 
+    | |- ?G => check_unsat_opt "eqns_implicit" fol_theory G; eapply UnsoundAxioms.interp_true
+    end.
+  Ltac mirrorsolve_full := try now ( timeout 60 runner).
+  Ltac mirrorsolve_uncheck := try now ( timeout 60 runner_uncheck).
+  Ltac mirrorsolve := try now ( timeout 60 runner_uncheck_opt).
 
   Definition denote := denote_t2fm sig fm_model sorts_eq_dec (denote_tm _ fm_model sorts_eq_dec match_tacs) (denote_t2rel _ fm_model sorts_eq_dec match_tacs) (i2srt _ match_sorts) (VEmp _ _).
 
@@ -709,6 +945,36 @@ Section PTree.
   Hint Immediate beq_optA_equation_3 : eqns_explicit.
   Hint Immediate beq_optA_equation_4 : eqns_explicit. 
 
+  MetaCoq Run (infer_equations map).
+  Hint Immediate map_equation_1 : eqns_small.
+  Hint Immediate map_equation_1 : eqns_explicit.
+  Hint Immediate map_equation_2 : eqns_explicit.
+
+  MetaCoq Run (infer_equations map').
+  Hint Immediate map'_equation_1 : eqns_small.
+  Hint Immediate map'_equation_1 : eqns_explicit.
+  Hint Immediate map'_equation_2 : eqns_explicit.
+  Hint Immediate map'_equation_3 : eqns_explicit.
+  Hint Immediate map'_equation_4 : eqns_explicit.
+  Hint Immediate map'_equation_5 : eqns_explicit.
+  Hint Immediate map'_equation_6 : eqns_explicit.
+  Hint Immediate map'_equation_7 : eqns_explicit.
+
+  MetaCoq Run (infer_equations map1).
+  Hint Immediate map1_equation_1 : eqns_small.
+  Hint Immediate map1_equation_1 : eqns_explicit.
+  Hint Immediate map1_equation_2 : eqns_explicit.
+
+  MetaCoq Run (infer_equations map1').
+  Hint Immediate map1'_equation_1 : eqns_small.
+  Hint Immediate map1'_equation_1 : eqns_explicit.
+  Hint Immediate map1'_equation_2 : eqns_explicit.
+  Hint Immediate map1'_equation_3 : eqns_explicit.
+  Hint Immediate map1'_equation_4 : eqns_explicit.
+  Hint Immediate map1'_equation_5 : eqns_explicit.
+  Hint Immediate map1'_equation_6 : eqns_explicit.
+  Hint Immediate map1'_equation_7 : eqns_explicit.
+
   (* crush hints *)
   Hint Resolve get'_equation_1.
   Hint Resolve get'_equation_2.
@@ -815,11 +1081,271 @@ Section PTree.
   Hint Resolve beq_optA_equation_3.
   Hint Resolve beq_optA_equation_4.
 
+  Hint Resolve map1'_equation_1.
+  Hint Resolve map1'_equation_1.
+  Hint Resolve map1'_equation_2.
+  Hint Resolve map1'_equation_3.
+  Hint Resolve map1'_equation_4.
+  Hint Resolve map1'_equation_5.
+  Hint Resolve map1'_equation_6.
+  Hint Resolve map1'_equation_7.
+
+  Hint Resolve map1_equation_1.
+  Hint Resolve map1_equation_1.
+  Hint Resolve map1_equation_2.
+
+  Hint Resolve map'_equation_1.
+  Hint Resolve map'_equation_1.
+  Hint Resolve map'_equation_2.
+  Hint Resolve map'_equation_3.
+  Hint Resolve map'_equation_4.
+  Hint Resolve map'_equation_5.
+  Hint Resolve map'_equation_6.
+  Hint Resolve map'_equation_7.
+
+  (* optimized equations *)
+
+  Definition get'_equation_1_P  : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac: ( set (v := ltac:(conv_lemma get'_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v) ).
+  Hint Immediate get'_equation_1_P  : eqns_implicit.
+  Hint Immediate (get'_equation_1_P ) : eqns_implicit.
+  Definition get'_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_2_P : eqns_implicit.
+  Definition get'_equation_3_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_3)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_3_P : eqns_implicit.
+  Definition get'_equation_4_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_4)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_4_P : eqns_implicit.
+  Definition get'_equation_5_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_5)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_5_P : eqns_implicit.
+  Definition get'_equation_6_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_6)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_6_P : eqns_implicit.
+  Definition get'_equation_7_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_7)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_7_P : eqns_implicit.
+  Definition get'_equation_8_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_8)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_8_P : eqns_implicit.
+  Definition get'_equation_9_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_9)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_9_P : eqns_implicit.
+  Definition get'_equation_10_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_10)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_10_P : eqns_implicit.
+  Definition get'_equation_11_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_11)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_11_P : eqns_implicit.
+  Definition get'_equation_12_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_12)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_12_P : eqns_implicit.
+  Definition get'_equation_13_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_13)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_13_P : eqns_implicit.
+  Definition get'_equation_14_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_14)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_14_P : eqns_implicit.
+  Definition get'_equation_15_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_15)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_15_P : eqns_implicit.
+  Definition get'_equation_16_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_16)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_16_P : eqns_implicit.
+  Definition get'_equation_17_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_17)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_17_P : eqns_implicit.
+  Definition get'_equation_18_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_18)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_18_P : eqns_implicit.
+  Definition get'_equation_19_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_19)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_19_P : eqns_implicit.
+  Definition get'_equation_20_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_20)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_20_P : eqns_implicit.
+  Definition get'_equation_21_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get'_equation_21)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get'_equation_21_P : eqns_implicit.
+
+  Definition tree_case_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree_case_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree_case_equation_1_P : eqns_implicit.
+  Definition tree_case_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree_case_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree_case_equation_2_P : eqns_implicit.
+  Definition tree_case_equation_3_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree_case_equation_3)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree_case_equation_3_P : eqns_implicit.
+  Definition tree_case_equation_4_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree_case_equation_4)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree_case_equation_4_P : eqns_implicit.
+  Definition tree_case_equation_5_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree_case_equation_5)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree_case_equation_5_P : eqns_implicit.
+  Definition tree_case_equation_6_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree_case_equation_6)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree_case_equation_6_P : eqns_implicit.
+  Definition tree_case_equation_7_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree_case_equation_7)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree_case_equation_7_P : eqns_implicit.
+  Definition tree_case_equation_8_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree_case_equation_8)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree_case_equation_8_P : eqns_implicit.
+
+  Definition tree'_rec'_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree'_rec'_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree'_rec'_equation_1_P : eqns_implicit.
+  Definition tree'_rec'_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree'_rec'_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree'_rec'_equation_2_P : eqns_implicit.
+  Definition tree'_rec'_equation_3_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree'_rec'_equation_3)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree'_rec'_equation_3_P : eqns_implicit.
+  Definition tree'_rec'_equation_4_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree'_rec'_equation_4)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree'_rec'_equation_4_P : eqns_implicit.
+  Definition tree'_rec'_equation_5_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree'_rec'_equation_5)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree'_rec'_equation_5_P : eqns_implicit.
+  Definition tree'_rec'_equation_6_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree'_rec'_equation_6)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree'_rec'_equation_6_P : eqns_implicit.
+  Definition tree'_rec'_equation_7_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma tree'_rec'_equation_7)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate tree'_rec'_equation_7_P : eqns_implicit.
+
+  Definition get_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get_equation_1_P : eqns_implicit.
+  Definition get_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma get_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate get_equation_2_P : eqns_implicit.
+
+  Definition empty_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma empty_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate empty_equation_1_P : eqns_implicit.
+
+  Definition beq'_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_1_P : eqns_implicit.
+  Definition beq'_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_2_P : eqns_implicit.
+  Definition beq'_equation_3_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_3)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_3_P : eqns_implicit.
+  Definition beq'_equation_4_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_4)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_4_P : eqns_implicit.
+  Definition beq'_equation_5_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_5)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_5_P : eqns_implicit.
+  Definition beq'_equation_6_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_6)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_6_P : eqns_implicit.
+  Definition beq'_equation_7_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_7)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_7_P : eqns_implicit.
+  Definition beq'_equation_8_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_8)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_8_P : eqns_implicit.
+  Definition beq'_equation_9_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_9)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_9_P : eqns_implicit.
+  Definition beq'_equation_10_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_10)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_10_P : eqns_implicit.
+  
+  Definition beq'_equation_11_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_11)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_11_P : eqns_implicit.
+  Definition beq'_equation_12_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_12)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_12_P : eqns_implicit.
+  Definition beq'_equation_13_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_13)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_13_P : eqns_implicit.
+  Definition beq'_equation_14_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_14)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_14_P : eqns_implicit.
+  Definition beq'_equation_15_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_15)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_15_P : eqns_implicit.
+  Definition beq'_equation_16_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_16)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_16_P : eqns_implicit.
+  Definition beq'_equation_17_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_17)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_17_P : eqns_implicit.
+  Definition beq'_equation_18_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_18)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_18_P : eqns_implicit.
+  Definition beq'_equation_19_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_19)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_19_P : eqns_implicit.
+  Definition beq'_equation_20_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_20)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_20_P : eqns_implicit.
+  Definition beq'_equation_21_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_21)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_21_P : eqns_implicit.
+  Definition beq'_equation_22_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_22)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_22_P : eqns_implicit.
+  Definition beq'_equation_23_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_23)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_23_P : eqns_implicit.
+  Definition beq'_equation_24_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_24)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_24_P : eqns_implicit.
+  Definition beq'_equation_25_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_25)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_25_P : eqns_implicit.
+  Definition beq'_equation_26_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_26)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_26_P : eqns_implicit.
+  Definition beq'_equation_27_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_27)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_27_P : eqns_implicit.
+  Definition beq'_equation_28_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_28)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_28_P : eqns_implicit.
+  Definition beq'_equation_29_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_29)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_29_P : eqns_implicit.
+  Definition beq'_equation_30_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_30)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_30_P : eqns_implicit.
+  Definition beq'_equation_31_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_31)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_31_P : eqns_implicit.
+  Definition beq'_equation_32_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_32)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_32_P : eqns_implicit.
+  Definition beq'_equation_33_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_33)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_33_P : eqns_implicit.
+  Definition beq'_equation_34_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_34)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_34_P : eqns_implicit.
+  Definition beq'_equation_35_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_35)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_35_P : eqns_implicit.
+  Definition beq'_equation_36_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_36)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_36_P : eqns_implicit.
+  Definition beq'_equation_37_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_37)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_37_P : eqns_implicit.
+  Definition beq'_equation_38_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_38)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_38_P : eqns_implicit.
+  Definition beq'_equation_39_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_39)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_39_P : eqns_implicit.
+  Definition beq'_equation_40_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_40)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_40_P : eqns_implicit.
+  Definition beq'_equation_41_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_41)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_41_P : eqns_implicit.
+  Definition beq'_equation_42_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_42)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_42_P : eqns_implicit.
+  Definition beq'_equation_43_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_43)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_43_P : eqns_implicit.
+  Definition beq'_equation_44_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_44)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_44_P : eqns_implicit.
+  Definition beq'_equation_45_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_45)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_45_P : eqns_implicit.
+  Definition beq'_equation_46_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_46)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_46_P : eqns_implicit.
+  Definition beq'_equation_47_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_47)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_47_P : eqns_implicit.
+  Definition beq'_equation_48_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_48)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_48_P : eqns_implicit.
+  Definition beq'_equation_49_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq'_equation_49)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq'_equation_49_P : eqns_implicit.
+
+  Definition beq_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq_equation_1_P : eqns_implicit.
+  Definition beq_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq_equation_2_P : eqns_implicit.
+  Definition beq_equation_3_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq_equation_3)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq_equation_3_P : eqns_implicit.
+  Definition beq_equation_4_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq_equation_4)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq_equation_4_P : eqns_implicit.
+
+  Definition beq_optA_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq_optA_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq_optA_equation_1_P : eqns_implicit.
+  Definition beq_optA_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq_optA_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq_optA_equation_2_P : eqns_implicit.
+  Definition beq_optA_equation_3_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq_optA_equation_3)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq_optA_equation_3_P : eqns_implicit.
+  Definition beq_optA_equation_4_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma beq_optA_equation_4)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate beq_optA_equation_4_P : eqns_implicit.
+
+  Definition map1'_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map1'_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map1'_equation_1_P : eqns_implicit.
+  Definition map1'_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map1'_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map1'_equation_2_P : eqns_implicit.
+  Definition map1'_equation_3_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map1'_equation_3)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map1'_equation_3_P : eqns_implicit.
+  Definition map1'_equation_4_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map1'_equation_4)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map1'_equation_4_P : eqns_implicit.
+  Definition map1'_equation_5_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map1'_equation_5)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map1'_equation_5_P : eqns_implicit.
+  Definition map1'_equation_6_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map1'_equation_6)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map1'_equation_6_P : eqns_implicit.
+  Definition map1'_equation_7_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map1'_equation_7)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map1'_equation_7_P : eqns_implicit.
+
+  Definition map1_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map1_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map1_equation_1_P : eqns_implicit.
+  Definition map1_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map1_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map1_equation_2_P : eqns_implicit.
+
+  Definition map'_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map'_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map'_equation_1_P : eqns_implicit.
+  Definition map'_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map'_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map'_equation_2_P : eqns_implicit.
+  Definition map'_equation_3_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map'_equation_3)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map'_equation_3_P : eqns_implicit.
+  Definition map'_equation_4_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map'_equation_4)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map'_equation_4_P : eqns_implicit.
+  Definition map'_equation_5_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map'_equation_5)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map'_equation_5_P : eqns_implicit.
+  Definition map'_equation_6_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map'_equation_6)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map'_equation_6_P : eqns_implicit.
+  Definition map'_equation_7_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map'_equation_7)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map'_equation_7_P : eqns_implicit.
+
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals": 3, "ms": 3, "hammer": 3, "crush": 3} *)
   Theorem gempty:
     forall (i: positive), get i (empty) = None.
   Proof.
-
     induction i;
     hammer'.
     Restart.
@@ -828,11 +1354,13 @@ Section PTree.
     Restart.
     induction i;
     mirrorsolve.
-
   Time Qed.
 
   Hint Immediate gempty : eqns_explicit.
   Hint Resolve gempty.
+
+  Definition gempty_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma gempty)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate gempty_P : eqns_implicit.
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":1, "crush":1} *)
@@ -849,6 +1377,16 @@ Section PTree.
   Hint Immediate set0_equation_1 : eqns_explicit.
   Hint Immediate set0_equation_2 : eqns_explicit.
   Hint Immediate set0_equation_3 : eqns_explicit.
+
+  Definition set0_equation_1_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma set0_equation_1)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate set0_equation_1_P : eqns_implicit.
+
+  Definition set0_equation_2_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma set0_equation_2)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate set0_equation_2_P : eqns_implicit.
+
+  Definition set0_equation_3_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma set0_equation_3)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate set0_equation_3_P : eqns_implicit.
+
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":3, "ms":3, "hammer":3, "crush":3} *)
@@ -867,6 +1405,13 @@ Section PTree.
   Hint Immediate gss0 : eqns_explicit.
   Hint Resolve gss0.
 
+  Definition gss0_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma gss0)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate gss0_P : eqns_implicit.
+
+
+  Set MirrorSolve Solver "z3".
+  Set MirrorSolve Solver Flags "-T:5".
+
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":6, "crush":4} *)
   Lemma gso0: forall p q (x: A), p<>q -> get' p (set0 q x) = None.
@@ -882,11 +1427,14 @@ Section PTree.
     induction p;
     induction q;
     mirrorsolve.
-
   Time Qed.
 
   Hint Immediate gso0 : eqns_explicit.
   Hint Resolve gso0.
+
+  Definition map'_equation_7_P : interp_fm (sig := sig) (m := fm_model) (VEmp _ _) _ := ltac:(set (v := ltac:(conv_lemma map'_equation_7)); eapply UnsoundAxioms.interp_true with (m := fm_model) (form := v)).
+  Hint Immediate map'_equation_7_P : eqns_implicit.
+
 
   Hint Immediate set'_equation_1 : eqns_explicit.
   Hint Immediate set'_equation_2 : eqns_explicit.
@@ -934,8 +1482,9 @@ Section PTree.
   Hint Immediate gss' : eqns_explicit.
   Hint Resolve gss'.
 
+
   (*** MS EFFORT {"type": "edit"} *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":2, "crush":1} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":2, "hammer":2, "crush":1} *)
   Theorem gss:
     forall (i: positive) (x: A) (m: tree A), get i (set i x m) = Some x.
   Proof.
@@ -953,7 +1502,8 @@ Section PTree.
   Hint Resolve gss.
 
   Hint Immediate gso0 : eqns_small.
-  Hint Immediate gso0 : eqns_explicit.
+
+  Print get'.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":63, "ms":63, "hammer":63, "crush":49} *)
   Theorem gso':
@@ -971,12 +1521,11 @@ Section PTree.
     crush'.
     Restart.
 
-    Set MirrorSolve Solver "z3".
-    induction i;
+    time (induction i;
     induction j;
     induction m;
-    mirrorsolve.
-  Qed.
+    mirrorsolve).
+  Time Qed.
 
   Hint Immediate gso': eqns_explicit.
   Hint Resolve gso'.
@@ -1001,7 +1550,6 @@ Section PTree.
   Hint Resolve Pos_eqb_equation_8.
   Hint Resolve Pos_eqb_equation_9.
 
-  (* MS TODO *)
   (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":9, "ms":9, "hammer":9, "crush":7} *)
   Lemma Pos_eqb_spec : 
     forall l r,
@@ -1034,23 +1582,17 @@ Section PTree.
   Hint Immediate gso' : eqns_small.
 
   (*** MS EFFORT {"type": "edit"} *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":18, "ms":18, "hammer":14, "crush":8} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":2, "hammer":0, "crush":0} *)
   Theorem gso:
     forall (i j: positive) (x: A) (m: tree A),
     i <> j -> get i (set j x m) = get i m.
   Proof.
-    induction i;
-    induction j;
     induction m;
     hammer'.
     Restart.
-    induction i;
-    induction j;
     induction m;
     crush'.
     Restart.
-    induction i;
-    induction j;
     induction m;
     mirrorsolve.
   Time Qed.
@@ -1058,8 +1600,6 @@ Section PTree.
   Hint Resolve gso : eqns_explicit.
   Hint Resolve gso : eqns_small.
   Hint Immediate gso.
-
-  
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
@@ -1073,6 +1613,9 @@ Section PTree.
     Restart.
     mirrorsolve.
   Qed.
+
+  Hint Immediate gsspec : eqns_explicit.
+  Hint Resolve gsspec.
 
   (* 3 equations *)
   MetaCoq Run (infer_equations get_pos_default).
@@ -1115,20 +1658,19 @@ Section PTree.
 
 
   (*** MS EFFORT {"type": "edit"} *)
-  (* MS TODO tactics *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":24, "ms":24, "hammer":0, "crush":0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":3, "ms":3, "hammer":0, "crush":0} *)
   Lemma gNode:
     forall (i: positive) (l: tree A) (x: option A) (r: tree A),
     get i (Node l x r) = get_pos_default i x l r.
   Proof.
-    Set MirrorSolve Solver "cvc5".
-    
     induction i;
-    induction l;
-    induction x;
-    induction r;
+    hammer'.
+    Restart.
+    induction i;
+    crush'.
+    Restart.
+    induction i;
     mirrorsolve.
-
   Qed.
 
   Hint Immediate gNode : eqns_explicit.
@@ -1156,17 +1698,17 @@ Section PTree.
   Hint Immediate rem'_equation_20 : eqns_explicit.
   Hint Immediate rem'_equation_21 : eqns_explicit.
 
-  Set MirrorSolve Solver "z3".
-
+  Print get'.
 
   (* MS TODO tactics *)
-  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":0, "crush":0} *)
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
   Lemma get_Node_1 : 
     forall l x r, get xH (Node l x r) = x.
   Proof.
-    induction l;
-    induction x;
-    induction r;
+    hammer'.
+    Restart.
+    crush'.
+    Restart.
     mirrorsolve.
   Qed.
 
@@ -1175,9 +1717,10 @@ Section PTree.
   Lemma get_Node_l : 
     forall l x r i, get i~0 (Node l x r) = get i l.
   Proof.
-    induction l;
-    induction x;
-    induction r;
+    hammer'.
+    Restart.
+    crush'.
+    Restart.
     mirrorsolve.
   Qed.
 
@@ -1186,9 +1729,10 @@ Section PTree.
   Lemma get_Node_r : 
     forall l x r i, get i~1 (Node l x r) = get i r.
   Proof.
-    induction l;
-    induction x;
-    induction r;
+    hammer'.
+    Restart.
+    crush'.
+    Restart.
     mirrorsolve.
   Qed.
 
@@ -1196,6 +1740,7 @@ Section PTree.
   Hint Immediate get_Node_l : eqns_explicit.
   Hint Immediate get_Node_r : eqns_explicit.
   
+  Print rem'.
   (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":21, "ms":21, "hammer":0, "crush":0} *)
   Lemma get_rem' : 
     forall i t, 
@@ -1203,10 +1748,19 @@ Section PTree.
   Proof.
     induction i;
     induction t;
+    hammer'.
+    Restart.
+    induction i;
+    induction t;
+    crush'.
+    Restart.
+    induction i;
+    induction t;
     mirrorsolve.
   Qed.
 
   Hint Immediate get_rem' : eqns_explicit.
+  Hint Resolve get_rem'.
 
   (* Hint Immediate remove'_equation_1: eqns_explicit. *)
 
@@ -1225,11 +1779,16 @@ Section PTree.
 
   (*** MS EFFORT {"type": "edit"} *)
   (* MS TODO tactics *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":0, "crush":0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":2, "hammer":0, "crush":0} *)
   Theorem grs:
     forall (m: tree A) (i: positive), get i (remove i m) = None.
   Proof.
-    induction i;
+    induction m;
+    hammer'.
+    Restart.
+    induction m;
+    crush'.
+    Restart.
     induction m;
     mirrorsolve.
   Qed.
@@ -1252,6 +1811,16 @@ Section PTree.
     induction l;
     induction x;
     induction r;
+    hammer'.
+    Restart.
+    induction l;
+    induction x;
+    induction r;
+    crush'.
+    Restart.
+    induction l;
+    induction x;
+    induction r;
     mirrorsolve.
   Qed.
 
@@ -1259,6 +1828,16 @@ Section PTree.
   Lemma remove_Node_l : 
     forall l x r i, remove i~0 (Node l x r) = Node (remove i l) x r.
   Proof.
+    induction l;
+    induction x;
+    induction r;
+    hammer'.
+    Restart.
+    induction l;
+    induction x;
+    induction r;
+    crush'.
+    Restart.
     induction l;
     induction x;
     induction r;
@@ -1272,6 +1851,16 @@ Section PTree.
     induction l;
     induction x;
     induction r;
+    hammer'.
+    Restart.
+    induction l;
+    induction x;
+    induction r;
+    crush'.
+    Restart.
+    induction l;
+    induction x;
+    induction r;
     mirrorsolve.
   Qed.
 
@@ -1279,24 +1868,54 @@ Section PTree.
   Hint Immediate remove_Node_l : eqns_explicit.
   Hint Immediate remove_Node_r : eqns_explicit.
 
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":63, "ms":63, "hammer":0, "crush":0} *)
+  
+  Lemma gro': 
+    forall i j t,
+      i <> j -> get i (remove' j t) = get' i t.
+  Proof.
+    induction i;
+    induction j;
+    induction t;
+    hammer'.
+    Restart.
+    induction i;
+    induction j;
+    induction t;
+    crush'.
+    Restart.
+    induction i;
+    induction j;
+    induction t;
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate gro' : eqns_explicit.
+  Hint Immediate gro' : eqns_small.
+  Hint Resolve gro'.
+
   (*** MS EFFORT {"type": "edit"} *)
   (* MS TODO tactics *)
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":72, "ms":72, "hammer":0, "crush":0} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":2, "hammer":0, "crush":0} *)
   
   Theorem gro:
     forall (i j: positive) (m: tree A),
     i <> j -> get i (remove j m) = get i m.
   Proof.
-    induction i;
-    induction j;
     induction m;
-    (try induction t);
+    hammer'.
+    Restart.
+    induction m;
+    crush'.
+    Restart.
+    induction m;
     mirrorsolve.
   Qed.
 
   Hint Immediate grs : eqns_explicit.
   Hint Immediate gro : eqns_explicit.
 
+  Hint Immediate grs : eqns_small.
   Hint Immediate gro : eqns_small.
   Hint Immediate not_trivially_empty_equation_1 : eqns_small.
 
@@ -1307,6 +1926,10 @@ Section PTree.
     forall i j (m: tree A),
     get i (remove j m) = ite (Pos_eqb i j) None (get i m).
   Proof.
+    hammer'.
+    Restart.
+    crush'.
+    Restart.
     mirrorsolve.
   Qed.
 
@@ -1365,6 +1988,16 @@ Section PTree.
     not_trivially_empty l o r ->
     tree_rec' (Node l o r) = node_rec' l (tree_rec' l) o r (tree_rec' r).
   Proof.
+    induction l;
+    induction o;
+    induction r;
+    hammer'.
+    Restart.
+    induction l;
+    induction o;
+    induction r;
+    crush'.
+    Restart.
     induction l;
     induction o;
     induction r;
@@ -1471,8 +2104,6 @@ Section PTree.
   End TREE_IND. *)
 
 (** ** Extensionality property *)
-  Set MirrorSolve Solver "cvc5".
-  Set MirrorSolve Solver Flags "-tlimit=5000".
 
   (*** MS EFFORT {"type": "edit"} *)
  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":5, "hammer":0, "crush":0} *)
@@ -1480,6 +2111,12 @@ Section PTree.
     forall (m: tree' A), 
       ~ (forall i, get' i m = None).
   Proof.
+    induction m;
+    hammer'.
+    Restart.
+    induction m;
+    crush'.
+    Restart.
     induction m;
     mirrorsolve.
   Admitted.
@@ -1492,6 +2129,12 @@ Section PTree.
     forall (m: tree A),
     (forall i, get i m = None) -> m = Empty.
   Proof.
+    induction m;
+    hammer'.
+    Restart.
+    induction m;
+    crush'.
+    Restart.
     induction m;
     mirrorsolve.
   Admitted.
@@ -1507,15 +2150,20 @@ Section PTree.
   Proof.
     induction m1; 
     induction m2;
+    hammer'.
+    Restart.
+    induction m1; 
+    induction m2;
+    crush'.
+    Restart.
+    induction m1; 
+    induction m2;
     mirrorsolve.
   Admitted.
 
-  Hint Immediate extensionality : eqns_explicit.
-  Hint Immediate extensionality : eqns_small.
+  (* Hint Immediate extensionality : eqns_explicit.
+  Hint Immediate extensionality : eqns_small. *)
   (** Some consequences of extensionality *)
-
-  Set MirrorSolve Solver "z3".
-  Set MirrorSolve Solver Flags "-T:10".
 
   (*** MS EFFORT {"type": "edit"} *)
  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
@@ -1532,7 +2180,7 @@ Section PTree.
   Hint Immediate gsident : eqns_small.
 
   Set MirrorSolve Solver "cvc5".
-  Set MirrorSolve Solver Flags "--tlimit=5000".
+  Unset MirrorSolve Solver Flags.
 
   (*** MS EFFORT {"type": "edit"} *)
  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
@@ -1546,8 +2194,72 @@ Section PTree.
   Qed.
 
   Hint Immediate set2 : eqns_explicit.
+  Hint Resolve set2.
+
+  Set MirrorSolve Solver "cvc5".
+  Set MirrorSolve Solver Flags "--tlimit=5000".
+
 
 (** ** Boolean equality *)
+
+  (* Hypothesis (beqA_spec: (forall x y, beqA x y = true <-> x = y)). *)
+
+  Axiom beqA'_spec : (forall x y, beqA' x y = true <-> x = y).
+  (* Admitted. *)
+  (* Proof.
+    intros.
+    eapply beqA_spec.
+  Qed. *)
+  Hint Immediate beqA'_spec : eqns_explicit.
+  Hint Immediate beqA'_spec : eqns_small.
+
+    (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":49, "ms":49, "hammer":0, "crush":0} *)
+
+  Lemma beq'_eq_spec : 
+    forall l r,
+      beq' l r = true <-> l = r.
+  Proof.
+    induction l;
+    induction r;
+    hammer'.
+    Restart.
+    induction l;
+    induction r;
+    crush'.
+    Restart.
+    induction l;
+    induction r;
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate beq'_eq_spec : eqns_explicit.
+  Hint Immediate beq'_eq_spec : eqns_small.
+  Hint Resolve beq'_eq_spec.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":4, "ms":4, "hammer":0, "crush":0} *)
+  Lemma beq_eq_spec : 
+    forall m1 m2,
+      beq m1 m2 = true <-> m1 = m2.
+  Proof.
+    induction m1;
+    induction m2;
+    hammer'.
+    Restart.
+    induction m1;
+    induction m2;
+    crush'.
+    Restart.
+    induction m1;
+    induction m2;
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate beq_eq_spec : eqns_explicit.
+  Hint Resolve beq_eq_spec.
+
+  (* Lemma beq_optA_spec:
+    forall l r,
+      beq_optA l r = true <-> l = r *)
 
   (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":64, "ms":64, "hammer":0, "crush":0} *)
@@ -1559,7 +2271,22 @@ Section PTree.
       (beq l1 l2 && beq_optA o1 o2 && beq r1 r2)%bool.
   Proof.
 
-    
+    induction l1; 
+    induction o1;
+    induction r1;
+    induction l2;
+    induction o2;
+    induction r2;
+    hammer'.
+    Restart.
+    induction l1; 
+    induction o1;
+    induction r1;
+    induction l2;
+    induction o2;
+    induction r2;
+    crush'.
+    Restart.
     time "boolean queries" (
     induction l1; 
     induction o1;
@@ -1574,27 +2301,54 @@ Section PTree.
   Hint Immediate beq_NN : eqns_explicit.
   Hint Immediate beq_NN : eqns_small.
 
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":2, "hammer":0, "crush":0} *)
+  Lemma beq_optA_resp:
+    forall m x, 
+      beq_optA (get x m) (get x m) = true.
+  Proof.
+    induction m;
+    hammer'.
+    Restart.
+    induction m;
+    crush'.
+    Restart.
+    induction m; 
+    mirrorsolve.
+  Qed.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
+  Lemma beq_optA_spec:
+    forall l r, 
+      (forall x, beq_optA (get x l) (get x r) = true) -> 
+      l = r.
+  Proof.
+    intros.
+    eapply extensionality.
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate beq_optA_resp : eqns_explicit.
+  Hint Immediate beq_eq_spec : eqns_small.
+
+  (* Hint Immediate beq_optA_spec : eqns_explicit.
+  Hint Immediate beq_optA_spec : eqns_small. *)
+
 (*** MS EFFORT {"type": "edit"} *)
- (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":16, "ms":10, "hammer":0, "crush":0} *)
+ (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
   
-    Lemma beq_correct_bool:
-      forall m1 m2,
-      beq m1 m2 = true <-> (forall x, beq_optA (get x m1) (get x m2) = true).
-    Proof.
-      induction m1;
-      induction m2;
-      split;
-      intros;
-      (try induction x);
-      mirrorsolve.
-    Admitted.
+  Lemma beq_correct_bool:
+    forall m1 m2,
+    beq m1 m2 = true <-> (forall x, beq_optA (get x m1) (get x m2) = true).
+  Proof.
+    mirrorsolve.
+  Admitted.
 
   (*** MS EFFORT {"type": "lemma"} *)
   Lemma get_eq_booL_eqn_1 : 
     forall x m1 m2 y1 y2, 
       get x m1 = Some y1 -> 
       get x m2 = Some y2 -> 
-      get_eq_bool x m1 m2 <-> beqA y1 y2 = true.
+      get_eq_bool x m1 m2 <-> beqA' y1 y2 = true.
   Proof.
     intros.
     unfold get_eq_bool.
@@ -1650,126 +2404,126 @@ Section PTree.
   Hint Immediate get_eq_booL_eqn_3 : eqns_explicit.
   Hint Immediate get_eq_booL_eqn_4 : eqns_explicit.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Hint Immediate get_eq_booL_eqn_1 : eqns_small.
+  Hint Immediate get_eq_booL_eqn_2 : eqns_small.
+  Hint Immediate get_eq_booL_eqn_3 : eqns_small.
+  Hint Immediate get_eq_booL_eqn_4 : eqns_small.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":16, "ms":13, "hammer":0, "crush":0} *)
+  Lemma get_eq_bool_spec: 
+    forall l r,
+      l = r <-> (forall x, get_eq_bool x l r).
+  Proof.
+    induction l;
+    induction r;
+    split;
+    try (induction x);
+    mirrorsolve.
+  Admitted.
+
+
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":0, "hammer":0, "crush":0} *)
     Theorem beq_correct:
       forall m1 m2,
       beq m1 m2 = true <->
       (forall x, get_eq_bool x m1 m2).
-
-    (* Theorem beq_correct:
-      forall m1 m2,
-      beq m1 m2 = true <->
-      (forall (x: elt),
-       match get x m1, get x m2 with
-       | None, None => True
-       | Some y1, Some y2 => beqA y1 y2 = true
-       | _, _ => False
-       end). *)
     Proof.
-      intros. rewrite beq_correct_bool. unfold beq_optA. split; intros.
-    - specialize (H x). destruct (get x m1), (get x m2); intuition congruence.
-    - specialize (H x). destruct (get x m1), (get x m2); intuition auto.
+      intros.
+      erewrite <- get_eq_bool_spec.
+      mirrorsolve.
     Qed.
 
 (** ** Collective operations *)
+
+  (* MetaCoq Run (infer_equations prev). *)
+
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma prev_eqn: 
+    forall i, 
+      prev i = prev_append i xH.
+  Proof.
+    intros;
+    eapply eq_refl.
+  Qed.
+
+  Hint Immediate prev_eqn : eqns_explicit.
+  Hint Resolve prev_eqn.
+
+  (* Set MirrorSolve Query Debug. *)
+
+  MetaCoq Run (infer_equations prev_append).
+
+  Hint Immediate prev_append_equation_1 : eqns_explicit.
+  Hint Resolve prev_append_equation_1.
+  Hint Immediate prev_append_equation_2 : eqns_explicit.
+  Hint Resolve prev_append_equation_2.
+  Hint Immediate prev_append_equation_3 : eqns_explicit.
+  Hint Resolve prev_append_equation_3.
+
     
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Lemma prev_append_prev i j:
-    prev (prev_append i j) = prev_append j i.
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":3, "ms":3, "hammer":0, "crush":0} *)
+  Lemma prev_append_prev:
+    forall i j,
+      prev (prev_append i j) = prev_append j i.
   Proof.
-    revert j. unfold prev.
-    induction i as [i IH|i IH|]. 3: reflexivity.
-    intros j. simpl. rewrite IH. reflexivity.
-    intros j. simpl. rewrite IH. reflexivity.
+    induction i; mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Lemma prev_involutive i :
-    prev (prev i) = i.
-  Proof (prev_append_prev i xH).
+  Hint Immediate prev_append_prev : eqns_explicit.
+  Hint Resolve prev_append_prev.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Lemma prev_append_inj i j j' :
-    prev_append i j = prev_append i j' -> j = j'.
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":1, "ms":1, "hammer":0, "crush":0} *)
+  Lemma prev_involutive :
+    forall i, 
+      prev (prev i) = i.
   Proof.
-    revert j j'.
-    induction i as [i Hi|i Hi|]; intros j j' H; auto;
-    specialize (Hi _ _ H); congruence.
+    mirrorsolve.
   Qed.
 
-  Fixpoint map' {A B} (f: positive -> A -> B) (m: tree' A) (i: positive)
-           {struct m} : tree' B :=
-    match m with
-    | Node001 r => Node001 (map' f r (xI i))
-    | Node010 x => Node010 (f (prev i) x)
-    | Node011 x r => Node011 (f (prev i) x) (map' f r (xI i))
-    | Node100 l => Node100 (map' f l (xO i))
-    | Node101 l r => Node101 (map' f l (xO i)) (map' f r (xI i))
-    | Node110 l x => Node110 (map' f l (xO i)) (f (prev i) x)
-    | Node111 l x r => Node111 (map' f l (xO i)) (f (prev i) x) (map' f r (xI i))
-    end.
+  Hint Immediate prev_involutive : eqns_explicit.
+  Hint Resolve prev_involutive.
 
-  Definition map {A B} (f: positive -> A -> B) (m: tree A) :=
-    match m with
-    | Empty => Empty
-    | Nodes m => Nodes (map' f m xH)
-    end.
-
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Lemma gmap':
-    forall {A B} (f: positive -> A -> B) (i j : positive) (m: tree' A),
-    get' i (map' f m j) = option_map (f (prev (prev_append i j))) (get' i m).
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Lemma prev_append_inj :
+    forall i j j', 
+      prev_append i j = prev_append i j' -> 
+      j = j'.
   Proof.
-    induction i; intros; destruct m; simpl; auto.
+    induction i; 
+    mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Theorem gmap:
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  (* Lemma gmap':
+    forall (i j : positive) (m: tree' A),
+    get' i (map' m j) = option_map (prev (prev_append i j)) (get' i m).
+  Proof.
+  Admitted. *)
+
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  (* Theorem gmap:
     forall {A B} (f: positive -> A -> B) (i: positive) (m: t A),
     get i (map f m) = option_map (f i) (get i m).
   Proof.
     intros; destruct m as [|m]; simpl. auto. rewrite gmap'. repeat f_equal. exact (prev_involutive i).
-  Qed.
+  Qed. *)
 
-  Fixpoint map1' {A B} (f: A -> B) (m: tree' A) {struct m} : tree' B :=
-    match m with
-    | Node001 r => Node001 (map1' f r)
-    | Node010 x => Node010 (f x)
-    | Node011 x r => Node011 (f x) (map1' f r)
-    | Node100 l => Node100 (map1' f l)
-    | Node101 l r => Node101 (map1' f l) (map1' f r)
-    | Node110 l x => Node110 (map1' f l) (f x)
-    | Node111 l x r => Node111 (map1' f l) (f x) (map1' f r)
-    end.
+  
 
-  Definition map1 {A B} (f: A -> B) (m: t A) : t B :=
-    match m with
-    | Empty => Empty
-    | Nodes m => Nodes (map1' f m)
-    end.
-
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Theorem gmap1:
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  (* Theorem gmap1:
     forall {A B} (f: A -> B) (i: elt) (m: t A),
     get i (map1 f m) = option_map f (get i m).
   Proof.
     intros. destruct m as [|m]; simpl. auto.
     revert i; induction m; destruct i; simpl; auto.
-  Qed.
+  Qed. *)
 
-  Definition map_filter1_nonopt {A B} (f: A -> option B) (m: tree A) : tree B :=
-    tree_rec
-      Empty
-      (fun l lrec o r rrec => Node lrec (match o with None => None | Some a => f a end) rrec)
-      m.
-
-  Local Transparent Node.
-
-  Definition map_filter1 :=
-    Eval cbv [map_filter1_nonopt tree_rec tree_rec' Node] in @map_filter1_nonopt.
-
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Lemma gmap_filter1:
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  (* Lemma gmap_filter1:
     forall {A B} (f: A -> option B) (m: tree A) (i: positive),
     get i (map_filter1 f m) = match get i m with None => None | Some a => f a end.
   Proof.
@@ -1777,57 +2531,34 @@ Section PTree.
     intros until f. induction m using tree_ind; intros.
   - auto.
   - rewrite unroll_tree_rec by auto. rewrite ! gNode; destruct i; auto.
-  Qed.
+  Qed. *)
 
-  Definition filter1 {A} (pred: A -> bool) (m: t A) : t A :=
-    map_filter1 (fun a => if pred a then Some a else None) m.
+  (* Definition filter1 {A} (pred: A -> bool) (m: t A) : t A :=
+    map_filter1 (fun a => if pred a then Some a else None) m. *)
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Theorem gfilter1:
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  (* Theorem gfilter1:
     forall {A} (pred: A -> bool) (i: elt) (m: t A),
     get i (filter1 pred m) =
     match get i m with None => None | Some x => if pred x then Some x else None end.
   Proof.
     intros. apply gmap_filter1.
-  Qed. 
+  Qed.  *)
 
-  Section COMBINE.
-
-  Variables A B C: Type.
-  Variable f: option A -> option B -> option C.
-  Hypothesis f_none_none: f None None = None.
-
-  Let combine_l := map_filter1 (fun a => f (Some a) None).
-  Let combine_r := map_filter1 (fun b => f None (Some b)).
-
-  Let combine_nonopt (m1: tree A) (m2: tree B) : tree C :=
-    tree_rec2
-      Empty
-      combine_r
-      combine_l
-      (fun l1 o1 r1 l2 o2 r2 lrec rrec =>
-        Node lrec
-             (match o1, o2 with None, None => None | _, _ => f o1 o2 end)
-             rrec)
-      m1 m2.
-
-  Definition combine :=
-    Eval cbv [combine_nonopt tree_rec2 tree_rec2'] in combine_nonopt.
-
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Lemma gcombine_l: forall m i, get i (combine_l m) = f (get i m) None.
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  (* Lemma gcombine_l: forall m i, get i (combine_l m) = f (get i m) None.
   Proof.
     intros; unfold combine_l; rewrite gmap_filter1. destruct (get i m); auto.
-  Qed.
+  Qed. *)
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Lemma gcombine_r: forall m i, get i (combine_r m) = f None (get i m).
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  (* Lemma gcombine_r: forall m i, get i (combine_r m) = f None (get i m).
   Proof.
     intros; unfold combine_r; rewrite gmap_filter1. destruct (get i m); auto.
-  Qed.
+  Qed. *)
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Theorem gcombine:
+  (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  (* Theorem gcombine:
       forall (m1: t A) (m2: t B) (i: positive),
       get i (combine m1 m2) = f (get i m1) (get i m2).
   Proof.
@@ -1838,12 +2569,10 @@ Section PTree.
   - unfold combine_nonopt; rewrite unroll_tree_rec2_NE by auto. apply gcombine_l.
   - unfold combine_nonopt; rewrite unroll_tree_rec2_NN by auto.
     rewrite ! gNode; destruct i; auto. destruct o, o0; auto.
-  Qed.
-
-  End COMBINE.
+  Qed. *)
 
   (*** MS LEMMA {"original": True, "sfo": False, "tsfo": False, "ho": True, "goals":0, "ms":0, "hammer":0, "crush":0} *)
-  Theorem combine_commut:
+  (* Theorem combine_commut:
     forall (A B: Type) (f g: option A -> option A -> option B),
     f None None = None -> g None None = None ->
     (forall (i j: option A), f i j = g j i) ->
@@ -1851,109 +2580,236 @@ Section PTree.
     combine f m1 m2 = combine g m2 m1.
   Proof.
     intros. apply extensionality; intros i. rewrite ! gcombine by auto. auto.
-  Qed.
+  Qed. *)
 
 (** ** List of all bindings *)
 
-  Fixpoint xelements' {A} (m : tree' A) (i: positive) (k: list (positive * A))
-                     {struct m} : list (positive * A) :=
-    match m with
-    | Node001 r => xelements' r (xI i) k
-    | Node010 x => (prev i, x) :: k
-    | Node011 x r => (prev i, x) :: xelements' r (xI i) k
-    | Node100 l => xelements' l (xO i) k
-    | Node101 l r => xelements' l (xO i) (xelements' r (xI i) k)
-    | Node110 l x => xelements' l (xO i) ((prev i, x)::k)
-    | Node111 l x r => xelements' l (xO i) ((prev i, x):: (xelements' r (xI i) k))
-    end.
+  MetaCoq Run (infer_equations xelements).
+  Hint Immediate xelements_equation_1 : eqns_explicit.
+  Hint Immediate xelements_equation_2 : eqns_explicit.
 
-  Definition elements {A} (m : t A) : list (positive * A) := 
-    match m with Empty => nil | Nodes m' => xelements' m' xH nil end.
+  MetaCoq Run (infer_equations xelements').
+  Hint Immediate xelements'_equation_1 : eqns_explicit.
+  Hint Immediate xelements'_equation_2 : eqns_explicit.
+  Hint Immediate xelements'_equation_3 : eqns_explicit.
+  Hint Immediate xelements'_equation_4 : eqns_explicit.
+  Hint Immediate xelements'_equation_5 : eqns_explicit.
+  Hint Immediate xelements'_equation_6 : eqns_explicit.
+  Hint Immediate xelements'_equation_7 : eqns_explicit.
 
-  Definition xelements {A} (m : t A) (i: positive) : list (positive * A) := 
-    match m with Empty => nil | Nodes m' => xelements' m' i nil end.
+  MetaCoq Run (infer_equations app_pos_A).
+  Hint Immediate app_pos_A_equation_1 : eqns_explicit.
+  Hint Immediate app_pos_A_equation_2 : eqns_explicit.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma xelements'_append:
-    forall A (m: tree' A) i k1 k2,
-    xelements' m i (k1 ++ k2) = xelements' m i k1 ++ k2.
+    forall (m: tree' A) i k1 k2,
+      (xelements' m i (app_pos_A k1 k2) = app_pos_A (xelements' m i k1) k2)%list.
   Proof.
-    induction m; intros; simpl; auto.
-  - f_equal; auto.
-  - rewrite IHm2, IHm1. auto.
-  - rewrite <- IHm. auto.
-  - rewrite IHm2, <- IHm1. auto.
+    induction m;
+    mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Hint Immediate xelements'_append : eqns_explicit.
+
+  MetaCoq Run (infer_equations o2l).
+  Hint Immediate o2l_equation_1 : eqns_explicit.
+  Hint Immediate o2l_equation_2 : eqns_explicit.
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":8, "ms":8, "hammer":0, "crush":0} *)
   Lemma xelements_Node:
-    forall A (l: tree A) (o: option A) (r: tree A) i,
+    forall (l: tree A) (o: option A) (r: tree A) i,
     xelements (Node l o r) i =
-       xelements l (xO i)
-    ++ match o with None => nil | Some v => (prev i, v) :: nil end
-    ++ xelements r (xI i).
+      app_pos_A (xelements l (xO i))
+      (app_pos_A 
+        (o2l i o)
+      (xelements r (xI i))).
   Proof.
-    Local Transparent Node.
-    intros; destruct l, o, r; simpl; rewrite <- ? xelements'_append; auto.
+    induction l;
+    induction o;
+    induction r;
+    mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  MetaCoq Run (infer_equations In_pos_A).
+  Hint Immediate In_pos_A_equation_1 : eqns_small.
+  Hint Immediate In_pos_A_equation_2 : eqns_small.
+
+  (*** MS LEMMA {"original": False, "sfo": True, "tsfo": True, "ho": False, "goals":4, "ms":4, "hammer":0, "crush":0} *)
+  Lemma in_app_pos_A : 
+    forall l r v, 
+      In_pos_A v (app_pos_A l r) <-> In_pos_A v l \/ In_pos_A v r.
+  Proof.
+    induction l;
+    induction r;
+    mirrorsolve.
+  Qed.
+
+  Ltac invert_Node := 
+    (erewrite <- Node_equation_1) ||
+    (erewrite <- Node_equation_2) ||
+    (erewrite <- Node_equation_3) ||
+    (erewrite <- Node_equation_4) || 
+    (erewrite <- Node_equation_5) ||
+    (erewrite <- Node_equation_6) ||
+    (erewrite <- Node_equation_7) ||
+    (erewrite <- Node_equation_8).
+
+  Lemma nodes_ind:
+    forall (P: tree A -> Prop), 
+      P Empty -> 
+      (forall l o r, not_trivially_empty l o r -> P l -> P r -> P (Node l o r)) -> 
+      forall t, P t.
+  Proof.
+    intros ? ?.
+    induction t; trivial.
+    induction t; simpl;
+    invert_Node; 
+    eapply H0;
+    simpl;
+    intuition eauto.
+  Qed.
+  
+  Hint Immediate in_app_pos_A : eqns_explicit.
+  Hint Immediate in_app_pos_A : eqns_small.
+
+  Hint Immediate xelements_Node : eqns_explicit.
+  Hint Immediate gNode : eqns_explicit.
+  Hint Immediate prev_append_prev : eqns_explicit.
+
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":6, "ms":6, "hammer":0, "crush":0} *)
   Lemma xelements_correct:
-    forall A (m: tree A) i j v,
-    get i m = Some v -> In (prev (prev_append i j), v) (xelements m j).
+    forall (m: tree A) i j v,
+      get i m = Some v -> 
+      In_pos_A (prev (prev_append i j), v) (xelements m j).
   Proof.
-    intros A. induction m using tree_ind; intros.
-  - discriminate.
-  - rewrite xelements_Node, ! in_app. rewrite gNode in H0. destruct i.
-    + right; right. apply (IHm2 i (xI j)); auto.
-    + left. apply (IHm1 i (xO j)); auto.
-    + right; left. subst o. rewrite prev_append_prev. auto with coqlib.
+    induction m using nodes_ind;
+    try (destruct i);
+    mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Hint Immediate xelements_correct : eqns_explicit.
+  Hint Immediate xelements_correct : eqns_small.
+
+  MetaCoq Run (infer_equations elements).
+  Hint Immediate elements_equation_1 : eqns_explicit.
+  Hint Immediate elements_equation_2 : eqns_explicit.
+
+  Set MirrorSolve Solver "z3".
+  Set MirrorSolve Solver Flags "-T:5".
+  
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":1, "hammer":0, "crush":0} *)
   Theorem elements_correct:
-    forall A (m: t A) (i: positive) (v: A),
-    get i m = Some v -> In (i, v) (elements m).
+    forall (m: tree A) (i: positive) (v: A),
+    get i m = Some v -> In_pos_A (i, v) (elements m).
   Proof.
-    intros A m i v H.
-    generalize (xelements_correct m i xH H). rewrite prev_append_prev. auto.
+
+    destruct m;
+    mirrorsolve.
+    Restart.
+
+    intros m i v H.
+    generalize (xelements_correct m i xH v H). 
+    destruct m;
+    mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Set MirrorSolve Solver "cvc5".
+  Set MirrorSolve Solver Flags "--tlimit=5000".
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":1, "hammer":0, "crush":0} *)
   Lemma in_xelements:
-    forall A (m: tree A) (i k: positive) (v: A) ,
-    In (k, v) (xelements m i) ->
-    exists j, k = prev (prev_append j i) /\ get j m = Some v.
+    forall (m: tree A) (i k: positive) (v: A),
+    In_pos_A (k, v) (xelements m i) ->
+    ~ (forall j, ~ (k = prev (prev_append j i) /\ get j m = Some v)).
   Proof.
-    intros A. induction m using tree_ind; intros.
-  - elim H.
-  - rewrite xelements_Node, ! in_app in H0. destruct H0 as [P | [P | P]].
-    + exploit IHm1; eauto. intros (j & Q & R). exists (xO j); rewrite gNode; auto.
-    + destruct o; simpl in P; intuition auto. inv H0. exists xH; rewrite gNode; auto.
-    + exploit IHm2; eauto. intros (j & Q & R). exists (xI j); rewrite gNode; auto.
+    induction m using nodes_ind;
+    mirrorsolve.
+    Restart.
+    induction m using nodes_ind.
+    - mirrorsolve.
+    - intros. 
+      rewrite xelements_Node, ! in_app_pos_A in H0.
+      destruct H0 as [P | [P | P]];
+      mirrorsolve.
   Qed.
 
-  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
+  Hint Immediate prev_append_inj : eqns_explicit.
+  Hint Immediate in_xelements : eqns_small.
+
+  (*** MS EFFORT {"type": "edit"} *)
+  (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":2, "ms":2, "hammer":0, "crush":0} *)
   Theorem elements_complete:
-    forall A (m: t A) (i: positive) (v: A),
-    In (i, v) (elements m) -> get i m = Some v.
+    forall (m: tree A) (i: positive) (v: A),
+    In_pos_A (i, v) (elements m) -> get i m = Some v.
   Proof.
-    intros A m i v H. exploit in_xelements; eauto. intros (j & P & Q).
-    rewrite prev_append_prev in P. change i with (prev_append 1 i) in P.
-    exploit prev_append_inj; eauto. intros; congruence.
+    induction m;
+    mirrorsolve.
   Qed.
 
-  Definition xkeys {A} (m: t A) (i: positive) := List.map fst (xelements m i).
+  (*** MS EFFORT {"type": "lemma"} *)
+  Lemma xkeys_eqn : 
+    forall m i, xkeys m i = map_fst (xelements m i).
+  Proof.
+    intros.
+    exact eq_refl.
+  Qed.
 
+  Hint Immediate xkeys_eqn : eqns_explicit.
+
+  MetaCoq Run (infer_equations o2l_pos).
+  Hint Immediate o2l_pos_equation_1 : eqns_explicit.
+  Hint Immediate o2l_pos_equation_2 : eqns_explicit.
+
+  MetaCoq Run (infer_equations app_pos).
+  Hint Immediate app_pos_equation_1 : eqns_explicit.
+  Hint Immediate app_pos_equation_2 : eqns_explicit.
+
+  MetaCoq Run (infer_equations map_fst).
+  Hint Immediate map_fst_equation_1 : eqns_explicit.
+  Hint Immediate map_fst_equation_2 : eqns_explicit.
+
+  Lemma map_fst_app:
+    forall x y,
+      map_fst (app_pos_A x y) = app_pos (map_fst x) (map_fst y).
+  Proof.
+    induction x;
+    mirrorsolve.
+  Qed.
+
+  Hint Immediate map_fst_app : eqns_explicit.
+
+  MetaCoq Run (infer_equations fst).
+
+  (*** MS EFFORT {"type": "edit"} *)
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
   Lemma xkeys_Node:
-    forall A (m1: t A) o (m2: t A) i,
+    forall (m1: tree A) o (m2: tree A) i,
     xkeys (Node m1 o m2) i =
-       xkeys m1 (xO i)
-    ++ match o with None => nil | Some v => prev i :: nil end
-    ++ xkeys m2 (xI i).
+      app_pos (xkeys m1 (xO i))
+      (app_pos 
+        (o2l_pos i o)
+        (xkeys m2 (xI i))).
   Proof.
-    intros. unfold xkeys. rewrite xelements_Node, ! map_app. destruct o; auto.
+    intros. unfold xkeys. rewrite xelements_Node, ! map_fst_app.
+    destruct o.
+    simpl o2l.
+    simpl o2l_pos.
+    pose proof map_fst_equation_1.
+    pose proof map_fst_equation_2.
+    unfold ".1" in H0.
+    mirrorsolve.
+    simpl map_fst.
+    mirrorsolve.
+
+    auto.
+    destruct o;
+    mirrorsolve.
   Qed.
 
   (*** MS LEMMA {"original": True, "sfo": True, "tsfo": True, "ho": False, "goals":0, "ms":0, "hammer":0, "crush":0} *)
@@ -2102,6 +2958,8 @@ Section PTree.
     rewrite prev_append_prev. auto.
   Qed.
 
+
+  
 (** ** Folding over a tree *)
 
   Fixpoint fold' {A B} (f: B -> positive -> A -> B)

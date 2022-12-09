@@ -106,3 +106,5 @@ val format_args : Constr.t array -> Pp.t
 val reg_ind_decl : string -> EConstr.t -> EConstr.t -> unit
 
 val load_printing_ctx : Constr.t -> unit
+
+val extract_interp_fm_err : Constr.t -> Constr.t

@@ -79,6 +79,32 @@ let pretty_hints (f: Constr.t -> string) (tbl: hint_db) : string =
   in 
   Hint_db.fold worker tbl ""
 
+let gather_hints (tbl: hint_db) : Constr.t list = 
+  let get_full_hint (x: FullHint.t) = 
+    begin match FullHint.repr x with
+    | Res_pf x
+    | ERes_pf x
+    | Give_exact x
+    | Res_pf_THEN_trivial_fail x -> 
+      let (_, hint_eterm) = Hints.hint_as_term x in 
+      let env = Global.env () in
+      let sigma = Evd.from_env env in
+      let e = Util.fetch_const_type (EConstr.to_constr sigma hint_eterm) in 
+      begin match e with 
+      | Some e -> e
+      | None -> 
+        let _ = Feedback.msg_warning @@ Pp.str "unrecognized hint type:" in
+        let _ = Feedback.msg_debug @@ Constr.debug_print (EConstr.to_constr sigma hint_eterm) in 
+          assert false
+      end
+    | _ -> 
+      let _ = Feedback.msg_warning @@ Pp.str "unrecognized hint" in assert false
+    end in
+  let worker _ _ fhs acc = 
+    (List.map get_full_hint fhs) @ acc
+  in 
+    Hint_db.fold worker tbl []
+
 
 (* let debug_hint_tbl name = 
   searchtable_map *)

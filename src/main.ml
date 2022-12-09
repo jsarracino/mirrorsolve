@@ -1222,6 +1222,12 @@ let extract_interp_fm (e: C.t) : C.t option  =
       Some (a_last es)
     else raise bedef
   else raise bedef
+
+let extract_interp_fm_err e = 
+  begin match extract_interp_fm e with 
+  | Some x -> x
+  | None -> raise bedef
+  end
   
 let build_query (ctx: printing_ctx) (opts: query_opts) (e: C.t)  : string = 
   let ind_sorts, us_sorts = List.partition (in_map ctx.ctx_inds) @@ custom_sorts ctx.ctx_sorts in 

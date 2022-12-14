@@ -3,7 +3,7 @@ opam-version: "2.0"
 synopsis: "SMT integration for Coq using reflection"
 description: "SMT integration for Coq using reflection"
 maintainer: ["jsarracino@cornell.edu"]
-authors: ["John Sarracino" "Ryan Doenges" "Tobias Kappé"]
+authors: ["John Sarracino" "Ryan Doenges" "Tobias Kappe"]
 homepage: "https://github.com/jsarracino/mirrorsolve"
 bug-reports: "https://github.com/jsarracino/mirrorsolve"
 depends: [

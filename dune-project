@@ -18,7 +18,7 @@
  (synopsis "SMT integration for Coq using reflection")
  (description  "SMT integration for Coq using reflection")
  (maintainers   "jsarracino@cornell.edu")
- (authors      "John Sarracino" "Ryan Doenges" "Tobias Kappé")
+ (authors      "John Sarracino" "Ryan Doenges" "Tobias Kappe")
  (homepage     "https://github.com/jsarracino/mirrorsolve")
  (bug_reports  "https://github.com/jsarracino/mirrorsolve")
 )

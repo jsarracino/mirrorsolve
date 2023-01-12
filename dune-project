@@ -14,6 +14,7 @@
   (coq (and (>= 8.15) (< 8.16)))
   ; ocaml-lsp-server
   coq-hammer
+  (camlp-streams (>= 5.0.1))
  )
  (synopsis "SMT integration for Coq using reflection")
  (description  "SMT integration for Coq using reflection")

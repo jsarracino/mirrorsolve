@@ -14,6 +14,7 @@ depends: [
   "coq-metacoq" {= "1.0+8.15"}
   "coq" {>= "8.15" & < "8.16"}
   "coq-hammer"
+  "camlp-streams" {>= "5.0.1"}
 ]
 build: [
   ["dune" "subst"] {pinned}

@@ -20,6 +20,7 @@
    coq-core.tactics
    coq-core.vernac                       ; needed for vernac extend
    coq-core.plugins.ltac                 ; needed for tactic extend
+   camlp-streams                         ; needed for Stream module
  )
  ; (modules (:standard \ Hint))
 )

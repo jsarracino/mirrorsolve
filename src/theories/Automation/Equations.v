@@ -689,6 +689,15 @@ Definition infer_equivalences_gen_match_return
            (map generate_case ind_body.(ind_ctors)))
 .
 
+
+MetaCoq Quote Definition conj_quoted := conj.
+
+Fixpoint nest_conjunction (n: nat) :=
+    match n with
+    | 0 => I_quoted
+    | S n => tApp conj_quoted [hole; hole; tRel 0; lift0 1 (nest_conjunction n)]
+    end.
+
 Definition infer_equivalences_gen_match_term
   (ind: inductive)
   (term_ret: term)
@@ -696,11 +705,20 @@ Definition infer_equivalences_gen_match_term
   TemplateMonad term
 :=
   ind_body <- inductive_extract_body ind ;;
-  let generate_case ctor :=
-    {| bcontext := repeat binder_anon #|ctor.(cstr_args)|;
-       bbody := I_quoted |} in
-  tmReturn
-    (tCase {| ci_ind := ind;
+  let generate_case ctor : TemplateMonad (branch term) :=
+    match ctor.(cstr_indices) with
+    | tApp (tConstruct _ _ _) indexed_args :: nil =>
+      (* TODO: Properly figure out the number of args to skip here. *)
+      let arg_count := #|ctor.(cstr_args)|
+                       + #|ind_body.(ind_indices)|
+                       - #|indexed_args| in
+      tmReturn {| bcontext := repeat binder_anon #|ctor.(cstr_args)|;
+                  bbody := nest_conjunction arg_count |}
+    | _ =>
+      tmFail "Failed to retrieve indexed arguments"
+    end in
+  bodies <- monad_map generate_case ind_body.(ind_ctors) ;;
+  let ret := (tCase {| ci_ind := ind;
               ci_npar := 1;
               ci_relevance := Relevant |}
            {| puinst := [];
@@ -708,7 +726,8 @@ Definition infer_equivalences_gen_match_term
               pcontext := [binder_anon; binder_anon];
               preturn := term_ret |}
            (tRel 0)
-           (map generate_case ind_body.(ind_ctors)))
+           bodies) in
+  tmReturn ret
 .
 
 Fixpoint infer_equivalences_walk_cstrs

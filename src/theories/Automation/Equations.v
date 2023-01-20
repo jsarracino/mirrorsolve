@@ -29,7 +29,7 @@ Check Coq.Strings.BinaryString.of_nat.
 
 Eval compute in Coq.Strings.BinaryString.of_nat 5.
 
-Definition n_to_str n := 
+Definition n_to_str n :=
   String.of_string (Coq.Strings.BinaryString.of_nat n).
 
 Definition make_binder (n: nat) :=
@@ -614,6 +614,10 @@ Section Tests.
   Check rev_equation_1.
   Check rev_equation_2.
 
+  MetaCoq Run (infer_equations In).
+  Check In_equation_1.
+  Check In_equation_2.
+
   Definition In_A := Eval compute in @In nat.
 
   MetaCoq Run (infer_equations In_A).
@@ -625,3 +629,182 @@ Section Tests.
     intros; eapply iff_refl.
   Qed.
 End Tests.
+
+(* The term we are trying to generate has a lot of leeway for holes! *)
+Definition NoDup_equation_2 :
+    forall A x (l: list A),
+      @NoDup A (x :: l) -> _
+    := (
+    fun _ _ =>
+      (fun _ y =>
+        match y in (NoDup y') return
+          match y' with
+          | _ :: _ => _
+          | _ => _
+          end
+        with
+        | NoDup_nil => I
+        | NoDup_cons _ _ p q => conj p q
+        end
+      )
+  ).
+
+Check NoDup_equation_2.
+
+Definition binder_anon :=
+  {| binder_name := nAnon;
+     binder_relevance := Relevant |}
+.
+
+MetaCoq Quote Definition I_quoted := I.
+
+Definition inductive_extract_body (ind: inductive) : TemplateMonad _ :=
+  ind_def <- tmQuoteInductive ind.(inductive_mind) ;;
+  match ind_def.(ind_bodies) with
+  | ind_body :: nil =>
+    tmReturn ind_body
+  | _ =>
+    tmFail "Inductive parameter type has more than one body"
+  end
+.
+
+Definition infer_equivalences_gen_match_return
+  (ind: inductive)
+:
+  TemplateMonad term
+:=
+  ind_body <- inductive_extract_body ind ;;
+  let generate_case ctor :=
+    {| bcontext := repeat binder_anon #|ctor.(cstr_args)|;
+       bbody := hole |} in
+  tmReturn
+    (tCase {| ci_ind := ind;
+              ci_npar := 1;
+              ci_relevance := Relevant |}
+           {| puinst := [];
+              pparams := [hole];
+              pcontext := [binder_anon];
+              preturn := hole |}
+           (tRel 1)
+           (map generate_case ind_body.(ind_ctors)))
+.
+
+Definition infer_equivalences_gen_match_term
+  (ind: inductive)
+  (term_ret: term)
+:
+  TemplateMonad term
+:=
+  ind_body <- inductive_extract_body ind ;;
+  let generate_case ctor :=
+    {| bcontext := repeat binder_anon #|ctor.(cstr_args)|;
+       bbody := I_quoted |} in
+  tmReturn
+    (tCase {| ci_ind := ind;
+              ci_npar := 1;
+              ci_relevance := Relevant |}
+           {| puinst := [];
+              pparams := [hole];
+              pcontext := [binder_anon; binder_anon];
+              preturn := term_ret |}
+           (tRel 0)
+           (map generate_case ind_body.(ind_ctors)))
+.
+
+Fixpoint infer_equivalences_walk_cstrs
+  (cstrs: list constructor_body)
+  (main_ind: inductive)
+  (param_ind: inductive)
+  (ctx: context)
+  (index: nat)
+:
+  TemplateMonad unit
+:=
+  match cstrs with
+  | cstr :: cstrs =>
+    let full_ctx := app_context ctx cstr.(cstr_args) in
+    let full_ctx_fill := subst_context (tInd param_ind [] :: nil) 0 full_ctx in
+    let inserted_arg := tApp (tConstruct param_ind index [])
+                             (dummy_args #|full_ctx| 0) in
+    let main_args := List.app (dummy_args #|ctx| #|cstr.(cstr_args)|)
+                              (inserted_arg :: nil) in
+    let destructable := tApp (tInd main_ind []) main_args in
+    let fix build_quantification ctx :=
+      match ctx with
+      | nil => tProd binder_anon destructable hole
+      | arg :: ctx =>
+        tProd binder_anon arg.(decl_type) (build_quantification ctx)
+      end in
+    let claim := build_quantification (List.rev full_ctx_fill) in
+    claim_unquoted <- tmUnquoteTyped Type claim ;;
+    match_return <- infer_equivalences_gen_match_return param_ind ;;
+    match_term <- infer_equivalences_gen_match_term main_ind match_return ;;
+    let fix build_function (n: nat) :=
+      match n with
+      | 0 => tLambda binder_anon destructable match_term
+      | S n => tLambda binder_anon hole (build_function n)
+      end in
+    let term_whole := build_function #|full_ctx_fill| in
+    proof <- tmUnquoteTyped claim_unquoted term_whole ;;
+    eqn_name <- tmFreshName "equivalence" ;;
+    tmDefinitionRed eqn_name (Some (unfold (Common_kn "my_projT1"))) proof ;;
+    infer_equivalences_walk_cstrs cstrs main_ind param_ind ctx (S index)
+  | nil =>
+    tmReturn tt
+  end
+.
+
+Fixpoint infer_equivalences_walk_params
+  (main_ind: inductive)
+  (params: context)
+:
+  TemplateMonad unit
+:=
+  match params with
+  | nil =>
+    tmReturn tt
+  | param :: params =>
+    match param.(decl_type) with
+    | tApp (tInd param_ind _) param_ind_args =>
+      param_ind_body <- inductive_extract_body param_ind ;;
+      infer_equivalences_walk_cstrs param_ind_body.(ind_ctors)
+                                    main_ind param_ind params 0
+    | _ =>
+      tmReturn tt
+    end ;;
+    infer_equivalences_walk_params main_ind params
+  end
+.
+
+Definition infer_equivalences
+  {A: Type}
+  (ind_ref: A)
+:
+  TemplateMonad unit
+:=
+  ind_quoted <- tmQuote ind_ref ;;
+  match ind_quoted with
+  | tInd ind inst =>
+    ind_definition <- tmQuoteInductive ind.(inductive_mind) ;;
+    ind_body <- inductive_extract_body ind ;;
+    let params := app_context ind_definition.(ind_params)
+                              ind_body.(ind_indices) in
+    infer_equivalences_walk_params ind params
+  | _ => tmFail "Symbol is not an inductive."
+  end
+.
+
+MetaCoq Run (infer_equivalences NoDup).
+
+Check equivalence.
+Check equivalence0.
+
+(* A more contrived version of NoDup to make this more of a challenge. *)
+
+Inductive NoDup' (A : Type) : list A -> Prop :=
+| NoDup_nil' : NoDup' _ nil
+| NoDup_cons' : forall (x : A) (l : list A),
+               ~ In x l -> NoDup' _ l -> NoDup' _ (x :: l)
+| NoDup_cons2' : forall (x : A) (l : list A),
+                 True -> ~ In x l -> NoDup' _ l -> NoDup' _ (x :: l)
+.

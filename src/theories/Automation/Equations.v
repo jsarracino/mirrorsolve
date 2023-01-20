@@ -695,6 +695,7 @@ MetaCoq Quote Definition conj_quoted := conj.
 Fixpoint nest_conjunction (n: nat) :=
     match n with
     | 0 => I_quoted
+    | 1 => tRel 0
     | S n => tApp conj_quoted [hole; hole; tRel 0; lift0 1 (nest_conjunction n)]
     end.
 

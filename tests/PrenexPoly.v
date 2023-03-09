@@ -24,10 +24,78 @@ Elpi Accumulate lp:{{
 }}.
 Elpi Typecheck.
 
+Elpi get_types. (* prints [] *)
 Elpi add_type "nat".
 Elpi add_type "list".
-Elpi get_types.
+Elpi get_types. (* prints [types global indt «nat», types global indt «list»] *)
 
+Require Import Coq.Lists.List.
+Import ListNotations.
+
+From Equations Require Import Equations.
+
+Section ExtensibleTypes.
+
+  Inductive list_idx {A: Type} : list A -> Type := 
+    | LIHere : 
+      forall x {xs}, 
+        list_idx (x :: xs)
+    | LIThere : 
+      forall {x xs}, 
+        list_idx xs -> 
+        list_idx (x :: xs).
+
+  Equations get_idx {A} {xs: list A} (key: list_idx xs) : A := 
+  {
+    get_idx (LIHere v) := v;
+    get_idx (LIThere i) := get_idx i;
+  }.
+
+  Variable (sorts_l : list Set).
+  Definition sorts := list_idx sorts_l.
+
+  Definition interp_sorts (s: sorts) := get_idx s.
+
+  (* Inductive funs : list sorts -> sorts -> Type := . *)
+
+  Require Import MirrorSolve.HLists.
+
+  Fixpoint func_ty (args: list sorts) (ret: sorts): Type := 
+    match args with 
+    | nil => get_idx ret
+    | t :: ts => (get_idx t -> (func_ty ts ret))%type
+    end.
+
+  Definition funs args ret := func_ty args ret.
+
+  Import HListNotations.
+
+  Local Obligation Tactic := intros.
+
+  Equations apply_args args ret (f: funs args ret) (hargs: HList.t interp_sorts args) : interp_sorts ret by struct hargs := 
+  {
+    apply_args _ _ v hnil := v;
+    apply_args _ _ f (v ::: vs) := apply_args _ _ (f v) vs;
+  }.
+
+  Definition mod_funs : 
+    forall args ret,
+      funs args ret ->
+      HList.t interp_sorts args ->
+      interp_sorts ret := 
+    fun _ _ f hl => apply_args _ _ f hl.
+
+End ExtensibleTypes.
+
+Arguments LIHere {_ _ _}.
+
+Definition tys_list : list Set := [nat ; bool ; list nat ].
+
+Definition nat_idx : list_idx tys_list := LIHere.
+Definition bool_idx : list_idx tys_list := LIThere (LIHere).
+
+Definition add_func : funs _ [nat_idx; nat_idx] nat_idx := 
+  fun x y => x + y.
 
 
 (* Section AB.

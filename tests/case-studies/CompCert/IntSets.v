@@ -118,6 +118,8 @@ Section IntvSets.
             if Z.leb h1 h2 then Cons l1 h1 (inter s1' s2) else Cons l1 h2 (intr s2')
       end
     in intr s2.
+
+  MetaCoq Run (infer_equations inter).
   
   Equations union (s1 s2: t) : t := {
     union Nil s2 := s2;

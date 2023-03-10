@@ -8,7 +8,8 @@ Elpi Command get_types.
 Elpi Accumulate Db types.db.
 Elpi Accumulate lp:{{
   main [] :- 
-    std.findall (types T_) L, !, coq.say "The current set of types is" L.
+    std.findall (types _) L, 
+    coq.say "The current set of types is" L.
 }}.
 Elpi Typecheck.
 
@@ -51,8 +52,75 @@ Section ExtensibleTypes.
     get_idx (LIThere i) := get_idx i;
   }.
 
-  Variable (sorts_l : list Set).
-  Definition sorts := list_idx sorts_l.
+  Equations eqb {A A'} {xs : list A} {xs' : list A'} (l : list_idx xs) (r: list_idx xs') : bool := 
+  {
+    eqb (LIHere _) (LIHere _) := true;
+    eqb (LIThere l) (LIThere r) := eqb l r;
+    eqb _ _ := false;
+  }.
+
+  Require Import Coq.Program.Equality.
+
+  Lemma idx_inj : 
+    forall A x (xs: list A) (l r: list_idx xs), 
+      LIThere (x := x) l = LIThere (x := x) r <-> l = r.
+  Proof.
+    intros.
+    split; intros.
+    - inversion H.
+      inversion_sigma.
+      subst.
+      simpl in *.
+      unfold eq_rect in *.
+      revert H.
+      revert H1_.
+  Admitted.
+
+  
+  Lemma eqb_eq : 
+    forall A (xs: list A) (l r: list_idx xs), 
+      eqb l r = true <-> l = r.
+  Proof.
+    induction xs;
+    intros; try now inversion l.
+    dependent destruction l;
+    dependent destruction r;
+    autorewrite with eqb.
+    - split; intros; trivial.
+    - split; intros H; inversion H.
+    - split; intros H; inversion H.
+    - erewrite IHxs.
+      split; intros.
+      + subst; trivial.
+      + eapply idx_inj.
+        eauto.
+  Qed.
+
+  Require Import Coq.Classes.EquivDec.
+  (* Definition eqdec_all {A} {xs: list A} : EqDec (list_idx xs) eq.
+  refine (
+    (fix comp_eqd xs' := _ ) xs
+  ). *)
+ (* Local Obligation Tactic := intros; try now congruence.  *)
+  Equations eqdec_all {A:Type} {xs: list A} : EqDec (list_idx xs) eq := {
+    eqdec_all (LIHere _) (LIHere _) := left eq_refl;
+    eqdec_all (LIThere l') (LIThere r') with eqdec_all l' r' := {
+      eqdec_all (LIThere l') (LIThere r') (left _) := left _;
+      eqdec_all (LIThere l') (LIThere r') (right _) := right _;
+    } ;
+    eqdec_all (LIThere _) (LIHere _) := right _;
+    eqdec_all (LIHere _) (LIThere _) := right _;
+  }.
+  Next Obligation.
+  Defined.
+  Next Obligation.
+    eapply c.
+    dependent induction H1.
+    trivial.
+  Defined.
+
+  Variable (sorts_lst: list Set).
+  Definition sorts := list_idx sorts_lst.
 
   Definition interp_sorts (s: sorts) := get_idx s.
 
@@ -72,10 +140,10 @@ Section ExtensibleTypes.
 
   Local Obligation Tactic := intros.
 
-  Equations apply_args args ret (f: funs args ret) (hargs: HList.t interp_sorts args) : interp_sorts ret by struct hargs := 
+  Equations apply_args_f args ret (f: funs args ret) (hargs: HList.t interp_sorts args) : interp_sorts ret by struct hargs := 
   {
-    apply_args _ _ v hnil := v;
-    apply_args _ _ f (v ::: vs) := apply_args _ _ (f v) vs;
+    apply_args_f _ _ v hnil := v;
+    apply_args_f _ _ f (v ::: vs) := apply_args_f _ _ (f v) vs;
   }.
 
   Definition mod_funs : 
@@ -83,7 +151,42 @@ Section ExtensibleTypes.
       funs args ret ->
       HList.t interp_sorts args ->
       interp_sorts ret := 
-    fun _ _ f hl => apply_args _ _ f hl.
+    fun _ _ f hl => apply_args_f _ _ f hl.
+
+  Fixpoint rel_ty (args: list sorts): Type := 
+    match args with 
+    | nil => Prop
+    | t :: ts => (get_idx t -> (rel_ty ts))%type
+    end.
+  
+  Definition rels args := rel_ty args.
+
+  Equations apply_args_r args (r: rels args) (hargs: HList.t interp_sorts args) : Prop by struct hargs := 
+    {
+      apply_args_r _ v hnil := v;
+      apply_args_r _ f (v ::: vs) := apply_args_r _ (f v) vs;
+    }.
+
+  Definition mod_rels' : 
+    forall args,
+      rels args ->
+      HList.t interp_sorts args ->
+      Prop := 
+    fun _ r hl => apply_args_r _ r hl.
+
+  Require Import MirrorSolve.FirstOrder.
+
+  Definition sig_extensible : signature := {|
+    sig_sorts := sorts;
+    sig_funs := fun args ret => funs args ret;
+    sig_rels := fun args => rels args;
+  |}.
+
+  Program Definition mod_extensible : model sig_extensible := {|
+    mod_sorts := interp_sorts;
+    mod_fns := mod_funs;
+    mod_rels := mod_rels';
+  |}.
 
 End ExtensibleTypes.
 
@@ -94,124 +197,15 @@ Definition tys_list : list Set := [nat ; bool ; list nat ].
 Definition nat_idx : list_idx tys_list := LIHere.
 Definition bool_idx : list_idx tys_list := LIThere (LIHere).
 
-Definition add_func : funs _ [nat_idx; nat_idx] nat_idx := 
-  fun x y => x + y.
+Definition add_func : funs _ [nat_idx; nat_idx] nat_idx := Nat.add.
+Require Import MirrorSolve.Reflection.Tactics.
 
+Notation sig := (sig_extensible tys_list).
+Notation mod := (mod_extensible tys_list).
 
-(* Section AB.
+Definition sorts_eq_dec :  EquivDec.EqDec (sig_sorts sig) eq := eqdec_all.
 
-  Variable (A B : Type).
+Check @denote_extract_specialized_rev sig mod sorts_eq_dec.
 
-  Inductive simple_typs := 
-    | A_ty | B_ty | AB_ty.
-
-  Definition interp_typs ty := 
-    (match ty with 
-    | A_ty => A 
-    | B_ty => B 
-    | AB_ty => A * B
-    end)%type.
-
-  Inductive simple_funs : list simple_typs -> simple_typs -> Type := 
-    | prod_fun : simple_funs [A_ty ; B_ty] AB_ty.
-
-  Equations interp_funs : forall args ret, 
-    simple_funs args ret -> 
-    HList.t interp_typs args -> 
-    interp_typs ret := 
-  {
-    interp_funs _ _ prod_fun (l ::: r ::: _) := (l, r);
-  }.
-
-End AB.
-
-
-Inductive poly_types := 
-  | single_poly_ty : forall (T: Type), poly_types
-  | pair_poly_ty : 
-    poly_types -> 
-    poly_types -> 
-    poly_types.
-
-(* Fixpoint interp_p_typs {Typs} (ty : poly_types Typs) : Typs := 
-  (match ty with 
-  | single_poly_ty T => T
-  | pair_poly_ty l r => (interp_p_typs l) * (interp_p_typs r)
-  end)%type. *)
-
-Fixpoint interp_p_typs (ty : poly_types) := 
-  (match ty with 
-  | single_poly_ty T => T
-  | pair_poly_ty l r => (interp_p_typs l) * (interp_p_typs r)
-  end)%type.
-
-Inductive poly_funs : 
-  list poly_types -> poly_types -> Type := 
-  | prod_poly_fun : 
-    forall (l r : poly_types), 
-      poly_funs [l ; r ] (pair_poly_ty l r).
-
-
-Equations interp_poly_funs : forall args ret, 
-  poly_funs args ret -> 
-  HList.t interp_p_typs args -> 
-  interp_p_typs ret := 
-{
-  interp_poly_funs _ _ (prod_poly_fun _ _) (l ::: r ::: _) := (l, r);
-}.
-
-Arguments interp_poly_funs {_ _}.
-
-Definition foo : HList.t interp_p_typs
-  [pair_poly_ty (single_poly_ty nat) (single_poly_ty nat);
-  single_poly_ty bool].
-refine ( _ ::: _ ::: hnil).
-- refine (1, 2).
-- refine (true).
-Defined.
-
-Eval vm_compute in 
-  interp_poly_funs 
-    (prod_poly_fun (pair_poly_ty (single_poly_ty nat) (single_poly_ty nat)) (single_poly_ty bool)) 
-    foo.
-
-
-Inductive poly_types (Tys: Type) : Type := 
-  | single_poly_ty : forall (T: Tys), poly_types Tys
-  | pair_poly_ty : 
-    poly_types Tys -> 
-    poly_types Tys -> 
-    poly_types Tys.
-
-Arguments single_poly_ty {_}.
-Arguments pair_poly_ty {_}.
-
-(* Fixpoint interp_p_typs {Typs} (ty : poly_types Typs) : Typs := 
-  (match ty with 
-  | single_poly_ty T => T
-  | pair_poly_ty l r => (interp_p_typs l) * (interp_p_typs r)
-  end)%type. *)
-
-Fixpoint interp_p_typs (ty : poly_types Type) := 
-  (match ty with 
-  | single_poly_ty T => T
-  | pair_poly_ty l r => (interp_p_typs l) * (interp_p_typs r)
-  end)%type.
-
-Inductive poly_funs (Tys: Type) : 
-  list (poly_types Tys) -> (poly_types Tys) -> Type := 
-  | prod_poly_fun : forall (l r : poly_types Tys), 
-    poly_funs Tys [l ; r ] (pair_poly_ty l r).
-
-Arguments poly_funs {_}.
-
-Equations interp_poly_funs : forall args ret, 
-  @poly_funs Type args ret -> 
-  HList.t interp_p_typs args -> 
-  interp_p_typs ret := 
-{
-  interp_poly_funs _ _ (prod_poly_fun _ _) (l ::: r ::: _) := (l, r);
-}.
-
-Check interp_poly_funs. *)
+Eval vm_compute in sorts_eq_dec bool_idx bool_idx.
 

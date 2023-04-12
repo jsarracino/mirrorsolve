@@ -286,7 +286,7 @@ Section ListFuncs.
 
   Lemma app_app_one : 
     forall (a: A) (l r : List A), 
-      app (ListFuncs.app l (a::[])) r = app l (a :: r).
+      app (app l (a::[])) r = app l (a :: r).
   Proof.
     induction l; mirrorsolve.
   Qed.
@@ -300,6 +300,8 @@ Section ListFuncs.
     induction x; mirrorsolve.
   Qed.
 
+  Set MirrorSolve Solver "cvc5".
+
   Hint Immediate app_assoc : list_eqns.
 
   Lemma app_nil_r : 
@@ -308,7 +310,8 @@ Section ListFuncs.
     induction l; mirrorsolve.
   Qed.
 
-  Hint Immediate app_nil_r : list_eqns.
+  (* Hint Immediate app_nil_r : list_eqns. *)
+  Set MirrorSolve Query Debug.
 
   Lemma rev_app : 
     forall (l r : List A), 

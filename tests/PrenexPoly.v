@@ -28,6 +28,7 @@ Elpi add_type (nat).
 Elpi add_type (list).
 Elpi add_type (True).
 Elpi add_type (list nat).
+
 Elpi get_types.
 (* prints [types global indt «nat», types global indt «list»] *)
 
@@ -229,6 +230,24 @@ Fixpoint app' {A: Type} (xs ys : list A) :=
   | x :: xs => x :: app' xs ys
   end.
 
+(* theory:
+  list :: * -> *
+  nat :: *
+
+  list = 
+    | nil: forall X, list X 
+    | cons : forall X, X -> list X -> X
+
+  app :: forall X, list X -> list X -> list X
+  app_0: forall X (xs: list X), app nil xs = xs
+  app_1: forall X (x: X) (xs ys: list X), app (x :: xs) ys = x :: app xs ys
+
+query:
+  " A : Type
+    ========================
+    5 = length (xs: list A)"
+  step 0: types are nat, list nat *)
+
 Elpi Tactic mirrorsolve.
 Elpi Accumulate lp:{{
 
@@ -267,11 +286,21 @@ Elpi Accumulate lp:{{
   single X O :- 
     std.set.make _ Empty,
     std.set.add X Empty O. 
+
+  pred empty o: std.set term.
+  empty O :- std.set.make _ O.
+
   pred gather_sorts_term i: term o: std.set term.
   gather_sorts_term T O :- setly T, coq.say T "is setly", single T O.
-  gather_sorts_term T O :- coq.say T "is not setly", std.set.make _ O.
+  gather_sorts_term T O :- coq.say T "is not setly", empty O.
 
+  % gather_sorts_term nat O unifies O with {nat}
+  % gather_sorts_term True O unifies O with {}
 
+  % coq's AST roughly represents the Type prod nat (list nat) as:
+  % (app prod [nat; (app list [nat])])
+  % Elpi represents the same type as:
+  % (app [prod; nat; (app [list; nat])])
   pred gather_sorts i:term o:std.set term.
   gather_sorts (app TS as G) GO :- 
     gather_sorts_term G GO', 
@@ -291,6 +320,13 @@ Elpi Accumulate lp:{{
     setly_evar X O',
     setly_evars XS O'',
     union O' O'' O.
+
+  % forall (X: Type), list X = list X
+  % intros ===>
+
+  % X: Type 
+  % =========
+  % list X = list X
 
   solve (goal Vs _ G' _ _ as G) GL :- 
     % gather_sorts G' O,

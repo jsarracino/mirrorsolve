@@ -338,6 +338,7 @@ Elpi Accumulate lp:{{
     flatten SS O', 
     union S O' O.
 
+  % base case: convert an atomic term into a kind_expr if it is in the context
   pred sortify_term i: kind_ctx, i: term, o: kind_expr.
   sortify_term Ctx T O :- ctx-mapsto Ctx T O.
   sortify_term Ctx (app [T|TS] as T') (kind_app O TSO) :-
@@ -348,17 +349,13 @@ Elpi Accumulate lp:{{
     setly T',
     std.map TS (sortify_term Ctx) TSO.
 
-
-  % base case: convert an atomic term into a kind_expr if it is in the context
+  % lift sortify_term to sets
   pred gather_sorts_term i: kind_ctx, i: term, o: kind_expr_set.
   % gather_sorts_term Ctx T O :- coq.say "gather_sorts_term" Ctx T O, fail.
   gather_sorts_term Ctx T O :-
     sortify_term Ctx T KE,
     set-single KE O.
   gather_sorts_term _ _ O :- set-empty O.
-
-  % gather_sorts_term nat O unifies O with {nat}
-  % gather_sorts_term True O unifies O with {}
 
   % Coq's AST roughly represents the Coq Type 
   % prod nat (list nat) (i.e. nat * list nat):
@@ -394,7 +391,6 @@ Elpi Typecheck.
 
 Ltac mirrorsolve' := admit.
 
-(* Elpi Trace.  *)
 Lemma app'_nil_r: 
   forall {A} (xs: list A), app' xs [] = xs.
 Proof.

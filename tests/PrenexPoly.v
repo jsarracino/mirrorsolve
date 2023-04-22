@@ -252,74 +252,129 @@ Elpi Tactic mirrorsolve.
 Elpi Accumulate lp:{{
 
   pred setly i: term.
-  setly X :- coq.say "setly with" X, fail.
+  % setly X :- coq.say "setly with" X, fail.
   setly X :- coq.typecheck X Ty ok, Ty = {{ Set }}.
   setly X :- coq.typecheck X Ty ok, Ty = {{ Type }}.
 
-  pred add_all i: list term i: std.set term o: std.set term.
-  add_all [] O O.
-  add_all [T|TS] S O :- 
-    add_all TS S O', 
-    std.set.add T O' O.
+  kind kind_expr type.  
 
-  pred union_all i: list (std.set term) o: std.set term.
-  union_all [] O :- std.set.make _ O.
-  union_all [S|SS] O :- 
-    union_all SS O', 
-    add_all T O' O.
+  type kind_base term -> kind_expr.
+  type kind_par name -> kind_expr.
+  type kind_app kind_expr -> list kind_expr -> kind_expr.
 
-  pred union i:std.set term i:std.set term o: std.set term.
+  typeabbrev kind_ctx (list (pair term kind_expr)).
+
+  pred ctx-empty o: kind_ctx.
+  % ctx-empty O :- std.map.make _ O.
+  ctx-empty [].
+
+  pred ctx-add i: term, i: kind_expr, i: kind_ctx, o: kind_ctx.
+  % ctx-add K V O' O :- std.map.add K V O' O.
+  ctx-add K V O' [pr K V|O'].
+
+  pred ctx-single i: term, i: kind_expr, o: kind_ctx.
+  ctx-single K V O :- 
+    ctx-empty O,
+    ctx-add K V O' O.
+
+  pred ctx-mapsto i: kind_ctx, i: term, o: kind_expr.
+  % ctx-mapsto Ctx K V :- coq.say "ctx-mapsto" Ctx K V, fail.
+  % ctx-mapsto Ctx K V :- std.map.find K Ctx V.
+  ctx-mapsto Ctx K V :- std.lookup Ctx K V.
+
+  pred mk-decl i: prop, o: term, o: kind_expr.
+  mk-decl (decl Var Name _) Var (kind_par Name) :- setly Var.
+
+  % TODO: there's probably a way to write this with std.list functions
+  pred mk-decls i: list prop o: kind_ctx.
+  mk-decls [] O :- ctx-empty O.
+  mk-decls [D|DS] O :- 
+    mk-decl D K V, !,
+    mk-decls DS O', 
+    ctx-add K V O' O.
+  mk-decls [_|DS] O :- mk-decls DS O.
+
+  % set helper functions
+
+  typeabbrev kind_expr_set (list kind_expr).
+  % empty set
+  pred set-empty o: kind_expr_set.
+  % set-empty O :- std.set.make _ O.
+  set-empty [].
+
+  % single element
+  pred set-single i:kind_expr o: kind_expr_set.
+  % set-single X _ :- coq.say "set-single" X, fail.
+  % set-single X O :- 
+  %   set-empty Empty, !,
+  %   std.set.add X Empty O.
+  set-single X [X].
+
+  pred set-add i: kind_expr, i: kind_expr_set, o: kind_expr_set.
+  set-add X S S :- std.mem S X.
+  set-add X S [X|S].
+
+  % combine a list and a set into a set
+  pred add-all i: list kind_expr, i: kind_expr_set, o: kind_expr_set.
+  add-all [] O O.
+  add-all [T|TS] S O :- 
+    add-all TS S O', 
+    set-add T O' O.
+
+  pred set-elems i: kind_expr_set, o: list kind_expr.
+  set-elems X X.
+
+  % union two sets together
+  pred union i:kind_expr_set, i:kind_expr_set, o: kind_expr_set.
   union L R O :- 
-    std.set.elements L LS,
-    add_all LS R O.
+    set-elems L LS,
+    add-all LS R O.
 
-  pred gather_sorts_ls i: list term o: std.set term.
-  gather_sorts_ls [] O :- std.set.make _ O.
-  gather_sorts_ls [T|TS] O :- 
-    coq.say "recursing on term" T,
-    gather_sorts T O'',
-    gather_sorts_ls TS O',
-    union O'' O' O.
+  % flatten a list of sets into a single set 
+  pred flatten i: list (kind_expr_set), o: kind_expr_set.
+  % flatten X _ :- coq.say "flatten" X, fail.
+  flatten [] O :- set-empty O.
+  flatten [S|SS] O :- 
+    flatten SS O', 
+    union S O' O.
 
-  pred single i:term o: std.set term.
-  single X _ :- coq.say "singleton with" X, fail.
-  single X O :- 
-    std.set.make _ Empty,
-    std.set.add X Empty O. 
+  pred sortify_term i: kind_ctx, i: term, o: kind_expr.
+  sortify_term Ctx T O :- ctx-mapsto Ctx T O.
+  sortify_term Ctx (app [T|TS] as T') (kind_app O TSO) :-
+    setly T',
+    sortify_term Ctx T O,
+    std.map TS (sortify_term Ctx) TSO.
+  sortify_term Ctx (app [T|TS] as T') (kind_app (kind_base T) TSO) :-
+    setly T',
+    std.map TS (sortify_term Ctx) TSO.
 
-  pred empty o: std.set term.
-  empty O :- std.set.make _ O.
 
-  pred gather_sorts_term i: term o: std.set term.
-  gather_sorts_term T O :- setly T, coq.say T "is setly", single T O.
-  gather_sorts_term T O :- coq.say T "is not setly", empty O.
+  % base case: convert an atomic term into a kind_expr if it is in the context
+  pred gather_sorts_term i: kind_ctx, i: term, o: kind_expr_set.
+  % gather_sorts_term Ctx T O :- coq.say "gather_sorts_term" Ctx T O, fail.
+  gather_sorts_term Ctx T O :-
+    sortify_term Ctx T KE,
+    set-single KE O.
+  gather_sorts_term _ _ O :- set-empty O.
 
   % gather_sorts_term nat O unifies O with {nat}
   % gather_sorts_term True O unifies O with {}
 
-  % coq's AST roughly represents the Type prod nat (list nat) as:
+  % Coq's AST roughly represents the Coq Type 
+  % prod nat (list nat) (i.e. nat * list nat):
   % (app prod [nat; (app list [nat])])
   % Elpi represents the same type as:
   % (app [prod; nat; (app [list; nat])])
-  pred gather_sorts i:term o:std.set term.
-  gather_sorts (app TS as G) GO :- 
-    gather_sorts_term G GO', 
-    gather_sorts_ls TS GO'',
-    union GO' GO'' GO.
-  gather_sorts G GO :- gather_sorts_term G GO.
 
-  pred setly_evar i: prop o:std.set term.
-  setly_evar X _ :- coq.say "setly_evar with" X, fail.
-  setly_evar (decl X _ _) O :- setly X, single X O.
-  setly_evar _ O :- std.set.make _ O.
 
-  pred setly_evars i: list prop o: std.set term.
-  setly_evars X _ :- coq.say "setly_evars with" X, fail.
-  setly_evars [] O :- std.set.make _ O.
-  setly_evars [X|XS] O :- 
-    setly_evar X O',
-    setly_evars XS O'',
+  pred gather_sorts i: kind_ctx, i:term, o:kind_expr_set.
+  % gather_sorts Ctx G O :- coq.say "gather_sorts" Ctx G O, fail.
+  gather_sorts Ctx (app TS as G) O :- 
+    gather_sorts_term Ctx G O', 
+    std.map-filter TS (gather_sorts Ctx) TO,
+    flatten TO O'',
     union O' O'' O.
+  gather_sorts Ctx G O :- gather_sorts_term Ctx G O.
 
   % forall (X: Type), list X = list X
   % intros ===>
@@ -328,16 +383,12 @@ Elpi Accumulate lp:{{
   % =========
   % list X = list X
 
-  solve (goal Vs _ G' _ _ as G) GL :- 
-    % gather_sorts G' O,
-    % gather_sorts G' O, 
-    % std.set.elements O LS,
-    % gather_sorts G' O, 
-    setly_evars Vs O,
-    % std.set.cardinal O N,
-    std.set.elements O L,
-
-    coq.say "the evars are" Vs "and the setly vars are" L.
+  solve (goal Ctx _ G' _ _ as G) GL :- 
+    coq.say "CTX is:" Ctx,
+    mk-decls Ctx CtxMap,
+    coq.say "the names are" CtxMap,
+    gather_sorts CtxMap G' KEs,
+    coq.say "the kind exprs are" KEs.
 }}.
 Elpi Typecheck.
 

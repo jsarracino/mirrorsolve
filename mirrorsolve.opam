@@ -13,6 +13,7 @@ depends: [
   "coq-metacoq-translations" {= "1.0+8.15"}
   "coq-metacoq" {= "1.0+8.15"}
   "coq" {>= "8.15" & < "8.16"}
+  "coq-elpi" {>= "1.14"}
   "coq-hammer"
   "camlp-streams" {>= "5.0.1"}
 ]

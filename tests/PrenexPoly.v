@@ -248,6 +248,78 @@ query:
     5 = length (xs: list A)"
   step 0: types are nat, list nat *)
 
+(* Locate Z. *)
+
+Require Import MirrorSolve.SMT.
+
+Elpi Db theory.db lp:{{ 
+  kind kind_expr type.  
+
+  type kind_star kind_expr.
+  type kind_arr kind_expr -> kind_expr -> kind_expr.
+
+  kind sorts_info type.
+  pred ind_info i: term o:int o: list constructor o: list term.
+  ind_info (global (indt Ind)) Arity CNames CTypes :- 
+    coq.env.indt Ind tt Arity _ _ CNames CTypes.
+
+  pred sorts i:term, o: kind_expr.
+  sorts ({{ nat }}) kind_star.
+  sorts ({{ BinNums.Z }}) kind_star.
+  sorts ({{ bool }}) kind_star.
+  sorts (global (indt Ind)) (kind_arr kind_star kind_star) :- 
+    coq.env.indt Ind tt 1 _ _ _ _.
+  
+  % tuple up the constructor names as strings with their types
+  % for the types, we need to resolve the 
+
+  pred builtin_sorts i: term, o: term.
+  builtin_sorts {{ nat }} {{ SInt }}.
+
+  kind concrete_sort type.  
+  type concrete_base term -> concrete_sort.
+  type concrete_par name -> concrete_sort.
+  type concrete_app concrete_sort -> list concrete_sort -> concrete_sort.
+
+  pred gen_smt_sort i: concrete_sort, o: term.
+  gen_smt_sort (concrete_base T) Out :- 
+    sorts T kind_star,
+    builtin_sorts T Out.
+  gen_smt_sort (concrete_app Ind Arg) Out :- 
+    sorts Ind (kind_arr kind_star kind_star),
+    ind_info Ind 1 CNames CTypes,
+    % TODO: connect the concrete argument with the constructor names and types,
+    % make a name (string) for the inductive and also the constructors,
+    % instantiate the constructors with the arguments,
+    % tuple everything up into an SMT.smt_ind term for Out.
+
+
+}}.
+Elpi Typecheck.
+
+Elpi Command Add_Ind.
+Elpi Accumulate Db theory.db.
+Elpi Accumulate lp:{{
+  main [trm Trm] :- 
+    coq.elpi.accumulate _ "theory.db" 
+      (clause _ _ (sorts Trm (kind_arr kind_star kind_star))).
+}}.
+Elpi Typecheck.
+
+Elpi Add_Ind (list).
+
+Elpi Command Print_sort.
+Elpi Accumulate Db theory.db.
+Elpi Accumulate lp:{{
+  main [trm Trm] :- 
+    gen_smt_sort (concrete_base Trm) Out, 
+    coq.say Out.
+}}.
+Elpi Typecheck.
+
+Elpi Print_sort (list).
+
+
 Elpi Tactic mirrorsolve.
 Elpi Accumulate lp:{{
 
@@ -256,11 +328,7 @@ Elpi Accumulate lp:{{
   setly X :- coq.typecheck X Ty ok, Ty = {{ Set }}.
   setly X :- coq.typecheck X Ty ok, Ty = {{ Type }}.
 
-  kind kind_expr type.  
 
-  type kind_base term -> kind_expr.
-  type kind_par name -> kind_expr.
-  type kind_app kind_expr -> list kind_expr -> kind_expr.
 
   typeabbrev kind_ctx (list (pair term kind_expr)).
 

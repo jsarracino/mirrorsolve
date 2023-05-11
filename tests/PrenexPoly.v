@@ -424,6 +424,8 @@ Elpi Typecheck.
 Elpi Print_sort (list).
 
 
+(* Code below here doesn't work, needs to be adapted to make (and use) concrete_sort *)
+
 Elpi Tactic mirrorsolve.
 Elpi Accumulate lp:{{
 

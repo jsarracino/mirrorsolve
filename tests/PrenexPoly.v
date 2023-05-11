@@ -239,7 +239,7 @@ Fixpoint app' {A: Type} (xs ys : list A) :=
     | cons : forall X, X -> list X -> X
 
   app :: forall X, list X -> list X -> list X
-  app_0: forall X (xs: list X), app nil xs = xs
+  app_,: forall X (xs: list X), app nil xs = xs
   app_1: forall X (x: X) (xs ys: list X), app (x :: xs) ys = x :: app xs ys
 
 query:
@@ -251,6 +251,9 @@ query:
 (* Locate Z. *)
 
 Require Import MirrorSolve.SMT.
+
+Require Import Coq.Strings.String.
+Require Import Coq.Strings.Ascii.
 
 Elpi Db theory.db lp:{{ 
   kind kind_expr type.  
@@ -276,18 +279,117 @@ Elpi Db theory.db lp:{{
   pred builtin_sorts i: term, o: term.
   builtin_sorts {{ nat }} {{ SInt }}.
 
+  pred ind->name i: indt-decl, o: string.
+  % Note: for parameters, we don't actually care what the HOAS is applied to, so we pass it a term on hand (in this case the type of the parameter)
+  ind->name (parameter _ _ X FI) Out :- ind->name (FI X) Out.
+  ind->name (inductive Nme _ _ _) Nme.
+
+  pred builtin_names i: term, o: string.
+  builtin_names {{ nat }} "Z".
+  builtin_names (global (indt Ind)) Nme :- 
+    coq.env.indt-decl Ind Ind-decl,
+    ind->name Ind-decl Nme.
+
   kind concrete_sort type.  
   type concrete_base term -> concrete_sort.
-  type concrete_par name -> concrete_sort.
+  type concrete_par string -> concrete_sort.
   type concrete_app concrete_sort -> list concrete_sort -> concrete_sort.
+
+  pred dig->bit i: int, o: bool.
+  dig->bit 0 ff.
+  dig->bit 1 tt.
+
+  pred int->bits_h i:int, o: list bool.
+  int->bits_h X [Bit] :- dig->bit X Bit.
+  int->bits_h X [Dig|XS] :- 
+    LSB is X mod 2,
+    dig->bit LSB Dig,
+    Rem is X div 2,
+    int->bits_h Rem XS.
+
+  pred repeat i: bool, i: int, o: list bool.
+  repeat _ 0 [].
+  repeat X N [X|XS] :- 
+    N > 0, 
+    M is N - 1,
+    repeat X M XS.
+
+  pred int->bits i: int, o: list bool.
+  int->bits X XS :- 
+    int->bits_h X Digs,
+    std.length Digs N,
+    M is 8 - N,
+    repeat ff M Suffix, 
+    std.append Digs Suffix XS.
+
+  pred bit->cbool i:bool, o: term.
+  bit->cbool tt {{ true }}.
+  bit->cbool ff {{ false }}.
+
+  pred bits->ascii i: list bool, o: term.
+  bits->ascii Bs Out :- 
+    std.map Bs bit->cbool CArgs,
+    % coq.say CArgs,
+    Out = app [{{ Ascii }} | CArgs].
+
+  pred int->ascii i: int, o: term.
+  int->ascii X O :- 
+    int->bits X Bits,
+    bits->ascii Bits O.
+
+  pred str->chars i: string, o: list string.
+  str->chars X [X] :- 
+    N is size X,
+    N = 1.
+  str->chars X [C|XS] :- 
+    N is (size X) - 1,
+    Y is substring X 1 N, 
+    str->chars Y XS,
+    C is substring X 0 1.
+
+  pred chr->term i: string, o: term.
+  chr->term C Out :- 
+    CV is rhc C,
+    int->ascii CV Out.
+
+  pred make_str i: list term, o: term.
+  make_str [] {{ EmptyString }}.
+  make_str [C|CS] (app [CTor,C,R]) :- 
+    make_str CS R,
+    CTor = {{ String }}.
+
+  pred str->term i: string, o: term.
+  str->term Str Out :- 
+    str->chars Str Chrs,
+    std.map Chrs chr->term Asciis, 
+    make_str Asciis Out.
+
+
+  pred sort->str i: concrete_sort, o: string.
+  sort->str (concrete_base T) O :- builtin_names T O.
+  sort->str (concrete_par Nme) Nme.
+  sort->str (concrete_app F Args) Out :- 
+    std.map Args sort->str OArgs, 
+    sort->str F FO, 
+    std.string.concat "_" OArgs ArgsCat,
+    Out is FO ^ "_" ^ ArgsCat.
+
+  pred monomorphize_sort i: concrete_sort, o: term.
+  monomorphize_sort (concrete_base Srt) Out :- 
+    builtin_sorts Srt Out.
+  monomorphize_sort Srt Out :- 
+    sort->str Srt Nme,
+    str->term Nme StrNme,
+    Out = {{ SCustom lp:StrNme }}.
 
   pred gen_smt_sort i: concrete_sort, o: term.
   gen_smt_sort (concrete_base T) Out :- 
     sorts T kind_star,
     builtin_sorts T Out.
-  gen_smt_sort (concrete_app Ind Arg) Out :- 
-    sorts Ind (kind_arr kind_star kind_star),
-    ind_info Ind 1 CNames CTypes,
+  gen_smt_sort (concrete_par Nme) Out :- monomorphize_sort (concrete_par Nme) Out.
+  % gen_smt_sort (concrete_app Ind Arg) Out :- 
+  %   sorts Ind (kind_arr kind_star kind_star),
+  %   ind_info Ind 1 CNames CTypes.
     % TODO: connect the concrete argument with the constructor names and types,
     % make a name (string) for the inductive and also the constructors,
     % instantiate the constructors with the arguments,
@@ -306,14 +408,16 @@ Elpi Accumulate lp:{{
 }}.
 Elpi Typecheck.
 
-Elpi Add_Ind (list).
+(* Elpi Add_Ind (list). *)
 
 Elpi Command Print_sort.
 Elpi Accumulate Db theory.db.
 Elpi Accumulate lp:{{
   main [trm Trm] :- 
-    gen_smt_sort (concrete_base Trm) Out, 
-    coq.say Out.
+    monomorphize_sort (concrete_app (concrete_base Trm) [concrete_base {{nat}}, concrete_par "A"]) X,
+    % N is size "ab",
+    coq.term->string X Out,
+    coq.say "pretty term" Out.
 }}.
 Elpi Typecheck.
 

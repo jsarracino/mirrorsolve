@@ -255,6 +255,8 @@ Require Import MirrorSolve.SMT.
 Require Import Coq.Strings.String.
 Require Import Coq.Strings.Ascii.
 
+Locate Z.
+
 Elpi Db theory.db lp:{{ 
   kind kind_expr type.  
 
@@ -284,17 +286,65 @@ Elpi Db theory.db lp:{{
   ind->name (parameter _ _ X FI) Out :- ind->name (FI X) Out.
   ind->name (inductive Nme _ _ _) Nme.
 
-  pred builtin_names i: term, o: string.
-  builtin_names {{ nat }} "Z".
-  builtin_names (global (indt Ind)) Nme :- 
+  pred sort->smt_name i: term, o: string.
+  % primitive types
+  sort->smt_name {{ nat }} "Z".
+  sort->smt_name {{ BinNums.Z }} "Z".
+  sort->smt_name {{ bool }} "Bool".
+  % inductive types
+  sort->smt_name (global (indt Ind)) Nme :- 
     coq.env.indt-decl Ind Ind-decl,
     ind->name Ind-decl Nme.
+  % type application
+  sort->smt_name (app [F|Args]) Out :- 
+    std.map Args sort->smt_name OArgs, 
+    sort->smt_name F FO, 
+    std.string.concat "_" OArgs ArgsCat,
+    Out is FO ^ "_" ^ ArgsCat.
+  % parametric types (encoded as SCustoms) TODO
+  % sort->smt_name {{ SCustom lp:Nme }} Nme.
 
-  kind concrete_sort type.  
-  type concrete_base term -> concrete_sort.
-  type concrete_par string -> concrete_sort.
-  type concrete_app concrete_sort -> list concrete_sort -> concrete_sort.
+  % convert a sort to an SMT sort
+  pred sort->smt i: term, o: term.
+  sort->smt {{ nat }} {{ SInt }}.
+  sort->smt {{ BinNums.Z }} {{ SInt }}.
+  sort->smt {{ bool }} {{ SBool }}.
+  % inductive types
+  sort->smt (global (indt Ind)) {{ SCustom lp:Nme }} :- 
+    coq.env.indt-decl Ind Ind-decl,
+    ind->name Ind-decl NmeStr,
+    str->term NmeStr Nme.
 
+  % type application
+  sort->smt (app [F|Args]) {{ SCustom lp:Nme }} :- 
+    std.map Args sort->smt_name OArgs, 
+    sort->smt_name F FO, 
+    std.string.concat "_" OArgs ArgsCat,
+    NmeStr is FO ^ "_" ^ ArgsCat,
+    str->term NmeStr Nme.
+  % parametric types (encoded as SCustoms )
+  sort->smt {{ SCustom lp:Nme }} {{ SCustom lp:Nme }}.
+
+
+
+  pred ctor->term i: indc-decl, o: term.
+  ctor->term (constructor _ A) O :- coq.arity->term A O.
+
+  pred term->ind i: term, o: indt-decl.
+  term->ind (global (indt Ind)) O :- coq.env.indt-decl Ind O.
+
+  pred app_ctors i: indt-decl, i: term, i: list term, i: list term, o: list term.
+  app_ctors (parameter _ _ _ I) Self Args [Arg|Args'] Out :- 
+    app_ctors (I Arg) Self [Arg|Args] Args' Out.
+  app_ctors (inductive _ _ _ Ctors) Self Args [] Out :- 
+    std.rev Args Args',
+    coq.say "reduced self to" (app [Self|Args']), 
+    std.map (Ctors (app [Self|Args'])) ctor->term Out.
+
+  % pred arity->smt_tys i: term, o: list term.
+  % ctor->smt (prod `_` Ty FI) 
+
+  % code for reflecting an elpi string to a Coq String.String, mainly to properly build SCustoms
   pred dig->bit i: int, o: bool.
   dig->bit 0 ff.
   dig->bit 1 tt.
@@ -358,35 +408,15 @@ Elpi Db theory.db lp:{{
     make_str CS R,
     CTor = {{ String }}.
 
+  % output term is a Coq term for a Strings.String.
   pred str->term i: string, o: term.
   str->term Str Out :- 
     str->chars Str Chrs,
     std.map Chrs chr->term Asciis, 
     make_str Asciis Out.
 
+  % end string stuff
 
-  pred sort->str i: concrete_sort, o: string.
-  sort->str (concrete_base T) O :- builtin_names T O.
-  sort->str (concrete_par Nme) Nme.
-  sort->str (concrete_app F Args) Out :- 
-    std.map Args sort->str OArgs, 
-    sort->str F FO, 
-    std.string.concat "_" OArgs ArgsCat,
-    Out is FO ^ "_" ^ ArgsCat.
-
-  pred monomorphize_sort i: concrete_sort, o: term.
-  monomorphize_sort (concrete_base Srt) Out :- 
-    builtin_sorts Srt Out.
-  monomorphize_sort Srt Out :- 
-    sort->str Srt Nme,
-    str->term Nme StrNme,
-    Out = {{ SCustom lp:StrNme }}.
-
-  pred gen_smt_sort i: concrete_sort, o: term.
-  gen_smt_sort (concrete_base T) Out :- 
-    sorts T kind_star,
-    builtin_sorts T Out.
-  gen_smt_sort (concrete_par Nme) Out :- monomorphize_sort (concrete_par Nme) Out.
   % gen_smt_sort (concrete_app Ind Arg) Out :- 
   %   sorts Ind (kind_arr kind_star kind_star),
   %   ind_info Ind 1 CNames CTypes.
@@ -414,17 +444,23 @@ Elpi Command Print_sort.
 Elpi Accumulate Db theory.db.
 Elpi Accumulate lp:{{
   main [trm Trm] :- 
-    monomorphize_sort (concrete_app (concrete_base Trm) [concrete_base {{nat}}, concrete_par "A"]) X,
+    % term->ind L Ind, 
+    % coq.say "ind" Ind,
+    % app_ctors Ind L [] [R] Out,
+    % coq.say "ctors" Out.
+    sort->smt Trm Srt,
+    coq.say "smt sort:" Srt.
+    % monomorphize_sort (concrete_app (concrete_base Trm) [concrete_base {{nat}}, concrete_par "A"]) X,
     % N is size "ab",
-    coq.term->string X Out,
-    coq.say "pretty term" Out.
+    % coq.term->string X Out,
+    % coq.say "pretty term" Out.
 }}.
 Elpi Typecheck.
 
-Elpi Print_sort (list).
+Elpi Print_sort ((nat + bool)%type).
 
 
-(* Code below here doesn't work, needs to be adapted to make (and use) concrete_sort *)
+(* Code below here doesn't work, needs to be adapted to make (and use) sort->smt etc *)
 
 Elpi Tactic mirrorsolve.
 Elpi Accumulate lp:{{

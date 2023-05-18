@@ -326,7 +326,7 @@ Elpi Db theory.db lp:{{
   sort->smt {{ SCustom lp:Nme }} {{ SCustom lp:Nme }}.
 
 
-
+  % translating an inductive type family to an SMT term (i.e. list nat => smt_ind).
   pred ctor->term i: indc-decl, o: term.
   ctor->term (constructor _ A) O :- coq.arity->term A O.
 
@@ -343,8 +343,9 @@ Elpi Db theory.db lp:{{
 
   % pred arity->smt_tys i: term, o: list term.
   % ctor->smt (prod `_` Ty FI) 
+  % end inductive translation
 
-  % code for reflecting an elpi string to a Coq String.String, mainly to properly build SCustoms
+  % reflecting an elpi string to a Coq String.String
   pred dig->bit i: int, o: bool.
   dig->bit 0 ff.
   dig->bit 1 tt.
@@ -415,16 +416,7 @@ Elpi Db theory.db lp:{{
     std.map Chrs chr->term Asciis, 
     make_str Asciis Out.
 
-  % end string stuff
-
-  % gen_smt_sort (concrete_app Ind Arg) Out :- 
-  %   sorts Ind (kind_arr kind_star kind_star),
-  %   ind_info Ind 1 CNames CTypes.
-    % TODO: connect the concrete argument with the constructor names and types,
-    % make a name (string) for the inductive and also the constructors,
-    % instantiate the constructors with the arguments,
-    % tuple everything up into an SMT.smt_ind term for Out.
-
+  % end string reflection
 
 }}.
 Elpi Typecheck.

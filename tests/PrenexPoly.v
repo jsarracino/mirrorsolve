@@ -286,6 +286,11 @@ Elpi Db theory.db lp:{{
   ind->name (parameter _ _ X FI) Out :- ind->name (FI X) Out.
   ind->name (inductive Nme _ _ _) Nme.
 
+  % list : forall (A: Set), Type
+  %   (| cons | nil : list A)
+
+  % parameter _ "A" Set (fun A => | cons A | nil : list A)
+
   pred sort->smt_name i: term, o: string.
   % primitive types
   sort->smt_name {{ nat }} "Z".
@@ -315,24 +320,30 @@ Elpi Db theory.db lp:{{
     ind->name Ind-decl NmeStr,
     str->term NmeStr Nme.
 
+  % (Z + (Z + Z)) ===> sum_Z_sum_Z_Z
+
   % type application
   sort->smt (app [F|Args]) {{ SCustom lp:Nme }} :- 
     std.map Args sort->smt_name OArgs, 
     sort->smt_name F FO, 
     std.string.concat "_" OArgs ArgsCat,
-    NmeStr is FO ^ "_" ^ ArgsCat,
+    NmeStr is FO ^ "_(" ^ ArgsCat ^ ")",
+    % TODO: check this if SMT sorts can't have parens
     str->term NmeStr Nme.
   % parametric types (encoded as SCustoms )
   sort->smt {{ SCustom lp:Nme }} {{ SCustom lp:Nme }}.
+  sort->smt {{ SIRec }} {{ SIRec }}.
 
 
-  % translating an inductive type family to an SMT term (i.e. list nat => smt_ind).
+  % translating a constructor to a Coq term
   pred ctor->term i: indc-decl, o: term.
   ctor->term (constructor _ A) O :- coq.arity->term A O.
 
   pred term->ind i: term, o: indt-decl.
   term->ind (global (indt Ind)) O :- coq.env.indt-decl Ind O.
 
+  % converts a inductive application to a list of terms corresponding to the constructors with the overall inductive application as the recursive type
+  % e.g. list A ===> [nil: list A, cons : A -> list A -> list A]
   pred app_ctors i: indt-decl, i: term, i: list term, i: list term, o: list term.
   app_ctors (parameter _ _ _ I) Self Args [Arg|Args'] Out :- 
     app_ctors (I Arg) Self [Arg|Args] Args' Out.
@@ -340,6 +351,62 @@ Elpi Db theory.db lp:{{
     std.rev Args Args',
     coq.say "reduced self to" (app [Self|Args']), 
     std.map (Ctors (app [Self|Args'])) ctor->term Out.
+
+  pred ctor->term i: indc-decl, o: term.
+  ctor->term (constructor _ A) O :- coq.arity->term A O.
+
+  % similar logic as above but replaces the recursive type with SRec. Notice that these constructors are not well-typed as coq terms.
+  %  e.g. list Z ===> [nil: SRec, cons : Z -> SRec -> SRec]
+  pred app_ctors_smt i: indt-decl, i: list term, o: term.
+  app_ctors_smt (parameter _ _ _ I) [Arg|Args] Out :- 
+    app_ctors_smt (I Arg) Args Out.
+  app_ctors_smt (inductive _ _ _ Ctors) [] {{ SICases lp:CtorTys' }} :- 
+    std.map (Ctors {{ SIRec }}) ctor->smt CtorTys,
+    l2c CtorTys CtorTys'.
+
+  pred l2c i: list term, o: term.
+  l2c [] {{ [] }}.
+  l2c [X|XS] {{lp:X :: lp:R}} :- 
+    l2c XS R.
+
+
+  % lift terms of smt_sort_base to smt_ind_base, skipping over SIRec when present
+  pred lift_smt_sort i: term, o: term.
+  lift_smt_sort {{ SIRec }} {{ SIRec }}.
+  lift_smt_sort T {{ SISort lp:T }}.
+
+
+  pred ctor->smt i: indc-decl, o: term.
+  ctor->smt (constructor Nme Arity) {{ (lp:CoqName, lp:CtorType') }} :- 
+    str->term Nme CoqName,
+    coq.arity->term Arity T,
+    ctor_type->smt T CtorType,
+    l2c CtorType CtorType'.
+
+  % Z -> SIRec -> SRec    ===> 
+  % [SInt, SIRec]
+
+  pred ctor_type->smt i: term, o: list term.
+  ctor_type->smt {{ SIRec }} [].
+  ctor_type->smt (prod _ Ty FI) [Srt|Rec] :-
+    sort->smt Ty Inter,
+    lift_smt_sort Inter Srt,
+    % it should be the case that forall T T', FI T = FI T' (i.e. this is an anonymous prod),
+    % so we pass the type as a dummy term
+    ctor_type->smt (FI Ty) Rec.
+  
+
+
+  % list nat starts as 
+  %            (forall T, | nil : T, | cons : A -> T -> T) nat
+  %          =apply= 
+  %             | nil : list nat, | cons : nat -> list nat -> list nat
+  %          =map sort->smt over anonymous products= 
+  %             | nil : SRec, | cons : Z -> SRec -> SRec
+  %          =convert anonymous products to SMT sort inductive=
+  %             |  
+
+
 
   % pred arity->smt_tys i: term, o: list term.
   % ctor->smt (prod `_` Ty FI) 
@@ -435,21 +502,16 @@ Elpi Typecheck.
 Elpi Command Print_sort.
 Elpi Accumulate Db theory.db.
 Elpi Accumulate lp:{{
-  main [trm Trm] :- 
-    % term->ind L Ind, 
-    % coq.say "ind" Ind,
-    % app_ctors Ind L [] [R] Out,
-    % coq.say "ctors" Out.
-    sort->smt Trm Srt,
-    coq.say "smt sort:" Srt.
-    % monomorphize_sort (concrete_app (concrete_base Trm) [concrete_base {{nat}}, concrete_par "A"]) X,
-    % N is size "ab",
-    % coq.term->string X Out,
-    % coq.say "pretty term" Out.
+  main [trm (app [(global (indt F))|Args])] :- 
+    coq.env.indt-decl F FI,
+    app_ctors_smt FI Args Out,
+    coq.say "smt ctor types are:" Out.
 }}.
 Elpi Typecheck.
 
-Elpi Print_sort ((nat + bool)%type).
+
+
+Elpi Print_sort ((list nat)%type).
 
 
 (* Code below here doesn't work, needs to be adapted to make (and use) sort->smt etc *)

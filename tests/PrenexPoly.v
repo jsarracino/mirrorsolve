@@ -258,6 +258,86 @@ Require Import Coq.Strings.Ascii.
 Locate Z.
 
 Elpi Db theory.db lp:{{ 
+
+
+  % pred arity->smt_tys i: term, o: list term.
+  % ctor->smt (prod `_` Ty FI) 
+  % end inductive translation
+
+  % reflecting an elpi string to a Coq String.String
+  pred dig->bit i: int, o: bool.
+  dig->bit 0 ff.
+  dig->bit 1 tt.
+
+  pred int->bits_h i:int, o: list bool.
+  int->bits_h X [Bit] :- dig->bit X Bit.
+  int->bits_h X [Dig|XS] :- 
+    LSB is X mod 2,
+    dig->bit LSB Dig,
+    Rem is X div 2,
+    int->bits_h Rem XS.
+
+  pred repeat i: bool, i: int, o: list bool.
+  repeat _ 0 [].
+  repeat X N [X|XS] :- 
+    N > 0, 
+    M is N - 1,
+    repeat X M XS.
+
+  pred int->bits i: int, o: list bool.
+  int->bits X XS :- 
+    int->bits_h X Digs,
+    std.length Digs N,
+    M is 8 - N,
+    repeat ff M Suffix, 
+    std.append Digs Suffix XS.
+
+  pred bit->cbool i:bool, o: term.
+  bit->cbool tt {{ true }}.
+  bit->cbool ff {{ false }}.
+
+  pred bits->ascii i: list bool, o: term.
+  bits->ascii Bs Out :- 
+    std.map Bs bit->cbool CArgs,
+    % coq.say CArgs,
+    Out = app [{{ Ascii }} | CArgs].
+
+  pred int->ascii i: int, o: term.
+  int->ascii X O :- 
+    int->bits X Bits,
+    bits->ascii Bits O.
+
+  pred str->chars i: string, o: list string.
+  str->chars X [X] :- 
+    N is size X,
+    N = 1.
+  str->chars X [C|XS] :- 
+    N is (size X) - 1,
+    Y is substring X 1 N, 
+    str->chars Y XS,
+    C is substring X 0 1.
+
+  pred chr->term i: string, o: term.
+  chr->term C Out :- 
+    CV is rhc C,
+    int->ascii CV Out.
+
+  pred make_str i: list term, o: term.
+  make_str [] {{ EmptyString }}.
+  make_str [C|CS] (app [CTor,C,R]) :- 
+    make_str CS R,
+    CTor = {{ String }}.
+
+  % output term is a Coq term for a Strings.String.
+  pred str->term i: string, o: term.
+  str->term Str Out :- 
+    str->chars Str Chrs,
+    std.map Chrs chr->term Asciis, 
+    make_str Asciis Out.
+
+  % end string reflection
+
+
   kind kind_expr type.  
 
   type kind_star kind_expr.
@@ -306,8 +386,12 @@ Elpi Db theory.db lp:{{
     sort->smt_name F FO, 
     std.string.concat "_" OArgs ArgsCat,
     Out is FO ^ "_" ^ ArgsCat.
-  % parametric types (encoded as SCustoms) TODO
-  % sort->smt_name {{ SCustom lp:Nme }} Nme.
+  % sort->smt_name {{ SCustom lp:NmeStr }} Nme :- 
+  %   str->term Nme NmeStr.
+  sort->smt_name {{ SCustom lp:NmeStr }} Out :- 
+    coq.say "Name is" NmeStr,
+    Out = "A",
+    coq.say "Output is" Out.
 
   % convert a sort to an SMT sort
   pred sort->smt i: term, o: term.
@@ -408,82 +492,6 @@ Elpi Db theory.db lp:{{
 
 
 
-  % pred arity->smt_tys i: term, o: list term.
-  % ctor->smt (prod `_` Ty FI) 
-  % end inductive translation
-
-  % reflecting an elpi string to a Coq String.String
-  pred dig->bit i: int, o: bool.
-  dig->bit 0 ff.
-  dig->bit 1 tt.
-
-  pred int->bits_h i:int, o: list bool.
-  int->bits_h X [Bit] :- dig->bit X Bit.
-  int->bits_h X [Dig|XS] :- 
-    LSB is X mod 2,
-    dig->bit LSB Dig,
-    Rem is X div 2,
-    int->bits_h Rem XS.
-
-  pred repeat i: bool, i: int, o: list bool.
-  repeat _ 0 [].
-  repeat X N [X|XS] :- 
-    N > 0, 
-    M is N - 1,
-    repeat X M XS.
-
-  pred int->bits i: int, o: list bool.
-  int->bits X XS :- 
-    int->bits_h X Digs,
-    std.length Digs N,
-    M is 8 - N,
-    repeat ff M Suffix, 
-    std.append Digs Suffix XS.
-
-  pred bit->cbool i:bool, o: term.
-  bit->cbool tt {{ true }}.
-  bit->cbool ff {{ false }}.
-
-  pred bits->ascii i: list bool, o: term.
-  bits->ascii Bs Out :- 
-    std.map Bs bit->cbool CArgs,
-    % coq.say CArgs,
-    Out = app [{{ Ascii }} | CArgs].
-
-  pred int->ascii i: int, o: term.
-  int->ascii X O :- 
-    int->bits X Bits,
-    bits->ascii Bits O.
-
-  pred str->chars i: string, o: list string.
-  str->chars X [X] :- 
-    N is size X,
-    N = 1.
-  str->chars X [C|XS] :- 
-    N is (size X) - 1,
-    Y is substring X 1 N, 
-    str->chars Y XS,
-    C is substring X 0 1.
-
-  pred chr->term i: string, o: term.
-  chr->term C Out :- 
-    CV is rhc C,
-    int->ascii CV Out.
-
-  pred make_str i: list term, o: term.
-  make_str [] {{ EmptyString }}.
-  make_str [C|CS] (app [CTor,C,R]) :- 
-    make_str CS R,
-    CTor = {{ String }}.
-
-  % output term is a Coq term for a Strings.String.
-  pred str->term i: string, o: term.
-  str->term Str Out :- 
-    str->chars Str Chrs,
-    std.map Chrs chr->term Asciis, 
-    make_str Asciis Out.
-
-  % end string reflection
 
 }}.
 Elpi Typecheck.
@@ -513,143 +521,82 @@ Elpi Typecheck.
 
 Elpi Print_sort ((list nat)%type).
 
-
 (* Code below here doesn't work, needs to be adapted to make (and use) sort->smt etc *)
 
 Elpi Tactic mirrorsolve.
+Elpi Accumulate Db theory.db.
 Elpi Accumulate lp:{{
 
-  pred setly i: term.
-  % setly X :- coq.say "setly with" X, fail.
-  setly X :- coq.typecheck X Ty ok, Ty = {{ Set }}.
-  setly X :- coq.typecheck X Ty ok, Ty = {{ Type }}.
+  % replace prenex parameter type variables with scustom type variables in a term
+  pred replace_abs_sorts i: term, o: term.
+  replace_abs_sorts (prod Nme {{ Type }} FT) Out :- 
+    coq.name->id Nme NmeStr,
+    str->term NmeStr CoqNme,
+    replace_abs_sorts (FT {{ SCustom lp:CoqNme }}) Out.
+  replace_abs_sorts (prod Nme {{ Set }} FT) Out :- 
+    coq.name->id Nme NmeStr,
+    str->term NmeStr CoqNme,
+    replace_abs_sorts (FT {{ SCustom lp:CoqNme }}) Out.
+  replace_abs_sorts T T.
 
 
+  % uses_fun {{ app xs [] }} {{ app }} {{ list <A> -> list <A> -> list <A> }}
 
-  typeabbrev kind_ctx (list (pair term kind_expr)).
+  % app' : forall (A: Type) (_: list A) (_: list A), list A
+  % @app' (SCustom "name") xs nil
 
-  pred ctx-empty o: kind_ctx.
-  % ctx-empty O :- std.map.make _ O.
-  ctx-empty [].
+  pred instantiate_typ_args i: term, i: list term, o: term.
+  instantiate_typ_args (prod Nme {{ Set }} FT) [Arg|Args] Out :-
+   !, instantiate_typ_args (FT Arg) Args Out.
+  instantiate_typ_args (prod Nme {{ Type }} FT) [Arg|Args] Out :- 
+    !, instantiate_typ_args (FT Arg) Args Out.
+  instantiate_typ_args T _ T.
 
-  pred ctx-add i: term, i: kind_expr, i: kind_ctx, o: kind_ctx.
-  % ctx-add K V O' O :- std.map.add K V O' O.
-  ctx-add K V O' [pr K V|O'].
+  pred uses_fun i:term, o: term, o: term.
+  uses_fun (app [{{ SCustom }}|_]) _ _ :- !, fail.
+  uses_fun (app [F|Args]) F Typ :-
+    coq.typecheck F CoqTyp ok, 
+    instantiate_typ_args CoqTyp Args Typ.
+  uses_fun (app [_|Args]) F Typ :- 
+    std.exists Args (t \ uses_fun t F Typ).
 
-  pred ctx-single i: term, i: kind_expr, o: kind_ctx.
-  ctx-single K V O :- 
-    ctx-empty O,
-    ctx-add K V O' O.
+  % pred is_ind_typ o: term.
 
-  pred ctx-mapsto i: kind_ctx, i: term, o: kind_expr.
-  % ctx-mapsto Ctx K V :- coq.say "ctx-mapsto" Ctx K V, fail.
-  % ctx-mapsto Ctx K V :- std.map.find K Ctx V.
-  ctx-mapsto Ctx K V :- std.lookup Ctx K V.
+  % sorts: <A>, list <A>
 
-  pred mk-decl i: prop, o: term, o: kind_expr.
-  mk-decl (decl Var Name _) Var (kind_par Name) :- setly Var.
+  % funs: 
+    % app : list <A> -> list <A> -> list <A>
 
-  % TODO: there's probably a way to write this with std.list functions
-  pred mk-decls i: list prop o: kind_ctx.
-  mk-decls [] O :- ctx-empty O.
-  mk-decls [D|DS] O :- 
-    mk-decl D K V, !,
-    mk-decls DS O', 
-    ctx-add K V O' O.
-  mk-decls [_|DS] O :- mk-decls DS O.
-
-  % set helper functions
-
-  typeabbrev kind_expr_set (list kind_expr).
-  % empty set
-  pred set-empty o: kind_expr_set.
-  % set-empty O :- std.set.make _ O.
-  set-empty [].
-
-  % single element
-  pred set-single i:kind_expr o: kind_expr_set.
-  % set-single X _ :- coq.say "set-single" X, fail.
-  % set-single X O :- 
-  %   set-empty Empty, !,
-  %   std.set.add X Empty O.
-  set-single X [X].
-
-  pred set-add i: kind_expr, i: kind_expr_set, o: kind_expr_set.
-  set-add X S S :- std.mem S X.
-  set-add X S [X|S].
-
-  % combine a list and a set into a set
-  pred add-all i: list kind_expr, i: kind_expr_set, o: kind_expr_set.
-  add-all [] O O.
-  add-all [T|TS] S O :- 
-    add-all TS S O', 
-    set-add T O' O.
-
-  pred set-elems i: kind_expr_set, o: list kind_expr.
-  set-elems X X.
-
-  % union two sets together
-  pred union i:kind_expr_set, i:kind_expr_set, o: kind_expr_set.
-  union L R O :- 
-    set-elems L LS,
-    add-all LS R O.
-
-  % flatten a list of sets into a single set 
-  pred flatten i: list (kind_expr_set), o: kind_expr_set.
-  % flatten X _ :- coq.say "flatten" X, fail.
-  flatten [] O :- set-empty O.
-  flatten [S|SS] O :- 
-    flatten SS O', 
-    union S O' O.
-
-  % base case: convert an atomic term into a kind_expr if it is in the context
-  pred sortify_term i: kind_ctx, i: term, o: kind_expr.
-  sortify_term Ctx T O :- ctx-mapsto Ctx T O.
-  sortify_term Ctx (app [T|TS] as T') (kind_app O TSO) :-
-    setly T',
-    sortify_term Ctx T O,
-    std.map TS (sortify_term Ctx) TSO.
-  sortify_term Ctx (app [T|TS] as T') (kind_app (kind_base T) TSO) :-
-    setly T',
-    std.map TS (sortify_term Ctx) TSO.
-
-  % lift sortify_term to sets
-  pred gather_sorts_term i: kind_ctx, i: term, o: kind_expr_set.
-  % gather_sorts_term Ctx T O :- coq.say "gather_sorts_term" Ctx T O, fail.
-  gather_sorts_term Ctx T O :-
-    sortify_term Ctx T KE,
-    set-single KE O.
-  gather_sorts_term _ _ O :- set-empty O.
-
-  % Coq's AST roughly represents the Coq Type 
-  % prod nat (list nat) (i.e. nat * list nat):
-  % (app prod [nat; (app list [nat])])
-  % Elpi represents the same type as:
-  % (app [prod; nat; (app [list; nat])])
+  % rels: (none)
 
 
-  pred gather_sorts i: kind_ctx, i:term, o:kind_expr_set.
-  % gather_sorts Ctx G O :- coq.say "gather_sorts" Ctx G O, fail.
-  gather_sorts Ctx (app TS as G) O :- 
-    gather_sorts_term Ctx G O', 
-    std.map-filter TS (gather_sorts Ctx) TO,
-    flatten TO O'',
-    union O' O'' O.
-  gather_sorts Ctx G O :- gather_sorts_term Ctx G O.
+  % pred uses_typ i: term, o: term.
+  % uses_typ (app [F|_])
 
-  % forall (X: Type), list X = list X
-  % intros ===>
+  % eq: forall (A: Type) (a a': A), Prop
 
-  % X: Type 
-  % =========
-  % list X = list X
+  % TODO: 
+  % If we derive uses_fun Term Fun FunTy, 
+  % We can call sort->smt on FunTy to get an SMT type for reflection
+    % uses_fun Goal Fun FunTy, 
+    % sort->smt FunTy SMTTy.
 
-  solve (goal Ctx _ G' _ _ as G) GL :- 
-    coq.say "CTX is:" Ctx,
-    mk-decls Ctx CtxMap,
-    coq.say "the names are" CtxMap,
-    gather_sorts CtxMap G' KEs,
-    coq.say "the kind exprs are" KEs.
+  pred smt_typ i: term, i: term, o: term.
+  smt_typ Goal Ty Out :- 
+    uses_fun Goal _ Ty,
+    coq.say "Trying to convert to SMT type:" Ty,
+    sort->smt Ty Out,
+    coq.say "sort->smt output is" Out.
+
+  % (goal Ctx2 REv2 Ty2 Ev2 _)
+  solve (goal _ _ Ty _ _ as G) GL :- 
+    coq.say "Ty is:" Ty,
+    replace_abs_sorts Ty Ty',
+    Ty' = (prod _ _ F), 
+    Ty'' = (F {{ 0 }}),
+    smt_typ Ty'' Fun FunTy,
+    coq.say "Output fun is " Fun,
+    coq.say "with type " FunTy.
 }}.
 Elpi Typecheck.
 
@@ -658,7 +605,6 @@ Ltac mirrorsolve' := admit.
 Lemma app'_nil_r: 
   forall {A} (xs: list A), app' xs [] = xs.
 Proof.
-  intros.
   elpi mirrorsolve. (* for sorts, we expect A, list A *)
   (* ideally the following proof: *)
   induction xs; mirrorsolve'.

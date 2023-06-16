@@ -558,7 +558,12 @@ Elpi Accumulate lp:{{
     coq.typecheck F CoqTyp ok, 
     instantiate_typ_args CoqTyp Args Typ.
   uses_fun (app [_|Args]) F Typ :- 
-    std.exists Args (t \ uses_fun t F Typ).
+    uses_fun_list Args F Typ.
+
+  pred uses_fun_list i: list term, o: term, o: term.
+  uses_fun_list XS _ _ :- coq.say "uses_fun_list with" XS, fail.
+  uses_fun_list [T|_] F Typ :- uses_fun T F Tp.
+  uses_fun_list [_|Ts] F Typ :- uses_fun_list Ts F Typ.
 
   % pred is_ind_typ o: term.
 
@@ -575,12 +580,6 @@ Elpi Accumulate lp:{{
 
   % eq: forall (A: Type) (a a': A), Prop
 
-  % TODO: 
-  % If we derive uses_fun Term Fun FunTy, 
-  % We can call sort->smt on FunTy to get an SMT type for reflection
-    % uses_fun Goal Fun FunTy, 
-    % sort->smt FunTy SMTTy.
-
   pred smt_typ i: term, i: term, o: term.
   smt_typ Goal Ty Out :- 
     uses_fun Goal _ Ty,
@@ -588,17 +587,32 @@ Elpi Accumulate lp:{{
     sort->smt Ty Out,
     coq.say "sort->smt output is" Out.
 
+  pred keep_term o: term.
+  keep_term (app _) :- !, fail.
+  keep_term T.
+
+  pred will_not_work i:term.
+  will_not_work T :- !, fail.
+
   % (goal Ctx2 REv2 Ty2 Ev2 _)
   solve (goal _ _ Ty _ _ as G) GL :- 
     coq.say "Ty is:" Ty,
     replace_abs_sorts Ty Ty',
     Ty' = (prod _ _ F), 
-    Ty'' = (F {{ 0 }}),
-    smt_typ Ty'' Fun FunTy,
+    will_not_work Ty',
+    % Ty'' = (F {{ 0 }}),
+    % smt_typ Ty' Fun FunTy,
+    % keep_term Fun,
     coq.say "Output fun is " Fun,
     coq.say "with type " FunTy.
 }}.
 Elpi Typecheck.
+
+(* (constant (global "app'"))
+(constant (indc "nil"))
+(constant (indt "eq"))
+
+instead we have (list "A") *)
 
 Ltac mirrorsolve' := admit.
 

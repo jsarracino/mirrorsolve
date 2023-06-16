@@ -553,6 +553,7 @@ Elpi Accumulate lp:{{
   instantiate_typ_args T _ T.
 
   pred uses_fun i:term, o: term, o: term.
+  uses_fun T _ _ :- coq.say "uses_fun with" T, fail.
   uses_fun (app [{{ SCustom }}|_]) _ _ :- !, fail.
   uses_fun (app [F|Args]) F Typ :-
     coq.typecheck F CoqTyp ok,
@@ -562,7 +563,7 @@ Elpi Accumulate lp:{{
 
   pred uses_fun_list i: list term, o: term, o: term.
   uses_fun_list XS _ _ :- coq.say "uses_fun_list with" XS, fail.
-  uses_fun_list [T|_] F Typ :- uses_fun T F Tp.
+  uses_fun_list [T|_] F Typ :- uses_fun T F Typ.
   uses_fun_list [_|Ts] F Typ :- uses_fun_list Ts F Typ.
 
   % pred is_ind_typ o: term.
@@ -580,29 +581,31 @@ Elpi Accumulate lp:{{
 
   % eq: forall (A: Type) (a a': A), Prop
 
-  pred smt_typ i: term, i: term, o: term.
-  smt_typ Goal Ty Out :-
+  pred smt_typ i: term, o: term.
+  smt_typ Goal Ty :-
     uses_fun Goal _ Ty,
-    coq.say "Trying to convert to SMT type:" Ty,
-    sort->smt Ty Out,
-    coq.say "sort->smt output is" Out.
+    coq.say "Trying to convert to SMT type:" Ty.
 
   pred keep_term i: term.
-  keep_term T :- coq.say T, fail.
-  keep_term (app [{{ app' }}|_]) :- !.
+  keep_term T :- coq.say "keep fun with" T, fail.
+  keep_term {{ @app' }} :- !.
 
   pred will_not_work i:term.
   will_not_work T :- !, fail.
 
   % (goal Ctx2 REv2 Ty2 Ev2 _)
   solve (goal _ _ Ty _ _ as G) GL :-
+    coq.say "Ty is:" Ty,
     replace_abs_sorts Ty Ty',
+    coq.say "Ty' is:" Ty',
     Ty' = (prod _ _ F),
     Ty'' = (F {{ 0 }}),
-    smt_typ Ty' Fun FunTy,
+    coq.say "Ty'' is:" Ty'',
+    uses_fun Ty'' Fun FunTy,
+    coq.say "Fun is:" Fun,
     keep_term Fun,
-    coq.say "Output fun is " Fun,
-    coq.say "with type " FunTy.
+    coq.say "FunTy is:" FunTy,
+    coq.say "Output fun is " Fun.
 }}.
 Elpi Typecheck.
 

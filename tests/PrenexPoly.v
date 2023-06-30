@@ -194,12 +194,16 @@ End ExtensibleTypes.
 
 Arguments LIHere {_ _ _}.
 
+(* let tys_list := [nat, bool, list A] *)
+
 Definition tys_list : list Set := [nat ; bool ; list nat ].
 
 Definition nat_idx : list_idx tys_list := LIHere.
 Definition bool_idx : list_idx tys_list := LIThere (LIHere).
 
-Definition add_func : funs _ [nat_idx; nat_idx] nat_idx := Nat.add.
+Definition add_func : funs _ [nat_idx; nat_idx] nat_idx 
+  := 
+  Nat.add.
 Require Import MirrorSolve.Reflection.Tactics.
 
 
@@ -588,10 +592,48 @@ Elpi Accumulate lp:{{
 
   pred keep_term i: term.
   keep_term T :- coq.say "keep fun with" T, fail.
+  keep_term {{ @nil }} :- !.
+  keep_term {{ @cons }} :- !.
   keep_term {{ @app' }} :- !.
 
   pred will_not_work i:term.
   will_not_work T :- !, fail.
+
+  pred uses_fun_constrained i: term, o: term, o:term.
+  uses_fun_constrained Ty F FTy :- 
+    uses_fun Ty F FTy, 
+    keep_term F.
+
+  %TODO:
+
+  % 1. Make replace_abs_sorts also return a list of introduced type variables. So replace_abs_sorts gives back an SMT-ized term T and a list of SMT type variables.
+  % 2. Build a bimap between introduced SMT type variables and new Coq type by doing an "intros" for each of the new SMT variables and recording the new variable. 
+  % 3. Write a predicate for converting a SMT type term back to a Coq type term.
+  % 4. Gather up the SMT types in the goal
+  % 5. Make a first order theory as above by converting each of the SMT types to the corresponding Coq Set 
+  
+  % Here's what happens on this goal:
+  % forall (A : Set) (xs : list A),
+  %   app' xs [] = xs
+
+  % 1.  T         = forall (xs: list (Custom "A")), app' ... blah, 
+  %     Type Vars = [ Custom "A" ]
+
+  % 2. intros A. Bimap = { Custom "A" <-> A }
+  % 3. to_coq (Custom "A") A.
+  % 4. funs = [(fun = app', sorts = list (Custom "A")), 
+  %    sorts = Custom "A", list (Custom "A")
+  % 5. let fol_sorts : list Set := [A ; list A ]
+
+  % at the end: we want to connect an "SMT-ized" type back to a Coq type in the context of the goal, where the goal has all type variables intro'd. This is needed because to build a list of Sets for the FOL, the type variables need to be quantified, since some of the type variables will be used in the FOL types
+  % e.g.
+  % forall A (xs: list A), xs ++ [] = xs 
+  % ===> 
+  % (A: Set)
+  % -------
+  % forall
+
+
 
   % (goal Ctx2 REv2 Ty2 Ev2 _)
   solve (goal _ _ Ty _ _ as G) GL :-
@@ -601,25 +643,64 @@ Elpi Accumulate lp:{{
     Ty' = (prod _ _ F),
     Ty'' = (F {{ 0 }}),
     coq.say "Ty'' is:" Ty'',
-    uses_fun Ty'' Fun FunTy,
-    coq.say "Fun is:" Fun,
-    keep_term Fun,
-    coq.say "FunTy is:" FunTy,
-    coq.say "Output fun is " Fun.
+
+    std.findall (uses_fun_constrained Ty'' _ _) L,
+    coq.say "output is" L.
+
+
+
+    % uses_fun Ty'' Fun FunTy,
+    % coq.say "Fun is:" Fun,
+    % keep_term Fun,
+    % coq.say "FunTy is:" FunTy,
+    % coq.say "Output fun is " Fun.
 }}.
 Elpi Typecheck.
 
-(* (constant (global "app'"))
-(constant (indc "nil"))
-(constant (indt "eq"))
 
-instead we have (list "A") *)
+(* 
+
+  keep_fun cons
+  keep_fun nil
+
+  keep_fun ... (user specified functions)
+
+  keep_fun app'
+  
+
+  keep_rel eq
+  keep_rel ... (user specified relations)
+
+
+
+*)
+
+(* 
+  TODO: 
+    add some more clauses to keep_term,
+    recognize the type parameters of funs,
+    do some fancy stuff to figure out a monomorphic FOL in Coq,
+    build the reflection stuff needed by the tactic below,
+    ???
+    profit
+
+    An extra optimization is for the monomorphic step,
+    come up with a version of FOL that is polymorphic, 
+    such that we can generate a polymorphic theory and a configuration for the theory in Elpi, 
+    and then rely on Coq's inference to figure out the theory monomorphization.
+
+*)
 
 Ltac mirrorsolve' := admit.
 
 Lemma app'_nil_r:
-  forall {A} (xs: list A), app' xs [] = xs.
+  forall {A : Set} (xs: list A), app' xs [] = xs.
 Proof.
+  (* intros ?.
+  refine (
+    let tys_list : list Set := [nat ; bool ; list A ] in 
+    _
+  ). *)
   elpi mirrorsolve. (* for sorts, we expect A, list A *)
   (* ideally the following proof: *)
   induction xs; mirrorsolve'.

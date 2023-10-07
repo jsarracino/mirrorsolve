@@ -138,6 +138,8 @@ Inductive ty_valu : ty_ctx -> snoc_list Type -> Type :=
     ty_valu ctx sl -> 
     ty_valu (S ctx) (Snoc _ sl T).
 
+Set Transparent Obligations.
+
 Equations lookup_tc_var ctx tys (tv: ty_valu ctx tys) (tc_var: ty_ctx_var ctx) : Type := {
   lookup_tc_var _ _ (TVSnoc _ T _ _) (TCVHere _) := T; 
   lookup_tc_var _ _ (TVSnoc _ _ _ tv') (TCVThere _ tc_var') := lookup_tc_var _ _ tv' tc_var'; 
@@ -238,3 +240,100 @@ Equations interp_pfm t_ctx tys (tv: ty_valu t_ctx tys) (pf: poly_fm sig_sorts si
 }.
 
 End PolySemantics.
+
+Arguments TEApp {_ _ _} _ _.
+Arguments TEVar {_ _ _} _.
+Arguments TEVAnon {_ _} _.
+Arguments TEVNamed {_ _ _} _.
+Arguments TCVHere {_}.
+
+Section PolyDemo.
+
+Require Import Coq.Lists.List.
+
+Import ListNotations.
+
+Inductive demo_sorts : nat -> Type := 
+| sort_list : demo_sorts 1
+| sort_nat : demo_sorts 0.
+
+Notation list_A := (TEApp
+  (TEVar (TEVNamed sort_list)) 
+  (TEVar (TEVAnon TCVHere))
+).
+
+Notation nat_ty := (TEVar (TEVNamed sort_nat)).
+
+Inductive demo_funs : 
+  forall ctx, list (ty_expr demo_sorts ctx 0) -> ty_expr demo_sorts ctx 0 -> Type := 
+| demo_app : demo_funs 1 [list_A; list_A] list_A (* forall A, list A -> list A -> list A*)
+| demo_len : demo_funs 1 [list_A] nat_ty (* forall A, list A -> nat *)
+| demo_add : demo_funs 1 [nat_ty; nat_ty] nat_ty (* nat -> nat -> nat *)
+.
+
+Inductive demo_rels : 
+  forall ctx, list (ty_expr demo_sorts ctx 0) -> Type := .
+
+Definition demo_sig : signature demo_sorts := {|
+  sig_funs := demo_funs;
+  sig_rels := demo_rels;
+|}.
+
+Definition interp_demo_sorts : forall n, demo_sorts n -> arity_ftor n := fun n srt => 
+  match srt with 
+  | sort_list => list
+  | sort_nat => nat
+  end.
+
+Equations 
+  interp_demo_funs t_ctx ctx args ret (fn: demo_funs t_ctx args ret) tv (hargs: HList.t (interp_te demo_sorts interp_demo_sorts t_ctx ctx tv 0) args) : 
+  interp_te demo_sorts interp_demo_sorts t_ctx ctx tv 0 ret := {
+  interp_demo_funs _ _ _ _ demo_app _ (l ::: r ::: _) := List.app l r; 
+  interp_demo_funs _ _ _ _ demo_len _ (x ::: _) := List.length x; 
+  interp_demo_funs _ _ _ _ demo_add _ (l ::: r ::: _) := l + r; 
+}.
+
+Definition interp_demo_rels t_ctx ctx args (fn: demo_rels t_ctx args) tv (hargs: HList.t (interp_te demo_sorts interp_demo_sorts t_ctx ctx tv 0) args) : Prop := 
+  match fn with end.
+
+Program Definition demo_model : interp_sig demo_sorts interp_demo_sorts demo_sig := {| 
+  interp_funs := interp_demo_funs;
+  interp_rels := interp_demo_rels;
+|}.
+
+Arguments PFm {_ _ _} _.
+Arguments PForall {_ _ _} _.
+Arguments FTrue {_ _ _ _}.
+Arguments FForall {_ _ _ _} _ _.
+Arguments FEq {_ _ _ _ _} _ _.
+Arguments TVar {_ _ _ _ _} _.
+Arguments VHere {_ _ _ _}.
+Arguments VThere {_ _ _ _ _} _.
+Arguments TFun {_ _ _ _ _ _} _ _.
+
+Notation t_xs := (TVar (VThere VHere)).
+Notation t_ys := (TVar VHere).
+
+Notation t_app args := (TFun (sig := demo_sig) demo_app args).
+Notation t_len args := (TFun (sig := demo_sig) demo_len args).
+Notation t_add args := (TFun (sig := demo_sig) demo_add args).
+
+(* a polyfm version of app_len, i.e. 
+  forall A (xs ys: list A), 
+    length (xs ++ ys) = length xs + length ys *)
+Example app_len_pf: 
+  interp_pfm demo_sorts interp_demo_sorts demo_sig demo_model 0 (SLNil _) TVEmp
+  ( PForall (PFm (
+    FForall list_A (FForall list_A (
+      FEq 
+        (t_len (t_app (t_xs ::: t_ys ::: hnil) ::: hnil))
+        (t_add (t_len (t_xs ::: hnil) ::: (t_len (t_ys ::: hnil)) ::: hnil))
+    )))
+  )).
+Proof.
+  vm_compute.
+  intros.
+  eapply List.app_length.
+Qed.
+
+End PolyDemo.

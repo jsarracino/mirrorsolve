@@ -12,6 +12,14 @@ Section PolySyntax.
 Definition ty_ctx := nat.
 Context (sig_sorts : nat -> Type).
 
+Inductive ty_valu : ty_ctx -> snoc_list Type -> Type := 
+| TVEmp : 
+  ty_valu 0 (SLNil _)
+| TVSnoc : 
+  forall ctx T sl, 
+    ty_valu ctx sl -> 
+    ty_valu (S ctx) (Snoc _ sl T).
+
 Inductive ty_ctx_var: ty_ctx -> Type :=
 | TCVHere:
   forall ctx,
@@ -58,7 +66,73 @@ Inductive var: forall t_ctx, ctx t_ctx -> ty_expr t_ctx 0 -> Type :=
     var _ (Snoc _ c s) s'.
 Derive Signature NoConfusion for var.
 
+(* Definition infer_args_ty t_parent t_child c_parent c_child args args' (parent_args : HList.t (tm t_parent c_parent) args) : HList.t (tm t_child c_child) args'. Admitted. *)
+
+(* Definition lift_return t_parent t_child c_parent c_child *)
+
 Context (sig: signature).
+
+(* TODO:
+    add type variables here, 
+    calculate return type from type variables and function signature,
+    calculate type of argument variables from type variables and function signature
+
+  e.g.
+
+    (forall A B (a: A) (b: B), A * B) [X, Y] => 
+    args = X, Y
+    ret = X * Y
+*)
+
+Inductive ty_params t_ctx_outer : ty_ctx -> snoc_list (ty_expr t_ctx_outer 0) -> Type := 
+| TPEmp : 
+  ty_params t_ctx_outer 0 (SLNil _)
+| TPSnoc : 
+  forall ctx te sl, 
+    ty_params t_ctx_outer ctx sl -> 
+    ty_params t_ctx_outer (S ctx) (Snoc _ sl te).
+
+(* Definition infer_ 
+
+  ty_expr t_ctx_inner 0 -> 
+  ty_args -> 
+
+  ty_expr t_ctx_outer 0
+*)
+
+(* 
+
+  append has function type 
+    forall A,
+      A -> A -> A
+
+  
+
+*)
+
+(* True but not needed *)
+Definition insert_closed t_ctx n (te: ty_expr 0 n) : ty_expr t_ctx n.
+Admitted.
+
+Equations lookup_tp_var t_ctx_outer t_ctx_inner tys (tp: ty_params t_ctx_outer t_ctx_inner tys) (tc_var: ty_ctx_var t_ctx_inner) : ty_expr t_ctx_outer 0 := {
+  lookup_tp_var _ _ _ (TPSnoc _ e _ _) (TCVHere _) := 
+    e; 
+  lookup_tp_var _ _ _ (TPSnoc _ _ _ tv') (TCVThere _ tc_var') := 
+    lookup_tp_var _ _ _ tv' tc_var'; 
+}.
+
+(* Local Obligation Tactic := idtac. *)
+Equations apply_ty_args 
+  t_ctx_inner t_ctx_outer t_args n
+  (ty_args: ty_params t_ctx_outer t_ctx_inner t_args)
+  (te_inner : ty_expr t_ctx_inner n) : ty_expr t_ctx_outer n by struct te_inner := {
+  apply_ty_args _ t_ctx_outer _ _ tp (TEApp _ _ l r) := 
+    TEApp _ _ (apply_ty_args _ _ _ _ _ l) (apply_ty_args _ _ _ _ _ r);
+  apply_ty_args _ _ _ _ tp (TEVar _ _ (TEVNamed _ _ f)) := 
+    TEVar _ _ (TEVNamed _ _ f);
+  apply_ty_args _ _ _ _ tp (TEVar _ _ (TEVAnon _ v)) := 
+    lookup_tp_var _ _ _ tp v;
+}.
 
 Inductive tm t_ctx : ctx t_ctx -> ty_expr t_ctx 0 -> Type :=
 | TVar: 
@@ -66,10 +140,42 @@ Inductive tm t_ctx : ctx t_ctx -> ty_expr t_ctx 0 -> Type :=
     var t_ctx c s ->
     tm t_ctx c s
 | TFun:
-  forall c args ret,
-    sig.(sig_funs) t_ctx args ret ->
-    HList.t (tm t_ctx c) args ->
-    tm t_ctx c ret.
+  forall t_ctx' t_args c args ret,
+    sig.(sig_funs) t_ctx' args ret ->
+    forall (ty_args : ty_params t_ctx t_ctx' t_args), (* type arguments *)
+      HList.t (fun te => tm t_ctx c (apply_ty_args _ _ _ _ ty_args te)) args -> 
+      tm t_ctx c (apply_ty_args _ _ _ _ ty_args ret). 
+
+
+    (* 
+      append : forall A (a: list A) (a': list A), A
+
+      @append B : forall (a: list B) (a': list B), B
+
+      B (bs: list B)
+
+      append bs bs = ...
+
+      @append B bs bs
+    
+    *)
+    (* append: demo_funs 1 [list_A; list_A] list_A 
+
+      this is what we have defined right now: 
+
+      append -> 
+      [list_A; list_A] -> 
+      tm ...
+
+      in a polymorphic setting, what we actually want is:
+
+      (fun A => append ) -> 
+      X -> 
+      [list_X; list_X] -> 
+      tm ... a term in which X and list_X are defined
+    *)
+
+
 Derive Signature for tm.
 
 Inductive fm t_ctx : ctx t_ctx -> Type :=
@@ -130,13 +236,7 @@ Context `(interp_sorts : forall n, sig_sorts n -> arity_ftor n).
 
 Context `(sig: signature sig_sorts).
 
-Inductive ty_valu : ty_ctx -> snoc_list Type -> Type := 
-| TVEmp : 
-  ty_valu 0 (SLNil _)
-| TVSnoc : 
-  forall ctx T sl, 
-    ty_valu ctx sl -> 
-    ty_valu (S ctx) (Snoc _ sl T).
+
 
 Set Transparent Obligations.
 
@@ -191,12 +291,14 @@ Equations interp_var t_ctx tys tv e_ctx e (env: valu t_ctx tys tv e_ctx) (v: var
   interp_var _ _ _ _ _ (VSnoc _ _ env _) (VThere _ _ _ _ vi) := interp_var _ _ _ _ _ env vi;
 }.
 
-(* Obligation Tactic := idtac. *)
+(* TODO: fix up interp_funs to handle type arguments. Need to consider how to adjust hargs, which is in the outer context, 
+    to the context of the inner function, which expects its own hargs.
+*)
 Equations 
   interp_tm t_ctx tys tv e_ctx e (env: valu t_ctx tys tv e_ctx) (t: tm sig_sorts sig t_ctx e_ctx e) : interp_te t_ctx tys tv 0 e by struct t := {
   interp_tm _ _ _ _ _ env (TVar _ _ v) := 
     interp_var _ _ _ _ _ env v;
-  interp_tm _ _ _ _ _ env (TFun _ _ _ _ _ _ f hargs) := 
+  interp_tm _ _ _ _ _ env (TFun _ _ _ _ _ f _ hargs) := 
     model.(interp_funs sig) _ _ _ _ f _ (interp_tms _ _ _ _ env _ hargs);
 } where 
   interp_tms t_ctx ctx tv e_ctx (env: valu t_ctx ctx tv e_ctx) tys (tms: HList.t (tm sig_sorts sig t_ctx e_ctx) tys) : HList.t (interp_te t_ctx ctx tv 0) tys by struct tms := {

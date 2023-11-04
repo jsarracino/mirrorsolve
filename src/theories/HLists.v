@@ -50,6 +50,8 @@ Module HList.
   End HList.
   Derive NoConfusion Signature for t.
 
+  (* Definition mapr {A B} (f: forall a: A, B a) (l: list A) : HList.t  *)
+
 
 
   Fixpoint mapl {A B} (f: forall a: A, B a) (l: list A): HList.t B l :=
@@ -63,6 +65,15 @@ Module HList.
     | HNil _ => HNil _
     | HCons a x hl => HCons _ (f a x) (map f hl)
     end.
+
+  Equations map_swap {A B} {F: B -> Type} 
+    l (f: A -> B) (xs: t F (List.map f l)) 
+  : t (fun x => F (f x)) l
+    by struct xs :=
+  {
+    map_swap [] f (HNil _) := HNil _;
+    map_swap (y :: ys) f (HCons a x hl) := HCons y x (map_swap ys f hl);
+  }.
 
   Definition all {A B} (P: forall a: A, B a -> Prop) : forall l, @t A B l -> Prop :=
     fix all_rec l hl :=
@@ -410,3 +421,12 @@ Section SnocList.
   | Snoc: snoc_list -> T -> snoc_list.
   Derive NoConfusion for snoc_list.
 End SnocList.
+
+Arguments SLNil {_}.
+Arguments Snoc {_} _ _.
+
+Fixpoint sl_map {A B} (f: A -> B) (xs: snoc_list A) : snoc_list B := 
+  match xs with 
+  | SLNil => SLNil
+  | Snoc xs x => Snoc (sl_map f xs) (f x)
+  end.

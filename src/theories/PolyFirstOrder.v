@@ -495,4 +495,106 @@ Qed.
 
 End PolyDemo.
 
+Section GenericTheory.
 
+Variable generic_inner_sorts: nat -> Type.
+
+Inductive generic_sorts: nat -> Type :=
+| generic_arrow : generic_sorts 2
+| generic_inner: forall n, generic_inner_sorts n -> generic_sorts n.
+
+Notation loc_A := (TEVar (TEVAnon TCVHere)).
+Notation loc_B := (TEVar (TEVAnon (TCVThere _ TCVHere))).
+
+Notation arrow_A_B := (TEApp (TEApp (TEVar (TEVNamed generic_arrow)) loc_A) loc_B).
+
+Import ListNotations.
+
+Inductive generic_funs:
+  forall ctx, list (ty_expr generic_sorts ctx 0) -> ty_expr generic_sorts ctx 0 -> Type :=
+| generic_eval : generic_funs 2 [arrow_A_B; loc_A] loc_B (* forall A B, arrow A B -> A -> B*)
+.
+
+Inductive generic_rels:
+  forall ctx, list (ty_expr generic_sorts ctx 0) -> Type := .
+
+Definition generic_sig: signature generic_sorts := {|
+  sig_funs := generic_funs;
+  sig_rels := generic_rels;
+|}.
+
+Variable interp_generic_inner_sorts : forall n (sort: generic_inner_sorts n), arity_ftor n.
+
+Equations interp_generic_sorts n (sort: generic_sorts n) : arity_ftor n := {
+    interp_generic_sorts _ generic_arrow := fun A B => A -> B;
+    interp_generic_sorts n (generic_inner n inner_sort) := interp_generic_inner_sorts n inner_sort
+}.
+
+Equations
+  interp_generic_funs t_ctx ctx args ret (fn: generic_funs t_ctx args ret)
+    tv (hargs: HList.t (interp_te generic_sorts interp_generic_sorts t_ctx ctx tv 0) args) :
+  interp_te generic_sorts interp_generic_sorts t_ctx ctx tv 0 ret := {
+  interp_generic_funs _ _ _ _ generic_eval _ (f ::: arg ::: _) := f arg;
+}.
+
+Definition interp_generic_rels t_ctx ctx args (rel: generic_rels t_ctx args) tv (hargs: HList.t (interp_te generic_sorts interp_generic_sorts t_ctx ctx tv 0) args) : Prop :=
+  match rel with end.
+
+Program Definition generic_model : interp_sig generic_sorts interp_generic_sorts generic_sig := {|
+  interp_funs := interp_generic_funs;
+  interp_rels := interp_generic_rels;
+|}.
+
+End GenericTheory.
+
+Section GenericDemo.
+
+Inductive generic_inner_sorts : nat -> Type :=
+| inner_sort_list : generic_inner_sorts 1
+| inner_sort_nat : generic_inner_sorts 0.
+
+Notation te_arrow A B := (TEApp (TEApp (TEVar (TEVNamed (generic_arrow generic_inner_sorts))) A) B).
+Notation loc_A := (TEVar (TEVAnon TCVHere)).
+Notation list_A := (TEApp (TEVar (TEVNamed (generic_inner _ _ inner_sort_list))) loc_A).
+Notation nat' := (TEVar (TEVNamed (generic_inner _ _ inner_sort_nat))).
+Notation len_A := (te_arrow list_A nat').
+Notation app_A := (te_arrow list_A (te_arrow list_A list_A)).
+Notation cons_A := (te_arrow list_A (te_arrow loc_A list_A)).
+Notation add' := (te_arrow nat' (te_arrow nat' nat')).
+Notation t_eval ty_args args := (TFun (sig := generic_sig generic_inner_sorts) (generic_eval _) ty_args args).
+Notation t_len_A arg := (t_eval (TVSnoc _ list_A _ (TVSnoc _ nat' _ TVEmp))
+                                 (TVar (VThere (VThere (VThere (VThere VHere)))) ::: arg ::: hnil)).
+Notation t_app_A x y := (t_eval (TVSnoc _ list_A _ (TVSnoc _ list_A _ TVEmp))
+                              (t_eval (TVSnoc _ list_A _ (TVSnoc _ (te_arrow list_A list_A) _ TVEmp))
+                              (TVar (VThere (VThere (VThere VHere))) ::: x ::: hnil) ::: y ::: hnil)).
+Notation t_add' x y := (t_eval (TVSnoc _ nat' _ (TVSnoc _ nat' _ TVEmp))
+                              (t_eval (TVSnoc _ nat' _ (TVSnoc _ (te_arrow nat' nat') _ TVEmp))
+                              (TVar (VThere (VThere VHere)) ::: x ::: hnil) ::: y ::: hnil)).
+
+Definition generic_test:
+  poly_fm (generic_sorts generic_inner_sorts) (generic_sig generic_inner_sorts) 0 :=
+  PForall (PFm (
+    FForall len_A (
+    FForall app_A (
+    FForall add' (
+    FForall list_A (
+    FForall list_A (
+      FEq
+        (t_len_A (t_app_A (TVar VHere) (TVar (VThere VHere))))
+        (t_add' (t_len_A (TVar VHere)) (t_len_A (TVar VHere)))
+    )))))
+  )).
+
+Definition interp_generic_sorts_inner : forall n, generic_inner_sorts n -> arity_ftor n := fun n srt =>
+  match srt with
+  | inner_sort_list => list
+  | inner_sort_nat => nat
+  end.
+
+Example app_len_generic:
+    interp_pfm (generic_sorts generic_inner_sorts) (interp_generic_sorts generic_inner_sorts interp_generic_sorts_inner) (generic_sig generic_inner_sorts) (generic_model generic_inner_sorts interp_generic_sorts_inner) 0 SLNil TVEmp generic_test.
+Proof.
+  vm_compute.
+Abort.
+
+End GenericDemo.

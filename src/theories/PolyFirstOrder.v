@@ -598,3 +598,61 @@ Proof.
 Abort.
 
 End GenericDemo.
+
+Section ParametrizedTheory.
+
+Open Scope type_scope.
+
+Variable parametrized_inner_sorts: nat -> Type.
+
+Inductive parametrized_sorts: nat -> Type :=
+| parametrized_arrow : parametrized_sorts 2
+| parametrized_inner: forall n, parametrized_inner_sorts n -> parametrized_sorts n.
+
+Definition parametrized_manifest :=
+    list {ctx & list (ty_expr parametrized_sorts ctx 0) *
+                ty_expr parametrized_sorts ctx 0}.
+
+Inductive parametrized_funs_open:
+    parametrized_manifest ->
+    forall ctx,
+    list (ty_expr parametrized_sorts ctx 0) ->
+    ty_expr parametrized_sorts ctx 0 ->
+    Type
+:=
+| PFunHere:
+    forall ctx
+           tail
+           (args: list (ty_expr parametrized_sorts ctx 0))
+           (ret: ty_expr parametrized_sorts ctx 0),
+        parametrized_funs_open (existT _ ctx (args, ret) :: tail) ctx args ret
+| PFunThere:
+    forall ctx
+           head
+           tail
+           (args: list (ty_expr parametrized_sorts ctx 0))
+           (ret: ty_expr parametrized_sorts ctx 0),
+        parametrized_funs_open tail ctx args ret ->
+        parametrized_funs_open (head :: tail) ctx args ret
+.
+
+Variable parametrized_inner_funcs: parametrized_manifest.
+
+Definition parametrized_funs := parametrized_funs_open parametrized_inner_funcs.
+
+Inductive parametrized_rels:
+  forall ctx, list (ty_expr parametrized_sorts ctx 0) -> Type := .
+
+Definition parametrized_sig: signature parametrized_sorts := {|
+  sig_funs := parametrized_funs;
+  sig_rels := parametrized_rels;
+|}.
+
+Variable interp_parametrized_inner_sorts : forall n (sort: parametrized_inner_sorts n), arity_ftor n.
+
+Equations interp_parametrized_sorts n (sort: parametrized_sorts n) : arity_ftor n := {
+    interp_parametrized_sorts _ parametrized_arrow := fun A B => A -> B;
+    interp_parametrized_sorts n (parametrized_inner n inner_sort) := interp_parametrized_inner_sorts n inner_sort
+}.
+
+End ParametrizedTheory.

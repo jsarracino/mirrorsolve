@@ -559,31 +559,66 @@ Notation list_A := (TEApp (TEVar (TEVNamed (generic_inner _ _ inner_sort_list)))
 Notation nat' := (TEVar (TEVNamed (generic_inner _ _ inner_sort_nat))).
 Notation len_A := (te_arrow list_A nat').
 Notation app_A := (te_arrow list_A (te_arrow list_A list_A)).
-Notation cons_A := (te_arrow list_A (te_arrow loc_A list_A)).
+Notation cons_A := (te_arrow loc_A (te_arrow list_A list_A)).
 Notation add' := (te_arrow nat' (te_arrow nat' nat')).
 Notation t_eval ty_args args := (TFun (sig := generic_sig generic_inner_sorts) (generic_eval _) ty_args args).
 Notation t_len_A arg := (t_eval (TVSnoc _ list_A _ (TVSnoc _ nat' _ TVEmp))
-                                 (TVar (VThere (VThere (VThere (VThere VHere)))) ::: arg ::: hnil)).
+                                 (TVar (VThere (VThere (VThere (VThere (VThere VHere))))) ::: arg ::: hnil)).
 Notation t_app_A x y := (t_eval (TVSnoc _ list_A _ (TVSnoc _ list_A _ TVEmp))
                               (t_eval (TVSnoc _ list_A _ (TVSnoc _ (te_arrow list_A list_A) _ TVEmp))
-                              (TVar (VThere (VThere (VThere VHere))) ::: x ::: hnil) ::: y ::: hnil)).
+                              (TVar (VThere (VThere (VThere (VThere (VThere VHere))))) ::: x ::: hnil) ::: y ::: hnil)).
+Notation t_app_A' x y := (t_eval (TVSnoc _ list_A _ (TVSnoc _ list_A _ TVEmp))
+                              (t_eval (TVSnoc _ list_A _ (TVSnoc _ (te_arrow list_A list_A) _ TVEmp))
+                              (TVar (VThere (VThere (VThere (VThere VHere)))) ::: x ::: hnil) ::: y ::: hnil)).
+Notation t_cons_A a x := (t_eval (TVSnoc _ list_A _ (TVSnoc _ list_A _ TVEmp))
+                              (t_eval (TVSnoc _ loc_A _ (TVSnoc _ (te_arrow list_A list_A) _ TVEmp))
+                              (TVar (VThere (VThere (VThere (VThere VHere)))) ::: a ::: hnil) ::: x ::: hnil)).
 Notation t_add' x y := (t_eval (TVSnoc _ nat' _ (TVSnoc _ nat' _ TVEmp))
                               (t_eval (TVSnoc _ nat' _ (TVSnoc _ (te_arrow nat' nat') _ TVEmp))
                               (TVar (VThere (VThere VHere)) ::: x ::: hnil) ::: y ::: hnil)).
+
+Check FForall add' (
+    FImpl _ _ _ _
+        (
+        FForall loc_A (
+        FForall list_A (
+        FForall list_A (
+          FEq
+            (t_app_A (t_cons_A (TVar (VThere (VThere VHere))) (TVar (VThere VHere))) (TVar VHere))
+            (t_cons_A (TVar (VThere (VThere VHere))) (t_app_A (TVar (VThere VHere)) (TVar VHere)))
+        ))))
+        (FForall list_A (
+        FForall list_A (
+          FEq
+            (t_len_A (t_app_A' (TVar VHere) (TVar (VThere VHere))))
+            (t_add' (t_len_A (TVar VHere)) (t_len_A (TVar (VThere VHere))))
+        )))
+    ).
 
 Definition generic_test:
   poly_fm (generic_sorts generic_inner_sorts) (generic_sig generic_inner_sorts) 0 :=
   PForall (PFm (
     FForall len_A (
     FForall app_A (
+    FForall cons_A (
     FForall add' (
+    FImpl _ _ _ _
+        (
+        FForall loc_A (
     FForall list_A (
     FForall list_A (
       FEq
-        (t_len_A (t_app_A (TVar VHere) (TVar (VThere VHere))))
-        (t_add' (t_len_A (TVar VHere)) (t_len_A (TVar VHere)))
-    )))))
-  )).
+            (t_app_A (t_cons_A (TVar (VThere (VThere VHere))) (TVar (VThere VHere))) (TVar VHere))
+            (t_cons_A (TVar (VThere (VThere VHere))) (t_app_A (TVar (VThere VHere)) (TVar VHere)))
+        ))))
+        (FForall list_A (
+        FForall list_A (
+          FEq
+            (t_len_A (t_app_A' (TVar VHere) (TVar (VThere VHere))))
+            (t_add' (t_len_A (TVar VHere)) (t_len_A (TVar (VThere VHere))))
+        )))
+    )))
+  ))).
 
 Definition interp_generic_sorts_inner : forall n, generic_inner_sorts n -> arity_ftor n := fun n srt =>
   match srt with

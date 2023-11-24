@@ -97,7 +97,7 @@ Section N2Z.
     : HList.t (FirstOrder.tm sig (fmap_ctx' c)) (n2z_arr arr) := 
   match rel with end.
 
-  Program Definition n2z_forall_op {c} {srt: sig_sorts N.sig} (f: FirstOrder.fm sig (fmap_ctx' (Snoc _ c srt))) : FirstOrder.fm sig (fmap_ctx' (Snoc _ c srt)) := 
+  Program Definition n2z_forall_op {c} {srt: sig_sorts N.sig} (f: FirstOrder.fm sig (fmap_ctx' (Snoc c srt))) : FirstOrder.fm sig (fmap_ctx' (Snoc c srt)) := 
     match srt with 
     | N.BS => f
     | N.NS => 
@@ -134,7 +134,7 @@ Section N2Z.
 
   Lemma n2z_fmap_forall_equi : 
   forall  (srt : sig_sorts N.sig) (c : ctx N.sig) (v : valu N.sig N.fm_model c)
-          (f : FirstOrder.fm N.sig (Snoc _ c srt)),
+          (f : FirstOrder.fm N.sig (Snoc c srt)),
     (forall vA : FirstOrder.mod_sorts N.sig N.fm_model srt,
       interp_fm
         (VSnoc sig fm_model (fmap_sorts n2z_func srt) (fmap_ctx' c)

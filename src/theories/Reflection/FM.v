@@ -82,8 +82,8 @@ Section ExtractFM.
   Variable (sort_eq_dec: EquivDec.EqDec (sig_sorts s) eq).
 
   Equations extract_var (c: ctx s) (n: nat) : option ({srt & var s c srt}) by struct c :=
-    extract_var (Snoc _ _ ty) 0 := Some (ty; VHere _ _ ty);
-    extract_var (Snoc _ c _) (S n) :=
+    extract_var (Snoc _ ty) 0 := Some (ty; VHere _ _ ty);
+    extract_var (Snoc c _) (S n) :=
       match extract_var c n with
       | Some (ty; v') => Some (ty; VThere _ _ _ _ v')
       | None => None
@@ -164,7 +164,7 @@ Section ExtractFM.
           let srt := extract_t2srt pre in 
           match srt with 
           | Some srt => 
-            let c' := Snoc _ c srt in
+            let c' := Snoc c srt in
             let inner := extract_t2fm c' pst in 
             match inner with 
             | Some fm => Some (FForall _ fm)
@@ -178,7 +178,7 @@ Section ExtractFM.
         extract_t2rel c t []
       end.
 
-  Definition extract_fm t := extract_t2fm (SLNil _) (reindex_vars t).
+  Definition extract_fm t := extract_t2fm SLNil (reindex_vars t).
 
   (* Some light tests *)
   Variable (c: ctx s).

@@ -24,8 +24,8 @@ Section FOL.
   (* de Bruijn variable context (i.e. sorts for variables) *)
   Definition ctx := snoc_list sig.(sig_sorts).
 
-  Notation CSnoc := (Snoc sig.(sig_sorts)).
-  Notation CEmp := (SLNil sig.(sig_sorts)).
+  Notation CSnoc := (@Snoc sig.(sig_sorts)).
+  Notation CEmp := (@SLNil sig.(sig_sorts)).
 
   Import HListNotations.
 
@@ -286,20 +286,20 @@ Section FOL.
 
   Fixpoint app_ctx (c1 c2: ctx): ctx :=
     match c2 with
-    | SLNil _ => c1
-    | Snoc _ c2' sort => CSnoc (app_ctx c1 c2') sort
+    | SLNil => c1
+    | Snoc c2' srt => CSnoc (app_ctx c1 c2') srt
     end.
 
   Fixpoint ccons s (c: ctx) :=
     match c with
-    | SLNil _ => CSnoc CEmp s
-    | Snoc _ c s0 => CSnoc (ccons s c) s0
+    | SLNil => CSnoc CEmp s
+    | Snoc c s0 => CSnoc (ccons s c) s0
     end.
 
   Fixpoint app_ctx' (c1 c2: ctx): ctx :=
     match c1 with
-    | SLNil _ => c2
-    | Snoc _ c1' sort => app_ctx' c1' (ccons sort c2)
+    | SLNil => c2
+    | Snoc c1' srt => app_ctx' c1' (ccons srt c2)
     end.
 
   Equations app_valu
@@ -365,8 +365,8 @@ Section FOL.
 
   Fixpoint quantify {c0: ctx} (c: ctx): fm (app_ctx c0 c) -> fm c0 :=
     match c as c' return fm (app_ctx c0 c') -> fm c0 with
-    | SLNil _ => fun f => f
-    | Snoc _ c' sort => fun f => quantify c' (FForall _ _ f)
+    | SLNil => fun f => f
+    | Snoc c' _ => fun f => quantify c' (FForall _ _ f)
     end.
 
   Lemma quantify_correct:
@@ -662,8 +662,8 @@ Section FMap.
   
   Fixpoint fmap_ctx (c: ctx sigA) : ctx sigB := 
     match c with 
-    | SLNil _ => SLNil _
-    | Snoc _ i x => Snoc _ (fmap_ctx i) (a2b.(fmap_sorts) x)
+    | SLNil => SLNil
+    | Snoc i x => Snoc (fmap_ctx i) (a2b.(fmap_sorts) x)
     end.
 
   Equations fmap_var {c srt} (v: var sigA c srt) : var sigB (fmap_ctx c) (a2b.(fmap_sorts) srt) :=
@@ -704,8 +704,8 @@ Section FMap.
 
   Variable (fmap_fm_fforall_op : 
     forall c s, 
-      fm sigB (fmap_ctx (Snoc _ c s)) -> 
-      fm sigB (fmap_ctx (Snoc _ c s))
+      fm sigB (fmap_ctx (Snoc c s)) -> 
+      fm sigB (fmap_ctx (Snoc c s))
   ).
 
   Equations fmap_fm {c} (f: fm sigA c) : fm sigB (fmap_ctx c) :=
@@ -732,7 +732,7 @@ Section FMap.
         mod_rels sigA mA args r (interp_tms v r_args) <->
         mod_rels sigB mB (fmap_arity a2b.(fmap_sorts) args) (a2b.(fmap_rels) args r) (interp_tms (fmap_valu v) (fmap_rel_arrs c args r (fmap_tm_args r_args)));
     interp_fmap_forall_equi: 
-      forall srt c v (f : fm sigA (Snoc _ c srt)),
+      forall srt c v (f : fm sigA (Snoc c srt)),
         (forall vA,
           interp_fm (VSnoc sigB mB (a2b.(fmap_sorts) srt) (fmap_ctx c) (fmap_valu v) (a2b.(fmap_mv) srt vA)) (fmap_fm f)) <->
         (forall vB,

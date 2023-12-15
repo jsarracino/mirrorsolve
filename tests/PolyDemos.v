@@ -427,7 +427,9 @@ Equations concretize_interp_te_var
   concretize_interp_te_var _ _ _ (TEVNamed _) val := val;
 }.
 
-Definition concretize_interp_te t_ctx ctx tv n ty_expr: interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv n (abstract_ty_expr ty_expr) = interp_te (interp_sorts := interp_inner_sorts) t_ctx ctx tv n ty_expr.
+Definition concretize_interp_te t_ctx ctx tv n ty_expr: 
+  interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv n (abstract_ty_expr ty_expr) = 
+  interp_te (interp_sorts := interp_inner_sorts) t_ctx ctx tv n ty_expr.
 Proof.
   dependent induction ty_expr; autorewrite with abstract_ty_expr.
   - autorewrite with abstract_ty_expr.
@@ -436,9 +438,11 @@ Proof.
     now rewrite IHty_expr1, IHty_expr2.
 Defined.
 
-Definition concretize_interp_te' t_ctx ctx tv ty_expr: interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0 (abstract_ty_expr ty_expr) -> interp_te (interp_sorts := interp_inner_sorts) t_ctx ctx tv 0 ty_expr.
+Definition concretize_interp_te' t_ctx ctx tv ty_expr: 
+  interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0 (abstract_ty_expr ty_expr) -> 
+  interp_te (interp_sorts := interp_inner_sorts) t_ctx ctx tv 0 ty_expr.
 Proof.
-  intro.
+intro.
   now rewrite concretize_interp_te in X.
 Defined.
 
@@ -457,18 +461,11 @@ Equations
 : interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0 ret := {
   interp_abstract_funs _ _ _ _ (abstract_inner_fun _ _ _ inner_fun) _ args := 
     let swapped := HList.map_swap _ _ args in 
-      _;
+    let trans_args := HList.map (concretize_interp_te' _ _ _) swapped in 
+      eq_rect_r (fun x => x) 
+        (interp_inner_funs _ _ _ _ inner_fun _ trans_args)
+        (concretize_interp_te _ _ _ 0 _);
 }.
-Next Obligation.
-erewrite concretize_interp_te.
-eapply interp_inner_funs; eauto.
-eapply HList.map.
-2: eapply swapped.
-intros.
-simpl in X.
-eapply concretize_interp_te'.
-exact X.
-Defined.
 
 Variable interp_inner_rels:
   forall t_ctx ctx args (fn: inner_rels t_ctx args) tv
@@ -482,20 +479,15 @@ Equations
     (fn: abstract_rels t_ctx args) tv 
     (hargs: HList.t (interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0) args) 
 : Prop := {
+  (* The args have been abstracted at this point, so to apply the inner rel,
+     first we move the abstraction function over to the HList,
+     and then we invert the abstraction inside the HList through concretize_interp_te'.
+  *)
   interp_abstract_rels _ _ _ (abstract_inner_rel _ _ inner_rel) _ args := 
     let swapped := HList.map_swap _ _ args in 
-      _;
+    let trans_args := HList.map (concretize_interp_te' _ _ _) swapped in 
+      interp_inner_rels _ _ _ inner_rel _ trans_args;
 }.
-Next Obligation.
-eapply interp_inner_rels; eauto.
-eapply HList.map.
-2: eapply swapped.
-intros.
-simpl in X.
-eapply concretize_interp_te'.
-exact X.
-Defined.
-
 
 Program Definition abstract_model : interp_sig abstract_sig := {|
   interp_funs := interp_abstract_funs;
@@ -523,3 +515,28 @@ Fixpoint get_poly_fm {ctx} (pfm: poly_fm (sig := inner_sig) ctx) : fm (sig := in
 (* TODO: walk the term and rewrite function and relation symbols; prove the two are bi-satisfactory *)
 
 End ConstantTypesAbstractedTheory.
+
+(* TODO: 
+
+  The theory above is a good IR for eliminating function symbols completely. 
+  In particular, because there is only one constructor for functions, 
+  the elimination pass is to introduce fresh variables for each different function
+  and replace the function symbols with the variable. In addition,
+  we need to make use of a lambda calculus App function symbol to apply the abstracted functions.
+
+  We also need to convert into this theory (see the above TODO). At a high-level, we are performing the following transformations:
+
+
+  Inductive mono_funs := | Add | Subtract | Foo | Bar ....
+  with terms: Add (Subtract 0 1) 1 
+
+  Inductive abstract_funs := | Fun (Add/Subtract/Foo/Bar/...)
+  with terms: (Fun Add) ((Fun Subtract) (Fun 0) (Fun 1)) (Fun 1) 
+
+  Inductive eliminated_funs := | App 
+  with terms: (App Add (App Subtract (App ... )))
+
+  One way to make this simpler is to add a list of function constructors as input to the theory, and change abstract_funs to index into the list (vs using the concrete type in an abstract way). See tests/PrenexPoly.v:ExtensibleTypes for a starter on indexing into a list with dependent types.
+
+
+*)

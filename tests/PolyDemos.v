@@ -16,28 +16,28 @@ Require Import Coq.Lists.List.
 
 Import ListNotations.
 
-Inductive demo_sorts : nat -> Type := 
+Inductive demo_sorts : nat -> Type :=
 | sort_list : demo_sorts 1
 | sort_nat : demo_sorts 0.
 
 Notation loc_A := (TEVar (TEVAnon TCVHere)).
 
 Notation list_A := (TEApp
-  (TEVar (TEVNamed sort_list)) 
+  (TEVar (TEVNamed sort_list))
   loc_A
 ).
 
 Notation nat_ty := (TEVar (TEVNamed sort_nat)).
 
-Inductive demo_funs : 
-  forall ctx, list (@ty_expr demo_sorts ctx 0) -> @ty_expr demo_sorts ctx 0 -> Type := 
+Inductive demo_funs :
+  forall ctx, list (@ty_expr demo_sorts ctx 0) -> @ty_expr demo_sorts ctx 0 -> Type :=
 | demo_app : demo_funs 1 [list_A; list_A] list_A (* forall A, list A -> list A -> list A*)
 | demo_len : demo_funs 1 [list_A] nat_ty (* forall A, list A -> nat *)
 | demo_add : demo_funs 0 [nat_ty; nat_ty] nat_ty (* nat -> nat -> nat *)
 | demo_zero : demo_funs 0 [] nat_ty
 .
 
-Inductive demo_rels : 
+Inductive demo_rels :
   forall ctx, list (@ty_expr demo_sorts ctx 0) -> Type := .
 
 Definition demo_sig : @signature demo_sorts := {|
@@ -45,25 +45,25 @@ Definition demo_sig : @signature demo_sorts := {|
   sig_rels := demo_rels;
 |}.
 
-Definition interp_demo_sorts : forall n, demo_sorts n -> arity_ftor n := fun n srt => 
-  match srt with 
+Definition interp_demo_sorts : forall n, demo_sorts n -> arity_ftor n := fun n srt =>
+  match srt with
   | sort_list => list
   | sort_nat => nat
   end.
 
-Equations 
-  interp_demo_funs t_ctx ctx args ret (fn: demo_funs t_ctx args ret) tv (hargs: HList.t (interp_te (interp_sorts := interp_demo_sorts) t_ctx ctx tv 0) args) : 
+Equations
+  interp_demo_funs t_ctx ctx args ret (fn: demo_funs t_ctx args ret) tv (hargs: HList.t (interp_te (interp_sorts := interp_demo_sorts) t_ctx ctx tv 0) args) :
   interp_te (interp_sorts := interp_demo_sorts) t_ctx ctx tv 0 ret := {
-  interp_demo_funs _ _ _ _ demo_app _ (l ::: r ::: _) := List.app l r; 
-  interp_demo_funs _ _ _ _ demo_len _ (x ::: _) := List.length x; 
-  interp_demo_funs _ _ _ _ demo_add _ (l ::: r ::: _) := l + r; 
-  interp_demo_funs _ _ _ _ demo_zero _ _ := 0; 
+  interp_demo_funs _ _ _ _ demo_app _ (l ::: r ::: _) := List.app l r;
+  interp_demo_funs _ _ _ _ demo_len _ (x ::: _) := List.length x;
+  interp_demo_funs _ _ _ _ demo_add _ (l ::: r ::: _) := l + r;
+  interp_demo_funs _ _ _ _ demo_zero _ _ := 0;
 }.
 
-Definition interp_demo_rels t_ctx ctx args (fn: demo_rels t_ctx args) tv (hargs: HList.t (interp_te (interp_sorts := interp_demo_sorts) t_ctx ctx tv 0) args) : Prop := 
+Definition interp_demo_rels t_ctx ctx args (fn: demo_rels t_ctx args) tv (hargs: HList.t (interp_te (interp_sorts := interp_demo_sorts) t_ctx ctx tv 0) args) : Prop :=
   match fn with end.
 
-Program Definition demo_model : interp_sig demo_sig := {| 
+Program Definition demo_model : interp_sig demo_sig := {|
   interp_funs := interp_demo_funs;
   interp_rels := interp_demo_rels;
 |}.
@@ -76,23 +76,23 @@ Notation t_len ty_args args := (TFun (sig := demo_sig) demo_len ty_args args).
 Notation t_add args := (TFun (sig := demo_sig) demo_add TVEmp args).
 Notation t_zero := (TFun (sig := demo_sig) demo_zero TVEmp hnil).
 
-Program Definition app_len_pf_syntax: 
+Program Definition app_len_pf_syntax:
   poly_fm (sig := demo_sig) 0 :=  PForall (PFm (
     FForall list_A (FForall list_A (
-      FEq 
+      FEq
         (t_len _ ((t_app _ (t_xs ::: t_ys ::: hnil)) ::: hnil))
         (t_add ((t_len (TVSnoc TVEmp loc_A) (t_xs ::: hnil)) ::: (t_len _ (t_ys ::: hnil)) ::: hnil))
     ))
   )).
 
-Example app_len_pf: 
+Example app_len_pf:
   interp_pfm (model := demo_model) 0 SLNil TVEmp app_len_pf_syntax.
 Proof.
   (* this short proof works as well: *)
-  (* 
+  (*
   vm_compute.
   intros.
-  eapply List.app_length. 
+  eapply List.app_length.
   *)
   unfold app_len_pf_syntax.
   autorewrite with interp_pfm.
@@ -210,7 +210,7 @@ Notation t_add' x y := (t_eval (TVSnoc (TVSnoc TVEmp nat' ) nat')
                               (TVar (VThere (VThere VHere)) ::: x ::: hnil) ::: y ::: hnil)).
 
 Check FForall add' (
-    FImpl 
+    FImpl
         (
         FForall loc_A (
         FForall list_A (
@@ -261,7 +261,7 @@ Definition interp_generic_sorts_inner : forall n, generic_inner_sorts n -> arity
   end.
 
 Example app_len_generic:
-    interp_pfm (model := generic_model generic_inner_sorts interp_generic_sorts_inner) 
+    interp_pfm (model := generic_model generic_inner_sorts interp_generic_sorts_inner)
       0 SLNil TVEmp generic_test.
 Proof.
   vm_compute.
@@ -419,16 +419,16 @@ Variable interp_inner_funs:
     @interp_te _ interp_inner_sorts t_ctx ctx tv 0 ret
 .
 
-Equations concretize_interp_te_var 
-  t_ctx ctx tv te_var 
-  (val: interp_te_var (interp_sorts := interp_abstract_sorts) ctx t_ctx tv 0 (abstract_ty_expr_var te_var)) 
+Equations concretize_interp_te_var
+  t_ctx ctx tv te_var
+  (val: interp_te_var (interp_sorts := interp_abstract_sorts) ctx t_ctx tv 0 (abstract_ty_expr_var te_var))
 : interp_te_var (interp_sorts := interp_inner_sorts) ctx t_ctx tv 0 te_var := {
   concretize_interp_te_var _ _ _ (TEVAnon _) val := val;
   concretize_interp_te_var _ _ _ (TEVNamed _) val := val;
 }.
 
-Definition concretize_interp_te t_ctx ctx tv n ty_expr: 
-  interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv n (abstract_ty_expr ty_expr) = 
+Definition concretize_interp_te t_ctx ctx tv n ty_expr:
+  interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv n (abstract_ty_expr ty_expr) =
   interp_te (interp_sorts := interp_inner_sorts) t_ctx ctx tv n ty_expr.
 Proof.
   dependent induction ty_expr; autorewrite with abstract_ty_expr.
@@ -438,8 +438,8 @@ Proof.
     now rewrite IHty_expr1, IHty_expr2.
 Defined.
 
-Definition concretize_interp_te' t_ctx ctx tv ty_expr: 
-  interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0 (abstract_ty_expr ty_expr) -> 
+Definition concretize_interp_te' t_ctx ctx tv ty_expr:
+  interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0 (abstract_ty_expr ty_expr) ->
   interp_te (interp_sorts := interp_inner_sorts) t_ctx ctx tv 0 ty_expr.
 Proof.
 intro.
@@ -447,22 +447,22 @@ intro.
 Defined.
 
 
-(* 
+(*
   Synthesize the term by swapping the map in the params HList to get an HList over the
-  original arguments, use the equality of the interpretations, use HList map to 
+  original arguments, use the equality of the interpretations, use HList map to
   convert the interpreted abstract arguments back to their original values.
 *)
 Local Obligation Tactic := intros.
 Equations
-  interp_abstract_funs 
-    t_ctx ctx args ret 
-    (fn: abstract_funs t_ctx args ret) tv 
-    (hargs: HList.t (interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0) args) 
+  interp_abstract_funs
+    t_ctx ctx args ret
+    (fn: abstract_funs t_ctx args ret) tv
+    (hargs: HList.t (interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0) args)
 : interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0 ret := {
-  interp_abstract_funs _ _ _ _ (abstract_inner_fun _ _ _ inner_fun) _ args := 
-    let swapped := HList.map_swap _ _ args in 
-    let trans_args := HList.map (concretize_interp_te' _ _ _) swapped in 
-      eq_rect_r (fun x => x) 
+  interp_abstract_funs _ _ _ _ (abstract_inner_fun _ _ _ inner_fun) _ args :=
+    let swapped := HList.map_swap _ _ args in
+    let trans_args := HList.map (concretize_interp_te' _ _ _) swapped in
+      eq_rect_r (fun x => x)
         (interp_inner_funs _ _ _ _ inner_fun _ trans_args)
         (concretize_interp_te _ _ _ 0 _);
 }.
@@ -474,18 +474,18 @@ Variable interp_inner_rels:
 .
 
 Equations
-  interp_abstract_rels 
-    t_ctx ctx args 
-    (fn: abstract_rels t_ctx args) tv 
-    (hargs: HList.t (interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0) args) 
+  interp_abstract_rels
+    t_ctx ctx args
+    (fn: abstract_rels t_ctx args) tv
+    (hargs: HList.t (interp_te (interp_sorts := interp_abstract_sorts) t_ctx ctx tv 0) args)
 : Prop := {
   (* The args have been abstracted at this point, so to apply the inner rel,
      first we move the abstraction function over to the HList,
      and then we invert the abstraction inside the HList through concretize_interp_te'.
   *)
-  interp_abstract_rels _ _ _ (abstract_inner_rel _ _ inner_rel) _ args := 
-    let swapped := HList.map_swap _ _ args in 
-    let trans_args := HList.map (concretize_interp_te' _ _ _) swapped in 
+  interp_abstract_rels _ _ _ (abstract_inner_rel _ _ inner_rel) _ args :=
+    let swapped := HList.map_swap _ _ args in
+    let trans_args := HList.map (concretize_interp_te' _ _ _) swapped in
       interp_inner_rels _ _ _ inner_rel _ trans_args;
 }.
 
@@ -494,20 +494,20 @@ Program Definition abstract_model : interp_sig abstract_sig := {|
   interp_rels := interp_abstract_rels;
 |}.
 
-Definition inner_sig : @signature inner_sorts := {| 
+Definition inner_sig : @signature inner_sorts := {|
   sig_funs := inner_funs;
   sig_rels := inner_rels;
 |}.
 
 Fixpoint get_poly_context {ctx} (pfm: poly_fm (sig := inner_sig) ctx) : ty_ctx :=
-  match pfm with 
+  match pfm with
   | PFm _ => ctx
-  | PForall inner => 
+  | PForall inner =>
     get_poly_context inner
   end.
 
-Fixpoint get_poly_fm {ctx} (pfm: poly_fm (sig := inner_sig) ctx) : fm (sig := inner_sig) (t_ctx := get_poly_context pfm) SLNil := 
-  match pfm with 
+Fixpoint get_poly_fm {ctx} (pfm: poly_fm (sig := inner_sig) ctx) : fm (sig := inner_sig) (t_ctx := get_poly_context pfm) SLNil :=
+  match pfm with
   | PFm f => f
   | PForall inner => get_poly_fm inner
   end.
@@ -516,10 +516,10 @@ Fixpoint get_poly_fm {ctx} (pfm: poly_fm (sig := inner_sig) ctx) : fm (sig := in
 
 End ConstantTypesAbstractedTheory.
 
-(* TODO: 
+(* TODO:
 
-  The theory above is a good IR for eliminating function symbols completely. 
-  In particular, because there is only one constructor for functions, 
+  The theory above is a good IR for eliminating function symbols completely.
+  In particular, because there is only one constructor for functions,
   the elimination pass is to introduce fresh variables for each different function
   and replace the function symbols with the variable. In addition,
   we need to make use of a lambda calculus App function symbol to apply the abstracted functions.
@@ -528,15 +528,93 @@ End ConstantTypesAbstractedTheory.
 
 
   Inductive mono_funs := | Add | Subtract | Foo | Bar ....
-  with terms: Add (Subtract 0 1) 1 
+  with terms: Add (Subtract 0 1) 1
 
   Inductive abstract_funs := | Fun (Add/Subtract/Foo/Bar/...)
-  with terms: (Fun Add) ((Fun Subtract) (Fun 0) (Fun 1)) (Fun 1) 
+  with terms: (Fun Add) ((Fun Subtract) (Fun 0) (Fun 1)) (Fun 1)
 
-  Inductive eliminated_funs := | App 
+  Inductive eliminated_funs := | App
   with terms: (App Add (App Subtract (App ... )))
 
   One way to make this simpler is to add a list of function constructors as input to the theory, and change abstract_funs to index into the list (vs using the concrete type in an abstract way). See tests/PrenexPoly.v:ExtensibleTypes for a starter on indexing into a list with dependent types.
 
 
 *)
+Inductive bespoke_sorts : nat -> Type :=
+| bespoke_list : bespoke_sorts 1.
+
+Notation loc_A := (TEVar (TEVAnon TCVHere)).
+Notation list_A := (TEApp (TEVar (TEVNamed bespoke_list)) loc_A).
+
+Import ListNotations.
+
+Inductive bespoke_funs :
+  forall ctx,
+    list (@ty_expr bespoke_sorts ctx 0) ->
+    @ty_expr bespoke_sorts ctx 0 ->
+    Type
+:=
+| bespoke_fun_app : bespoke_funs 1 [list_A; list_A] list_A
+    (* forall A, list A -> list A -> list A*)
+| bespoke_fun_nil : bespoke_funs 1 [] list_A
+    (* forall A, list A*)
+| bespoke_fun_cons : bespoke_funs 1 [loc_A; list_A] list_A
+    (* forall A, A -> list A -> list A*)
+.
+
+Inductive bespoke_rels :
+  forall ctx, list (@ty_expr bespoke_sorts ctx 0) -> Type := .
+
+Definition bespoke_sig : @signature bespoke_sorts := {|
+  sig_funs := bespoke_funs;
+  sig_rels := bespoke_rels;
+|}.
+
+Definition interp_bespoke_sorts : forall n, bespoke_sorts n -> arity_ftor n := fun n srt =>
+  match srt with
+  | bespoke_list => @list
+  end.
+
+Equations
+  interp_bespoke_funs t_ctx ctx args ret (fn: bespoke_funs t_ctx args ret) tv (hargs: HList.t (interp_te (interp_sorts := interp_bespoke_sorts) t_ctx ctx tv 0) args) :
+  interp_te (interp_sorts := interp_bespoke_sorts) t_ctx ctx tv 0 ret := {
+  interp_bespoke_funs _ _ _ _ bespoke_fun_app _ (l ::: r ::: _) := List.app l r;
+  interp_bespoke_funs _ _ _ _ bespoke_fun_nil _ _ := List.nil;
+  interp_bespoke_funs _ _ _ _ bespoke_fun_cons _ (a ::: l ::: _) := List.cons a l;
+}.
+
+Definition interp_bespoke_rels t_ctx ctx args (fn: bespoke_rels t_ctx args) tv (hargs: HList.t (interp_te (interp_sorts := interp_bespoke_sorts) t_ctx ctx tv 0) args) : Prop :=
+  match fn with end.
+
+Program Definition bespoke_model : interp_sig bespoke_sig := {|
+  interp_funs := interp_bespoke_funs;
+  interp_rels := interp_bespoke_rels;
+|}.
+
+Lemma foo:
+forall T (F G: T -> Prop),
+(forall x, F x <-> G x) ->
+((forall x, F x) <-> (forall x, G x)).
+Proof.
+  intros.
+  firstorder.
+Qed.
+
+Lemma app_nil_r:
+  forall {A : Type} (xs: list A), app xs [] = xs.
+Proof.
+  set (G := forall (A : Type) (xs : list A), xs ++ [] = xs).
+  evar (t_ctx : ty_ctx).
+  evar (tys : snoc_list Type).
+  evar (tv : ty_valu t_ctx tys).
+  evar (pfm : poly_fm (sig := bespoke_sig) t_ctx).
+  assert (interp_pfm (model := bespoke_model) t_ctx tys tv pfm <-> G).
+  subst t_ctx.
+  subst tys.
+  subst tv.
+  subst pfm.
+  erewrite interp_pfm_equation_2.
+  subst G.
+  apply foo.
+  intro.
+Abort.

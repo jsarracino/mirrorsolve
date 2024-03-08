@@ -9,7 +9,7 @@ jobs:
         coq_version:
           - '8.18'
         ocaml_version:
-          - '4.13.1+flambda'
+          - '4.14-flambda'
       fail-fast: false
     steps:
       - uses: actions/checkout@v2

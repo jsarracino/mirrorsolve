@@ -235,7 +235,6 @@ Section Config.
         | sort_int => Z
         end.
     *)
-
   Definition add_interp_sorts (tys: list term) (sorts: Type) := 
     '(sort_term, ind) <- quote_dest_ind sorts ;;
     brs <- tm_make_interp_branches tys ;;
@@ -250,7 +249,7 @@ Section Config.
           puinst := [];
           pparams := [];
           pcontext := [(mkBindAnn (nNamed "srt") Relevant)];
-          preturn := tSort (Universe.of_levels (inr (Level.Level "sorts_level")))
+          preturn := tSort (Universe.of_levels (inr (Level.level "sorts_level")))
         |} 
         (tRel 0)
         brs
@@ -273,7 +272,7 @@ Section Config.
           puinst := [];
           pparams := [];
           pcontext := [(mkBindAnn (nNamed "srt") Relevant)];
-          preturn := tSort (Universe.of_levels (inr (Level.Level "sorts_level")))
+          preturn := tSort (Universe.of_levels (inr (Level.level "sorts_level")))
         |} 
         (tRel 0)
         brs
@@ -795,7 +794,7 @@ Section Config.
   From MetaCoq.Translations Require Import translation_utils.
 
 
-  Definition config_level : Universe.t := Universe.of_levels (inr (Level.Level "Config.17")).
+  Definition config_level : Universe.t := Universe.of_levels (inr (Level.level "Config.17")).
 
   (* extract a universe out of a term or return a default *)
   Definition extr_univ (t: term) : Universe.t := 
@@ -1321,7 +1320,6 @@ Section Config.
     tmMkDefinition "z_lit_wf" r_term ;; 
     tmLocate1 "z_lit_wf" >>= tmExistingInstance
   ). *)
-
   Definition add_const_wf_instance (s: FirstOrder.signature) (m: FirstOrder.model s) (const_f_t : term) (const_ty : smt_fun_base) : TemplateMonad unit :=
     srt <- tmUnquoteTyped s.(sig_sorts) hole ;;
     ret <- tmUnquoteTyped s.(sig_sorts) hole ;;
@@ -1330,12 +1328,12 @@ Section Config.
       f <- tmUnquoteTyped (BinNums.Z -> s.(sig_funs) [] ret) const_f_t ;;
       r_term <- tmQuote (Tactics.z_wf s m ret f) ;;
       tmMkDefinition "z_lit_wf" r_term ;;
-      tmLocate1 "z_lit_wf" >>= tmExistingInstance
+      tmLocate1 "z_lit_wf" >>= (tmExistingInstance global)
     | BoolLit =>
       f <- tmUnquoteTyped (bool -> s.(sig_funs) [] ret) const_f_t ;;
       r_term <- tmQuote (Tactics.b_wf s m ret f) ;;
       tmMkDefinition "b_lit_wf" r_term ;;
-      tmLocate1 "b_lit_wf" >>= tmExistingInstance
+      tmLocate1 "b_lit_wf" >>= (tmExistingInstance global)
     | _ => 
       tmPrint const_ty ;;
       tmFail "unimplemented const_wf_instance"

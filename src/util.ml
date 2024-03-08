@@ -14,9 +14,7 @@ let get_coq ref : Constr.t =
   try 
     let gref = Coqlib.lib_ref ref in
     let env = Global.env () in
-    let sigma = Evd.from_env env in
-    let sigma', evd = EConstr.fresh_global env sigma gref in 
-      EConstr.to_constr sigma' evd
+      UnivGen.constr_of_monomorphic_global env gref 
   with e ->
     let lib_refs = Coqlib.get_lib_refs () in 
     let needle = List.find_opt (fun (name, _) -> name = ref) lib_refs in

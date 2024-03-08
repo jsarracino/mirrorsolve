@@ -57,6 +57,8 @@ Section Meta.
     (forall (proj : projection) (t : term), P t -> P (tProj proj t)) ->
     (forall (mfix : mfixpoint term) (idx : nat), Forall (P ∘ dtype) mfix -> Forall (P ∘ dbody) mfix -> P (tFix mfix idx)) ->
     (forall (mfix : mfixpoint term) (idx : nat), Forall (P ∘ dtype) mfix -> Forall (P ∘ dbody) mfix -> P (tCoFix mfix idx)) ->
+    (forall i, P (tInt i)) -> 
+    (forall f, P (tFloat f)) ->
     forall (t: term), P t :=
   fun (P : term -> Prop) (f : forall n : nat, P (tRel n))
     (f0 : forall id : ident, P (tVar id))
@@ -93,6 +95,8 @@ Section Meta.
     (f12 : forall (proj : projection) (t : term), P t -> P (tProj proj t))
     (f13 : forall (mfix : mfixpoint term) (idx : nat), Forall (P ∘ dtype) mfix -> Forall (P ∘ dbody) mfix -> P (tFix mfix idx))
     (f14 : forall (mfix : mfixpoint term) (idx : nat), Forall (P ∘ dtype) mfix -> Forall (P ∘ dbody) mfix -> P (tCoFix mfix idx))
+    (f15: forall i, P (tInt i))
+    (f16: forall i, P (tFloat i))
      =>
     fix F (t : term) : P t :=
     match t as t0 return (P t0) with
@@ -159,6 +163,8 @@ Section Meta.
         | t :: ts => Forall_cons _ (F t.(dbody)) (rec2 ts)
         end in
       f14 mfix idx (rec1 mfix) (rec2 mfix)
+    | tInt x => f15 x
+    | tFloat x => f16 x
     end.
 
   Inductive EquivEnvs {c} : 
@@ -409,8 +415,7 @@ Section Meta.
         eauto.
     Unshelve.
     all: eauto.
-    (* This is a goal in Coq 8.16 *)
-    (* eapply H. *)
+    eapply H.
   Qed.
 
   Lemma denote'_extract'_spec_some : 
@@ -509,9 +514,9 @@ Section Meta.
     repeat match goal with 
     | H: Forall _ (_ :: _) |- _ => 
       inversion H; subst; clear H
-    end.
+    end; try (now intuition).
 
-    (* equality, \/, /\, and ~ *)
+    (* equality and ~ *)
     + 
       pose proof denote'_extract'_spec_some (v := v) t1 _ t3.
       erewrite H; eauto.
@@ -530,25 +535,7 @@ Section Meta.
       unfold eq_rect_r in *; simpl.
       eapply iff_refl.
       
-    + split; intros.
-      * match goal with 
-        | H: _ \/ _ |- _ => 
-          destruct H
-        end; [left | right].
-        -- eapply H3; eauto.
-        -- eapply H2; eauto.
-      * 
-        match goal with 
-        | H: _ \/ _ |- _ => 
-          destruct H
-        end; [left; eapply H3 | right; eapply H2]; eauto.
-    + intuition.
-      eapply H3;
-      eauto.
-    + erewrite H3; eauto.
-      eapply iff_refl.
-    + 
-      erewrite denote_extract_tr_spec with (v := v) (t := tApp t args);
+    + erewrite denote_extract_tr_spec with (v := v) (t := tApp t args);
       eauto;
       eapply iff_refl.
 

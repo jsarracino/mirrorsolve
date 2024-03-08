@@ -516,6 +516,8 @@ Fixpoint get_poly_fm {ctx} (pfm: poly_fm (sig := inner_sig) ctx) : fm (sig := in
 
 End ConstantTypesAbstractedTheory.
 
+Section ListAppPoly.
+
 (* TODO:
 
   The theory above is a good IR for eliminating function symbols completely.
@@ -600,6 +602,21 @@ Proof.
   firstorder.
 Qed.
 
+
+Variable (bespoke_fol_sorts : Type).
+Variable (interp_bespoke_sorts : bespoke_fol_sorts -> Type).
+Variable (bespoke_fol_funs: List.list bespoke_fol_sorts -> bespoke_fol_sorts -> Type).
+Variable (bespoke_fol_rels: List.list bespoke_fol_sorts -> Type).
+
+Require Import MirrorSolve.FirstOrder.
+
+Definition bespoke_fol_sig: signature := {| 
+  sig_sorts := bespoke_fol_sorts;
+  sig_funs := bespoke_fol_funs;
+  sig_rels := bespoke_fol_rels;
+|}.
+
+
 Lemma app_nil_r:
   forall {A : Type} (xs: list A), app xs [] = xs.
 Proof.
@@ -608,13 +625,35 @@ Proof.
   evar (tys : snoc_list Type).
   evar (tv : ty_valu t_ctx tys).
   evar (pfm : poly_fm (sig := bespoke_sig) t_ctx).
-  assert (interp_pfm (model := bespoke_model) t_ctx tys tv pfm <-> G).
+  assert (interp_pfm (model := bespoke_model) t_ctx tys tv pfm <-> G) by shelve.
+  apply H.
+  clear H.
+  clear G.
   subst t_ctx.
   subst tys.
   subst tv.
   subst pfm.
   erewrite interp_pfm_equation_2.
-  subst G.
-  apply foo.
   intro.
+  erewrite interp_pfm_equation_1.
+  Check interp_pfm_equation_1.
+  instantiate (3 := 0).
+  Unshelve.
+  2: {
+    shelve.
+  }
+  2: {
+    eapply SLNil.
+  }
+  2: {
+    subst.
+    econstructor.
+  }
+  2: shelve.
+  unfold PolyFirstOrder.interp_pfm_obligations_obligation_1, PolyFirstOrder.interp_pfm_obligations_obligation_2.
+
+  PolyFirstOrder.interp_fm f <-> 
+  FirstOrder.interp_fm (compile f).
 Abort.
+
+End ListAppPoly.

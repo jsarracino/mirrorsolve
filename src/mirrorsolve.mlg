@@ -6,7 +6,7 @@ open Ltac_plugin
 open Stdarg
 open Tacarg
 
-let tcl_fail = Tacticals.tclFAIL 0
+let tcl_fail = Tacticals.tclFAIL
 
 }
 

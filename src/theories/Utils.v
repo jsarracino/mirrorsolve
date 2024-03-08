@@ -54,8 +54,10 @@ Ltac pose_all Pfs :=
   | _ => idtac
   end.
 
+Require Import Coq.Lists.List.
+Import ListNotations.
+
 Section SetList.
-  Require Import Coq.Lists.List.
   Variable (V: Type).
   Variable (eqb: V -> V -> bool).
 
@@ -77,8 +79,6 @@ Section SetList.
 End SetList.
 
 Section AssocList.
-
-  Require Import Coq.Lists.List.
 
   Variable (K V: Type).
   Variable (eqb: K -> K -> bool).
@@ -122,7 +122,6 @@ Section AssocList.
 
   Definition update_all (orig: list (K * V)) (new: list (K * V)) := 
     List.fold_left (fun xs '(k, v) => update k v xs) new orig.
-
 
 End AssocList.
 

@@ -10,12 +10,12 @@ let bedef = BadExpr "bad expression"
 
 let debug_flag =
   Goptions.declare_bool_option_and_ref
-    ~depr:false
     ~key:["MirrorSolve";"Debug"]
     ~value:false
+    ()
 
 let debug_pp (msg: Pp.t) : unit = 
-  if debug_flag () then Feedback.msg_debug msg else ()
+  if debug_flag .get() then Feedback.msg_debug msg else ()
 let format_args (es: C.t array) : Pp.t = 
   let eis = Array.mapi (fun i e -> (i, e)) es in
   let builder (i, e) = Pp.(++) (Pp.str (Format.sprintf "%n => " i)) (C.debug_print e) in
@@ -473,8 +473,8 @@ let empty_ctx = {
 }
 
 let debug_ctx (ctx: printing_ctx) = 
-  let worker_c f = (fun k v -> 
-      Pp.(++) (Pp.(++) (C.debug_print @@ C.mkConstruct k) (Pp.str " |-> ")) (Pp.str @@ f v)
+  let worker_c f = (fun (k: Names.Ind.t * int) v -> 
+      Pp.(++) (Pp.(++) (C.debug_print @@ C.UnsafeMonomorphic.mkConstruct k) (Pp.str " |-> ")) (Pp.str @@ f v)
     ) in
   let worker_ind = (fun k v -> 
       Pp.(++) (Pp.(++) (Pp.str k) (Pp.str " |-> ")) (Pp.str @@ pretty_ind_decl k v)

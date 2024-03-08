@@ -1,10 +1,10 @@
 (include_subdirs qualified)
- (dirs (:standard \ examples))
+
+(dirs
+ (:standard \ examples))
 
 (coq.theory
  (name MirrorSolve)
  (package mirrorsolve)
- (libraries 
-   mirrorsolve.plugin
- )
-)
+ (theories Equations MetaCoq Ltac2)
+ (plugins mirrorsolve.plugin))

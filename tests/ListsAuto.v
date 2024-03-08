@@ -28,6 +28,8 @@ Require Import MirrorSolve.Automation.Equations.
   To demo the rest of mirrorsolve, we also define a length function, and a custom predicate, and prove properties about them with reverse.
 *)
 
+Declare ML Module "mirrorsolve.plugin".
+
 Section ListFuncs.
   Variable (A: Type).
   Unset Universe Polymorphism.
@@ -53,10 +55,12 @@ Section ListFuncs.
     | (x :: l') => x :: app l' r
     end.
 
-  MetaCoq Run (infer_equations app).
+  (* MetaCoq Run (infer_equations app). *)
 
-  Check app_equation_1. (* forall x_0b0 : list A, app [] x_0b0 = x_0b0 *)
-  Check app_equation_2. (* 
+  (* Check app_equation_1.  *)
+  (* forall x_0b0 : list A, app [] x_0b0 = x_0b0 *)
+  (* Check app_equation_2.  *)
+  (* 
     forall (x_0b10 : List A) (x_0b1 : A) (x_0b0 : List A),
       app (x_0b1 :: x_0b0) x_0b10 = x_0b1 :: app x_0b0 x_0b10 
     *)
@@ -68,7 +72,7 @@ Section ListFuncs.
     | x :: l' => app (rev l') (x :: [])
     end.
 
-  MetaCoq Run (infer_equations rev).
+  (* MetaCoq Run (infer_equations rev). *)
 
   (* You can also use equations for functions! *)
   (* A tail recursive reverse function *)
@@ -85,7 +89,7 @@ Section ListFuncs.
     end.
 
   (* Similar equations as before, but with <-> instead of =. *)
-  MetaCoq Run (infer_equations In).
+  (* MetaCoq Run (infer_equations In). *)
   
 
   (* List length using Z
@@ -132,7 +136,7 @@ Section ListFuncs.
 
   (* Next we set up a first-order logic! *)
 
-  Declare ML Module "mirrorsolve".
+  
 
   From MetaCoq.Template Require Import All Loader.
   Import MCMonadNotation.

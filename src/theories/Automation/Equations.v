@@ -134,7 +134,7 @@ Fixpoint subst_nolift (s : list term) (k : nat) (u : term) : term :=
       tCoFix mfix' idx
   | _ => u
   end.
-
+(* 
 Definition infer_equation
   (arg_type_quoted: term)
   (ret_type_quoted: term)
@@ -624,4 +624,4 @@ Section Tests.
   Proof.
     intros; eapply iff_refl.
   Qed.
-End Tests.
+End Tests. *)

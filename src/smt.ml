@@ -17,29 +17,25 @@ let str_to_solver s =
   end
 
 let opt_solver_str =
-  Goptions.declare_stringopt_option_and_ref
-    ~depr:false
+  Goptions.declare_string_option_and_ref
     ~key:["MirrorSolve";"Solver"]
+    ~value:"z3"
+    ()
 
 let solver_flags_str =
   Goptions.declare_stringopt_option_and_ref
-    ~depr:false
     ~key:["MirrorSolve";"Solver";"Flags"]
+    ~value:None
+    ()
 
 let solver_query_debug =
   Goptions.declare_bool_option_and_ref
     ~value:false
-    ~depr:false
     ~key:["MirrorSolve";"Query";"Debug"]
-
-let join o = 
-  begin match o with 
-  | Some(Some(x)) -> Some(x)
-  | _ -> None
-  end
+    ()
 
 let get_solver () = 
-  begin match join @@ Option.map str_to_solver (opt_solver_str ()) with 
+  begin match str_to_solver (opt_solver_str . get()) with 
   | Some x -> x
   | None -> Z3
   end
@@ -188,7 +184,7 @@ let validate_solver (s: solver_t) =
     raise @@ Failure ("Bad/missing solver: " ^ show_solver s)
 
 let make_args () = 
-  begin match solver_flags_str () with 
+  begin match solver_flags_str .get() with 
   | Some x -> 
     (* Array.of_list @@ Str.split (Str.regexp "[\r\n\t ]*") x *)
     [| x |]
@@ -208,7 +204,7 @@ let run_smt query =
   Stdlib.close_out smt_ch;
 
   
-  if solver_query_debug () 
+  if solver_query_debug .get() 
     then Feedback.msg_debug @@ Pp.str (Format.sprintf "put smt query in %s" query_file)
   else ();
 
@@ -220,7 +216,7 @@ let run_smt query =
   let s_args = make_args () in 
   let s_args_str = String.concat " " (Array.to_list s_args) in 
 
-  if solver_query_debug () 
+  if solver_query_debug .get() 
     then Feedback.msg_debug @@ Pp.str (Format.sprintf "query command: %s %s" cmd s_args_str)
   else ();
 

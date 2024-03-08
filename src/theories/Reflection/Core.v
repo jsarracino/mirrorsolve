@@ -21,7 +21,7 @@ Fixpoint extract_ctor (t: term) : term :=
     extract_ctor f
   | _ => t
   end.
-  
+
 Fixpoint eq_term (l r: term) : bool := 
   match l with
   | tRel n =>
@@ -115,6 +115,16 @@ Fixpoint eq_term (l r: term) : bool :=
           eq_term (dtype x) (dtype y) &&
           eq_term (dbody x) (dbody y)) mfix mfix' &&
         PeanoNat.Nat.eqb idx idx')%bool
+    | _ => false
+    end
+  | tInt l => 
+    match r with 
+    | tInt r => PrimInt63.eqb l r
+    | _ => false
+    end
+  | tFloat l => 
+    match r with 
+    | tFloat r => PrimFloat.eqb l r
     | _ => false
     end
   end.

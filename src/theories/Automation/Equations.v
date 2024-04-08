@@ -29,7 +29,7 @@ Check Coq.Strings.BinaryString.of_nat.
 
 Eval compute in Coq.Strings.BinaryString.of_nat 5.
 
-Definition n_to_str n := 
+Definition n_to_str n :=
   String.of_string (Coq.Strings.BinaryString.of_nat n).
 
 Definition make_binder (n: nat) :=
@@ -147,15 +147,23 @@ Definition infer_equation
 :=
   mlet (arg_count, inst_arg_count) <- inspect_ctor_args arg_type_quoted index ;;
   let (func_kername, func_inst) := func_ref in
-  let (func_path, func_name) := func_kername in
+  let (_, func_name) := func_kername in
+  (* build a term that calls the constructor with dummy arguments *)
   let construct := tApp (tConstruct info.(ci_ind) index [])
                         (repeat hole inst_arg_count
                          ++ dummy_args arg_count 0)%list in
+  (* build a list of arguments:
+     1. the arguments *before* the one being matched
+     2. the argument being matched, constructed above.
+     3. the arguments *after* the one being matched. *)
   let args_pre := dummy_args (depth-1-offset) (offset+arg_count) in
   let args_post := dummy_args offset arg_count in
   let args := (args_pre ++ [construct] ++ args_post)%list in
+  (* the left-hand side of the claim: function with arguments applied *)
   let claim_lhs := tApp (tConst func_kername func_inst) args in
+  (* the right-hand side of the claim: body with arguments substituted in *)
   let claim_rhs := subst_nolift [construct] (offset+arg_count) body in
+  (* figure out if we need an eq or iff claim and proof *)
   let (claim_prefix, proof_prefix) :=
     match ret_type_quoted with
     | tSort Universe.lProp =>
@@ -163,12 +171,16 @@ Definition infer_equation
     | _ =>
       (tApp eq_quoted [hole], tApp eq_refl_quoted [hole])
     end in
+  (* build the term denoting the claim, unquote it as a type *)
   let claim_eq := tApp claim_prefix [claim_lhs; claim_rhs] in
   let claim_quoted := wrap_type (arg_count+depth-1) claim_eq in
   claim <- tmUnquoteTyped Type claim_quoted ;;
+  (* build the term denoting the proof, unquote it using the type
+     of the claim that we just built above *)
   let proof_quoted :=
     wrap_body (arg_count+depth-1) (tApp proof_prefix [claim_rhs]) in
   proof <- tmUnquoteTyped claim proof_quoted ;;
+  (* give the proof a name and save it *)
   let eqn_base := func_name ++ "_equation_" ++ string_of_nat (index+1) in
   eqn_name <- tmFreshName eqn_base ;;
   tmDefinitionRed eqn_name (Some (unfold (Common_kn "my_projT1"))) proof ;;
@@ -186,7 +198,8 @@ Fixpoint infer_equations_walk_cases
   (index: nat)
 :
   TemplateMonad unit
-:=
+:
+  (* Walk all of the match cases and infer an equation for each. *)
   match bodies with
   | nil => tmReturn tt
   | body :: bodies =>
@@ -482,15 +495,22 @@ Polymorphic Program Fixpoint infer_equations_inner
 :=
   match body with
   | tLambda _ arg_type_quoted body =>
+    (* Peel off each of the arguments and put them in a context. *)
     infer_equations_inner body func_ref (arg_type_quoted :: context)
   | tCase info pred (tRel offset) bodies =>
+    (* If the body contains a case match, check if we are matching on an
+       argument; if so, start walking the different cases for its type. *)
     match nth_error context offset with
     | Some arg_type_quoted =>
-      infer_equations_walk_cases arg_type_quoted pred.(preturn) func_ref info bodies (List.length context) offset 0
+      infer_equations_walk_cases arg_type_quoted pred.(preturn)
+                                 func_ref info bodies
+                                 (List.length context) offset 0
     | None =>
       tmFail "Term contains match on something that is not an argument."
     end
   | tFix (first_fixpoint :: nil) 0 =>
+    (* We hit a fixpoint; substitute the variable at De Bruijn index 0 with
+       a reference to the (partially applied) top-level function call. *)
     let rec_call := tApp (uncurry tConst func_ref) (dummy_args #|context| 0) in
     let body := subst10 rec_call first_fixpoint.(dbody) in
     infer_equations_inner body func_ref context
@@ -523,9 +543,11 @@ Definition infer_equations {A: Type} (func: A) :=
   func_quoted <- tmQuote func ;;
   match func_quoted with
   | tConst func_path func_inst =>
+    (* Look up function body *)
     def <- tmQuoteConstant func_path true ;;
     match def.(cst_body) with
     | Some body =>
+      (* Use function body to infer equations. *)
       infer_equations_inner body (func_path, func_inst) nil
     | None =>
       tmFail "Function does not seem to have a body."
